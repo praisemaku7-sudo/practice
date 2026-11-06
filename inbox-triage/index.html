@@ -1,0 +1,457 @@
+<title>Inbox Triage Desk</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Schibsted+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a working desk. Left rail = today's plan + tasks; right = email queue with reply drafts. Stacks on phones. */
+:root{
+  --bg:#f3f5f7; --panel:#ffffff; --ink:#18212b; --muted:#5b6876; --line:#d9dfe5;
+  --accent:#1f5fae; --accent-soft:#e3ecf8;
+  --now:#c2361f; --today:#b7791f; --week:#2f7d5b; --fyi:#6b7480;
+  --now-bg:#fbe7e3; --today-bg:#fbf0dc; --week-bg:#e1f1e9; --fyi-bg:#eceef1;
+  --display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+  --body:"Schibsted Grotesk",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#11161c; --panel:#18202a; --ink:#e6ebf0; --muted:#9aa7b4; --line:#2b3642;
+  --accent:#7fb0ef; --accent-soft:#1d2d42;
+  --now:#ff8a73; --today:#f0bb5e; --week:#6fcfa2; --fyi:#a3adb8;
+  --now-bg:#3a1f1a; --today-bg:#362a14; --week-bg:#15302a; --fyi-bg:#232b34; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11161c; --panel:#18202a; --ink:#e6ebf0; --muted:#9aa7b4; --line:#2b3642;
+  --accent:#7fb0ef; --accent-soft:#1d2d42;
+  --now:#ff8a73; --today:#f0bb5e; --week:#6fcfa2; --fyi:#a3adb8;
+  --now-bg:#3a1f1a; --today-bg:#362a14; --week-bg:#15302a; --fyi-bg:#232b34; color-scheme:dark}
+
+body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--body)}
+.wrap{max-width:1180px;margin:0 auto;padding-block:24px 64px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  display:flex;flex-direction:column;gap:20px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0}
+h1{font-size:1.9rem;font-weight:700;letter-spacing:-.01em}
+h2{font-size:1.15rem;font-weight:700}
+h3{font-size:1rem;font-weight:500}
+.label{font:500 .7rem/1 var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.muted{color:var(--muted)}
+button{font:600 .875rem var(--body);border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:.55em 1em;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--bg)}
+button:disabled{opacity:.55;cursor:wait}
+button:focus-visible,textarea:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+textarea,input,select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:.6em .7em;width:100%;box-sizing:border-box}
+textarea{resize:vertical}
+
+header.top{display:flex;flex-wrap:wrap;align-items:end;justify-content:space-between;gap:12px}
+header.top p{margin:.25rem 0 0;max-width:60ch}
+
+.intake{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:16px}
+.intake .col{display:flex;flex-direction:column;gap:8px;min-width:0}
+.intake textarea#paste{min-height:170px;font:13px/1.45 var(--mono)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.status{font:500 .8rem var(--mono);color:var(--muted)}
+.status.err{color:var(--now)}
+
+.banner{background:var(--accent-soft);color:var(--ink);border-radius:10px;padding:10px 14px;font-size:.9rem}
+.overview{font-size:1.05rem;max-width:75ch;margin:0}
+
+.counts{display:flex;flex-wrap:wrap;gap:8px}
+.chip{display:inline-flex;align-items:center;gap:6px;font:500 .75rem/1 var(--mono);padding:5px 9px;border-radius:999px;white-space:nowrap}
+.chip.now{background:var(--now-bg);color:var(--now)}
+.chip.today{background:var(--today-bg);color:var(--today)}
+.chip.week{background:var(--week-bg);color:var(--week)}
+.chip.fyi{background:var(--fyi-bg);color:var(--fyi)}
+.chip.reply{background:var(--accent-soft);color:var(--accent)}
+
+.desk{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:20px;align-items:start}
+.stack{display:flex;flex-direction:column;gap:20px;min-width:0}
+section.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.panel-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+
+.plan{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.plan li{display:grid;grid-template-columns:7.5em minmax(0,1fr);gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+.plan li:first-child{border-top:0}
+.plan .slot{font:500 .8rem var(--mono);color:var(--accent);font-variant-numeric:tabular-nums;padding-top:2px}
+.plan .focus{font-weight:600}
+.plan .tasks{color:var(--muted);font-size:.875rem}
+
+.tasks-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.task{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:start;padding:8px 6px;border-radius:8px}
+.task:hover{background:var(--bg)}
+.task input{width:auto;margin-top:4px;accent-color:var(--accent)}
+.task .t{font-weight:500}
+.task.done .t{text-decoration:line-through;color:var(--muted)}
+.task .meta{font:400 .75rem var(--mono);color:var(--muted);text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.group-label{margin-top:8px}
+
+.coach{margin:0;padding-left:1.1em;display:flex;flex-direction:column;gap:8px}
+.coach b{display:block}
+
+.filters{display:flex;flex-wrap:wrap;gap:6px}
+.filters button{font-size:.8rem;padding:.35em .8em;border-radius:999px}
+.filters button[aria-pressed="true"]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+
+.mail{border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px;border-left-width:4px}
+.mail.now{border-left-color:var(--now)} .mail.today{border-left-color:var(--today)}
+.mail.week{border-left-color:var(--week)} .mail.fyi{border-left-color:var(--fyi)}
+.mail .from{font:500 .8rem var(--mono);color:var(--muted);overflow-wrap:anywhere}
+.mail .gist{margin:0}
+.mail .why{margin:0;font-size:.875rem;color:var(--muted)}
+.mail ul.asks{margin:0;padding-left:1.1em;font-size:.9rem}
+.draft{display:flex;flex-direction:column;gap:8px;border-top:1px dashed var(--line);padding-top:10px}
+.draft textarea.out{min-height:180px;background:var(--bg);font:14px/1.5 var(--body)}
+.draft .opts{display:grid;grid-template-columns:minmax(0,1fr) 10em;gap:8px}
+.empty{color:var(--muted);font-size:.9rem;margin:0}
+
+@media (max-width:860px){.desk,.intake{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:480px){.plan li{grid-template-columns:minmax(0,1fr);gap:2px}.draft .opts{grid-template-columns:minmax(0,1fr)}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <span class="label">Daily triage</span>
+      <h1>Inbox Triage Desk</h1>
+      <p class="muted">Paste your work email export. You get a prioritised task list, a time-blocked plan for the day, reply drafts, and notes on where you can raise your game.</p>
+    </div>
+  </header>
+
+  <form class="intake" id="intake">
+    <div class="col">
+      <label class="label" for="paste">Email export</label>
+      <textarea id="paste" placeholder="Paste emails here: From / Subject / Date / body. Any format works (Outlook copy, .eml text, a forwarded thread, a CSV export)."></textarea>
+      <div class="row">
+        <button class="primary" type="submit" id="go">Triage my inbox</button>
+        <button type="button" id="stop" hidden>Stop</button>
+        <button type="button" id="loadSample">Load example</button>
+        <span class="status" id="status" role="status"></span>
+      </div>
+    </div>
+    <div class="col">
+      <label class="label" for="role">About your role</label>
+      <textarea id="role" rows="5" placeholder="e.g. Operations coordinator. Manager: Dana (Head of Ops). Key clients: Northwind, Halden. My goals this quarter: cut supplier response time, own the weekly report."></textarea>
+      <div class="row" style="flex-wrap:nowrap">
+        <div style="flex:1;min-width:0"><label class="label" for="start">Day starts</label><input id="start" type="time" value="09:00"></div>
+        <div style="flex:1;min-width:0"><label class="label" for="end">Day ends</label><input id="end" type="time" value="17:30"></div>
+      </div>
+      <span class="muted" style="font-size:.8rem">Saved in this browser only. It shapes priorities, drafts and coaching.</span>
+    </div>
+  </form>
+
+  <div id="results" class="stack"></div>
+</div>
+
+<script>
+(() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const el = (tag, attrs = {}, ...kids) => {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === "class") n.className = v;
+      else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+      else if (v !== false && v != null) n.setAttribute(k, v === true ? "" : v);
+    }
+    for (const k of kids.flat()) if (k != null && k !== false) n.append(k instanceof Node ? k : String(k));
+    return n;
+  };
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem("itd:" + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem("itd:" + k, JSON.stringify(v)); } catch {} },
+  };
+
+  const BUCKETS = {
+    now:   { label: "Do now",       hint: "Urgent and important" },
+    today: { label: "Today",        hint: "Important, schedule it" },
+    week:  { label: "This week",    hint: "Can wait or delegate" },
+    fyi:   { label: "FYI",          hint: "Read, archive, no action" },
+  };
+
+  const SAMPLE_PASTE = `From: Dana Okafor <dana.okafor@company.com>
+Date: Thu 6 Nov 2026 08:12
+Subject: Board pack numbers - need by 2pm
+Hi, the CFO has moved the board prep to 3pm today. Can you send me the updated Q3 ops figures (on-time delivery %, supplier lead times) by 2pm? Use the October close, not the forecast. Thanks, Dana
+
+From: Marcus Lee <m.lee@northwind-logistics.com>
+Date: Thu 6 Nov 2026 07:40
+Subject: RE: Delayed shipment PO-44817
+We still haven't had confirmation of the revised delivery date for PO-44817. Our warehouse team needs to plan labour for next week. Can you confirm by end of day? This is the second time I've asked.
+
+From: IT Service Desk <servicedesk@company.com>
+Date: Wed 5 Nov 2026 16:03
+Subject: Mandatory: password policy change on 14 Nov
+All staff must enable the authenticator app before 14 November. Guide attached.
+
+From: Priya Shah <priya.shah@company.com>
+Date: Wed 5 Nov 2026 15:20
+Subject: Could you review my supplier scorecard draft?
+No rush - would love your eyes on the scorecard template before I share it with the team next Wednesday. Mainly checking the weighting makes sense.`;
+
+  const SAMPLE_RESULT = {
+    example: true,
+    overview: "Two things are time-critical: Dana needs Q3 figures by 2pm for a board prep moved to 3pm, and Northwind is chasing PO-44817 for the second time. Everything else can wait until tomorrow or later.",
+    emails: [
+      { id: "e1", from: "Dana Okafor (manager)", subject: "Board pack numbers - need by 2pm", received: "Thu 08:12", bucket: "now", gist: "Updated Q3 ops figures, October close, by 2pm.", why: "Your manager, a hard deadline, and it goes to the board.", needsReply: true, replyBy: "Today 14:00", asks: ["On-time delivery % (October close)", "Supplier lead times"], excerpt: "Can you send me the updated Q3 ops figures (on-time delivery %, supplier lead times) by 2pm? Use the October close, not the forecast." },
+      { id: "e2", from: "Marcus Lee, Northwind Logistics (client)", subject: "RE: Delayed shipment PO-44817", received: "Thu 07:40", bucket: "now", gist: "Wants the revised delivery date for PO-44817 by end of day.", why: "Second chase from a client. A third chase usually reaches your manager.", needsReply: true, replyBy: "Today 17:00", asks: ["Confirm the revised delivery date"], excerpt: "We still haven't had confirmation of the revised delivery date for PO-44817. Our warehouse team needs to plan labour for next week. Can you confirm by end of day? This is the second time I've asked." },
+      { id: "e3", from: "Priya Shah (colleague)", subject: "Could you review my supplier scorecard draft?", received: "Wed 15:20", bucket: "week", gist: "Review scorecard weighting before next Wednesday.", why: "Useful and visible, but the deadline is six days out.", needsReply: true, replyBy: "Fri", asks: ["Check the weighting"], excerpt: "Would love your eyes on the scorecard template before I share it with the team next Wednesday. Mainly checking the weighting makes sense." },
+      { id: "e4", from: "IT Service Desk", subject: "Mandatory: password policy change on 14 Nov", received: "Wed 16:03", bucket: "fyi", gist: "Enable the authenticator app before 14 Nov.", why: "A five-minute task with a fixed date. No reply needed.", needsReply: false, replyBy: "", asks: [], excerpt: "All staff must enable the authenticator app before 14 November." },
+    ],
+    tasks: [
+      { id: "t1", emailId: "e2", title: "Get the revised PO-44817 date from the carrier", minutes: 15, bucket: "now", due: "Before 11:00" },
+      { id: "t2", emailId: "e1", title: "Pull October-close on-time delivery % and supplier lead times", minutes: 60, bucket: "now", due: "13:30" },
+      { id: "t3", emailId: "e1", title: "Send figures to Dana with a 3-line summary", minutes: 15, bucket: "now", due: "14:00" },
+      { id: "t4", emailId: "e2", title: "Reply to Marcus with the confirmed date", minutes: 10, bucket: "today", due: "17:00" },
+      { id: "t5", emailId: "e3", title: "Review Priya's scorecard weighting", minutes: 30, bucket: "week", due: "Fri" },
+      { id: "t6", emailId: "e4", title: "Enable authenticator app", minutes: 5, bucket: "week", due: "14 Nov" },
+    ],
+    plan: [
+      { slot: "09:00–09:15", focus: "Chase the carrier on PO-44817", taskIds: ["t1"] },
+      { slot: "09:15–10:15", focus: "Build the Q3 figures (protected focus time)", taskIds: ["t2"] },
+      { slot: "10:15–10:30", focus: "Send figures to Dana early", taskIds: ["t3"] },
+      { slot: "10:30–10:45", focus: "Reply to Marcus once the carrier answers", taskIds: ["t4"] },
+      { slot: "16:30–17:00", focus: "Quick wins and tomorrow's prep", taskIds: ["t6"] },
+    ],
+    coaching: [
+      { point: "Deliver before the deadline", detail: "Sending Dana's numbers at 10:30 instead of 13:59 gives her time to ask questions before the board prep. Early delivery is what people remember." },
+      { point: "Stop the client chase loop", detail: "Marcus asked twice. Send a holding reply now with the time you'll confirm by, even before you have the date." },
+      { point: "Say yes to Priya with a date", detail: "Agree to review by Friday. Being reliable on small favours builds the goodwill you'll need for bigger asks." },
+    ],
+  };
+
+  let state = store.get("result", null) || SAMPLE_RESULT;
+  let done = store.get("done", {});
+  let filter = "all";
+  const drafts = {};
+  let ctl = null;
+  let samplePromise = null;
+  const getSample = () => (samplePromise ||= (window.claude?.use ? window.claude.use("sample") : Promise.resolve(null)).catch(() => null));
+
+  const roleEl = $("#role"), startEl = $("#start"), endEl = $("#end"), pasteEl = $("#paste");
+  roleEl.value = store.get("role", "");
+  startEl.value = store.get("start", "09:00");
+  endEl.value = store.get("end", "17:30");
+  roleEl.addEventListener("input", () => store.set("role", roleEl.value));
+  startEl.addEventListener("change", () => store.set("start", startEl.value));
+  endEl.addEventListener("change", () => store.set("end", endEl.value));
+
+  const statusEl = $("#status");
+  const setStatus = (msg, err = false) => { statusEl.textContent = msg; statusEl.classList.toggle("err", err); };
+
+  const errCopy = (code) => ({
+    not_granted: "Claude access wasn't allowed for this page. Use the page's Permissions menu to allow it.",
+    sampling_disabled: "Claude isn't available on this account.",
+    rate_limited: "You've hit a usage limit. Wait a few minutes and try again.",
+    session_expired: "Sign in to claude.ai again, then retry.",
+    prompt_too_large: "That paste is too long. Paste fewer emails (around 40 at a time).",
+    invalid_json: "The triage came back malformed. Press Triage again.",
+    refused: "Claude declined to process that content. Remove anything sensitive and try again.",
+  }[code] || "Something went wrong. Try again.");
+
+  function roleContext() {
+    const r = roleEl.value.trim();
+    return `About me: ${r || "(not provided; infer my role from the emails)"}\nMy working day: ${startEl.value || "09:00"} to ${endEl.value || "17:30"}.\nToday is ${new Date().toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}, current time ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.`;
+  }
+
+  function triagePrompt(text) {
+    return `You are a sharp chief-of-staff triaging a professional's work inbox. Be decisive and specific; use real names, numbers and dates from the emails.
+
+${roleContext()}
+
+Rules:
+- bucket: "now" = urgent AND important (manager/client/exec, deadline today, blocking others, repeat chase). "today" = important, do today. "week" = can wait or be delegated. "fyi" = newsletters, notices, no action.
+- Break every actionable email into concrete verb-first tasks, each 5-90 minutes. Split big work into steps.
+- plan: time blocks from now (or the start of day if earlier) to end of day. Put the hardest "now" work early, batch small replies, leave buffer. Only schedule what fits; use slot format "HH:MM–HH:MM".
+- needsReply true only if someone expects a response from me.
+- coaching: 3-5 specific, candid points on how I can perform better in this role based on THIS inbox (reliability, managing up, stakeholder trust, what to delegate or decline, patterns). No generic advice.
+- excerpt: the key sentences of the email verbatim, max 700 characters.
+
+Reply with ONLY this JSON shape:
+{"overview":"2-3 sentences, lead with what matters most",
+ "emails":[{"id":"e1","from":"Name (relationship if clear)","subject":"","received":"short","bucket":"now|today|week|fyi","gist":"one line","why":"why this priority","needsReply":true,"replyBy":"short or empty","asks":["what they want from me"],"excerpt":""}],
+ "tasks":[{"id":"t1","emailId":"e1","title":"","minutes":15,"bucket":"now|today|week","due":"short or empty"}],
+ "plan":[{"slot":"09:00–09:30","focus":"","taskIds":["t1"]}],
+ "coaching":[{"point":"short headline","detail":"1-2 sentences"}]}
+Order emails and tasks by priority.
+
+EMAILS:
+${text}`;
+  }
+
+  async function triage(e) {
+    e.preventDefault();
+    const text = pasteEl.value.trim();
+    if (!text) { setStatus("Paste some emails first, or load the example.", true); pasteEl.focus(); return; }
+    const sample = await getSample();
+    if (!sample) { setStatus("Triage needs Claude. Open this page on claude.ai to use it.", true); return; }
+    const go = $("#go"), stop = $("#stop");
+    go.disabled = true; stop.hidden = false;
+    ctl = new AbortController();
+    setStatus("Reading your inbox…");
+    try {
+      const out = await sample.json(triagePrompt(text.slice(0, 180000)), {
+        signal: ctl.signal, modelTier: "default",
+        onText: ({ text }) => setStatus(`Working… ${Math.round(text.length / 100) / 10}k characters`),
+      });
+      if (!out || !Array.isArray(out.emails)) throw { code: "invalid_json" };
+      out.emails ||= []; out.tasks ||= []; out.plan ||= []; out.coaching ||= [];
+      state = out; done = {}; filter = "all";
+      for (const k in drafts) delete drafts[k];
+      store.set("result", state); store.set("done", done);
+      setStatus(`Triaged ${out.emails.length} emails into ${out.tasks.length} tasks.`);
+      render();
+      $("#results").scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch (err) {
+      if (err?.code === "cancelled") setStatus("Stopped.");
+      else setStatus(errCopy(err?.code), true);
+    } finally {
+      go.disabled = false; stop.hidden = true; ctl = null;
+    }
+  }
+
+  async function draftReply(mail, box) {
+    const sample = await getSample();
+    const out = box.querySelector("textarea.out"), btn = box.querySelector("button.gen"), note = box.querySelector(".dnote");
+    if (!sample) { note.textContent = "Drafting needs Claude. Open this page on claude.ai."; return; }
+    const tone = box.querySelector("select").value;
+    const steer = box.querySelector("input").value.trim();
+    btn.disabled = true; out.value = "Thinking…"; note.textContent = "";
+    const c = new AbortController();
+    try {
+      const { text, truncated } = await sample(
+`Write an email reply I can send. ${roleContext()}
+
+Email from ${mail.from}, subject "${mail.subject}", received ${mail.received}.
+Key content: """${mail.excerpt || mail.gist}"""
+What they want from me: ${(mail.asks || []).join("; ") || mail.gist}
+My instruction for this reply: ${steer || "Answer what they asked. If I can't fully answer yet, give a holding reply with a specific time I'll come back."}
+Tone: ${tone}.
+
+Rules: start with "Subject: Re: ..." on the first line, then a blank line, then the body. Lead with the answer or commitment. Short paragraphs. Commit to concrete times, not "soon". Put [square brackets] around any fact I must fill in (numbers, dates) rather than inventing it. Sign off with my first name as [Name] unless my role notes give it. No preamble or notes outside the email.`,
+        { signal: c.signal, cache: false, onText: ({ text }) => { out.value = text; } });
+      out.value = text;
+      drafts[mail.id] = text;
+      note.textContent = truncated ? "Cut short. Shorten the instruction and regenerate." : "Check anything in [brackets] before sending.";
+    } catch (err) {
+      out.value = err?.text || drafts[mail.id] || "";
+      if (err?.code !== "cancelled") note.textContent = errCopy(err?.code);
+    } finally { btn.disabled = false; btn.textContent = "Regenerate"; }
+  }
+
+  function copyDraft(box) {
+    const ta = box.querySelector("textarea.out"), note = box.querySelector(".dnote");
+    const p = navigator.clipboard?.writeText ? navigator.clipboard.writeText(ta.value) : Promise.reject();
+    p.then(() => { note.textContent = "Copied. Paste it into your mail client."; })
+     .catch(() => { ta.focus(); ta.select(); note.textContent = "Selected. Press Ctrl/Cmd+C to copy."; });
+  }
+
+  const chip = (b) => el("span", { class: "chip " + b }, BUCKETS[b]?.label || b);
+  const mins = (m) => m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? " " + (m % 60) + "m" : ""}` : `${m}m`;
+
+  function render() {
+    const root = $("#results");
+    root.replaceChildren();
+    const emails = state.emails || [], tasks = state.tasks || [];
+    const byId = Object.fromEntries(tasks.map(t => [t.id, t]));
+    const mailById = Object.fromEntries(emails.map(m => [m.id, m]));
+
+    if (state.example) root.append(el("div", { class: "banner" }, "You're looking at an example triage of 4 made-up emails. Paste your own export above and press Triage my inbox."));
+
+    const counts = {}; emails.forEach(m => counts[m.bucket] = (counts[m.bucket] || 0) + 1);
+    const replies = emails.filter(m => m.needsReply).length;
+    const openMins = tasks.filter(t => !done[t.id] && t.bucket !== "week").reduce((a, t) => a + (+t.minutes || 0), 0);
+    root.append(el("section", { class: "panel" },
+      el("span", { class: "label" }, "The headline"),
+      el("p", { class: "overview" }, state.overview || ""),
+      el("div", { class: "counts" },
+        ...Object.keys(BUCKETS).filter(b => counts[b]).map(b => el("span", { class: "chip " + b }, `${counts[b]} ${BUCKETS[b].label}`)),
+        replies ? el("span", { class: "chip reply" }, `${replies} need a reply`) : null,
+        el("span", { class: "chip fyi" }, `${mins(openMins)} of work for today`))));
+
+    // Left column
+    const left = el("div", { class: "stack" });
+    if (state.plan?.length) left.append(el("section", { class: "panel" },
+      el("div", { class: "panel-head" }, el("h2", {}, "Your day"), el("span", { class: "label" }, "Time blocks")),
+      el("ol", { class: "plan" }, state.plan.map(p => el("li", {},
+        el("span", { class: "slot" }, p.slot),
+        el("div", {}, el("div", { class: "focus" }, p.focus),
+          (p.taskIds || []).length ? el("div", { class: "tasks" }, p.taskIds.map(id => byId[id]?.title).filter(Boolean).join(" · ")) : null))))));
+
+    const tl = el("section", { class: "panel" },
+      el("div", { class: "panel-head" }, el("h2", {}, "Tasks"), el("span", { class: "label" }, `${tasks.filter(t => done[t.id]).length}/${tasks.length} done`)));
+    for (const b of ["now", "today", "week"]) {
+      const list = tasks.filter(t => t.bucket === b);
+      if (!list.length) continue;
+      tl.append(el("div", { class: "label group-label" }, `${BUCKETS[b].label} · ${BUCKETS[b].hint}`));
+      tl.append(el("ul", { class: "tasks-list" }, list.map(t => {
+        const id = "task-" + t.id;
+        const li = el("li", { class: "task" + (done[t.id] ? " done" : "") },
+          el("input", { type: "checkbox", id, checked: !!done[t.id], onchange: (ev) => {
+            done[t.id] = ev.target.checked; store.set("done", done); li.classList.toggle("done", ev.target.checked);
+            tl.querySelector(".panel-head .label").textContent = `${tasks.filter(x => done[x.id]).length}/${tasks.length} done`;
+          } }),
+          el("label", { for: id },
+            el("div", { class: "t" }, t.title),
+            mailById[t.emailId] ? el("div", { class: "muted", style: "font-size:.8rem" }, mailById[t.emailId].subject) : null),
+          el("div", { class: "meta" }, mins(+t.minutes || 0), t.due ? el("br") : null, t.due || ""));
+        return li;
+      })));
+    }
+    left.append(tl);
+
+    if (state.coaching?.length) left.append(el("section", { class: "panel" },
+      el("div", { class: "panel-head" }, el("h2", {}, "Raise your game"), el("span", { class: "label" }, "From today's inbox")),
+      el("ul", { class: "coach" }, state.coaching.map(c => el("li", {}, el("b", {}, c.point), el("span", { class: "muted" }, c.detail))))));
+
+    // Right column: emails
+    const right = el("section", { class: "panel" });
+    const filters = [["all", "All"], ["reply", "Needs reply"], ...Object.entries(BUCKETS).map(([k, v]) => [k, v.label])];
+    const listWrap = el("div", { class: "stack", style: "gap:12px" });
+    const fbar = el("div", { class: "filters", role: "group", "aria-label": "Filter emails" },
+      filters.map(([k, lab]) => el("button", { type: "button", "aria-pressed": String(filter === k), onclick: () => { filter = k; render(); } }, lab)));
+    right.append(el("div", { class: "panel-head" }, el("h2", {}, "Emails"), el("span", { class: "label" }, "By priority")), fbar, listWrap);
+
+    const shown = emails.filter(m => filter === "all" || (filter === "reply" ? m.needsReply : m.bucket === filter));
+    if (!shown.length) listWrap.append(el("p", { class: "empty" }, "Nothing in this view."));
+    for (const m of shown) {
+      const card = el("article", { class: "mail " + (BUCKETS[m.bucket] ? m.bucket : "fyi") },
+        el("div", { class: "row", style: "justify-content:space-between" },
+          el("div", { class: "row" }, chip(m.bucket), m.needsReply ? el("span", { class: "chip reply" }, "Reply" + (m.replyBy ? " by " + m.replyBy : "")) : null),
+          el("span", { class: "label" }, m.received || "")),
+        el("h3", {}, m.subject || "(no subject)"),
+        el("div", { class: "from" }, m.from || ""),
+        el("p", { class: "gist" }, m.gist || ""),
+        m.why ? el("p", { class: "why" }, m.why) : null,
+        (m.asks || []).length ? el("ul", { class: "asks" }, m.asks.map(a => el("li", {}, a))) : null);
+      if (m.needsReply) {
+        const box = el("div", { class: "draft" });
+        box.append(
+          el("div", { class: "opts" },
+            el("input", { id: "steer-" + m.id, placeholder: "Your angle, e.g. \"yes, but Friday not Thursday\"", "aria-label": "Instruction for this reply" }),
+            el("select", { id: "tone-" + m.id, "aria-label": "Tone" },
+              ["clear and professional", "warm and friendly", "brief and direct", "diplomatic (pushing back)"].map(t => el("option", { value: t }, t)))),
+          el("textarea", { class: "out", id: "draft-" + m.id, hidden: !drafts[m.id], "aria-label": "Draft reply" }),
+          el("div", { class: "row" },
+            el("button", { type: "button", class: "gen primary", onclick: () => { box.querySelector("textarea.out").hidden = false; box.querySelector(".copy").hidden = false; draftReply(m, box); } }, drafts[m.id] ? "Regenerate" : "Draft reply"),
+            el("button", { type: "button", class: "copy", hidden: !drafts[m.id], onclick: () => copyDraft(box) }, "Copy"),
+            el("span", { class: "status dnote" })));
+        if (drafts[m.id]) box.querySelector("textarea.out").value = drafts[m.id];
+        card.append(box);
+      }
+      listWrap.append(card);
+    }
+
+    root.append(el("div", { class: "desk" }, left, right));
+  }
+
+  $("#intake").addEventListener("submit", triage);
+  $("#stop").addEventListener("click", () => ctl?.abort());
+  $("#loadSample").addEventListener("click", () => {
+    pasteEl.value = SAMPLE_PASTE;
+    state = SAMPLE_RESULT; done = {}; store.set("done", done);
+    setStatus("Example loaded. Press Triage to run it live.");
+    render();
+  });
+  render();
+  getSample();
+})();
+</script>
