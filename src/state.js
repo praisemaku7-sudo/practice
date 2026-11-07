@@ -18,6 +18,7 @@ export const DEFAULT_SETTINGS = {
   mainAccountId: null,
   userRules: {},         // merchantKey -> category
   consolidationDone: {},
+  trackFrom: '2026-06-01', // ignore everything before this date (null = keep all history)
   coverageDismissed: {}, // 'accountId|YYYY-MM' -> true (no statement expected)
   bufferPence: 5000,     // keep at least £50 after bills
 };
@@ -33,8 +34,11 @@ export async function load() {
   const [txs, accounts, imports, checks, settings] = await Promise.all([
     db.all('tx'), db.all('accounts'), db.all('imports'), db.all('checks'), db.kvGet('settings', {}),
   ]);
-  Object.assign(state, { txs, accounts, imports, checks: checks.sort((a, b) => b.at - a.at) });
   state.settings = { ...DEFAULT_SETTINGS, ...settings };
+  const from = state.settings.trackFrom;
+  // Older transactions stay stored (so changing the date back restores them) but are hidden everywhere.
+  state.hiddenCount = from ? txs.filter((t) => t.date < from).length : 0;
+  Object.assign(state, { txs: from ? txs.filter((t) => t.date >= from) : txs, accounts, imports, checks: checks.sort((a, b) => b.at - a.at) });
   recompute();
   const months = monthsPresent(state.txs);
   if (months.length && !months.includes(state.month)) state.month = months[months.length - 1];
@@ -50,7 +54,7 @@ export function recompute() {
   // A balance older than ~10 days is too stale to trust for the bills check.
   const fresh = currentAccounts.filter((a) => a.balanceDate && daysBetween(a.balanceDate, today) <= 10);
   const balance = fresh.length ? fresh.reduce((s, a) => s + a.balance, 0) : null;
-  const coverage = statementCoverage({ accounts: state.accounts, imports: state.imports, txs: state.txs, today, dismissed: state.settings.coverageDismissed || {} });
+  const coverage = statementCoverage({ accounts: state.accounts, imports: state.imports, txs: state.txs, today, dismissed: state.settings.coverageDismissed || {}, startMonth: state.settings.trackFrom ? monthKey(state.settings.trackFrom) : null });
   state.derived = { today, coverage, recurring, payday, detectedPayday: detected, budget, balance, staleBalance: currentAccounts.length > 0 && !fresh.length, months: monthsPresent(state.txs) };
   return state.derived;
 }

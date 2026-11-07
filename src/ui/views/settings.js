@@ -20,6 +20,13 @@ export function render() {
     <p class="sub">Your key is stored only on this device and sent only to api.anthropic.com. Statement PDFs go to Anthropic only when "Read PDFs with Claude" is on. Monthly reviews send totals, not transactions.</p>
   </div>
   <div class="card">
+    <h3>Track from</h3>
+    <p class="muted">Only money from this month onwards counts: budgets, trends, insights and missing-statement checks. Older transactions in a statement are skipped on import.</p>
+    <label class="field"><span>Start month</span><input id="st-from" type="month" value="${s.trackFrom ? s.trackFrom.slice(0, 7) : ''}" max="${state.derived.today.slice(0, 7)}"></label>
+    <div class="row gap"><button class="btn ghost grow" data-action="st-from-all">Use all history</button><button class="btn primary grow" data-action="st-from-save">Save</button></div>
+    ${state.hiddenCount ? `<p class="sub">${state.hiddenCount} older transactions are hidden, not deleted. Set an earlier month to bring them back.</p>` : ''}
+  </div>
+  <div class="card">
     <h3>Affordability</h3>
     <label class="field"><span>Always keep £</span><input id="st-buffer" inputmode="decimal" value="${(s.bufferPence / 100).toFixed(0)}"></label>
     <p class="sub">Safety cushion left in your current accounts after bills before payday.</p>
@@ -36,7 +43,20 @@ export function render() {
   <p class="sub center">Pocket Ledger · runs on your phone · no account, no tracking</p>`;
 }
 
+async function setTrackFrom(value, rerender) {
+  await saveSettings({ trackFrom: value });
+  state.month = state.derived.today.slice(0, 7);
+  await load(); await relinkTransfers(); recompute(); rerender();
+}
+
 export const actions = {
+  'st-from-save': async (_, rerender) => {
+    const v = document.getElementById('st-from').value; // YYYY-MM
+    if (!/^\d{4}-\d{2}$/.test(v)) return toast('Pick a month', { error: true });
+    await setTrackFrom(`${v}-01`, rerender);
+    toast(`Tracking from ${new Date(v + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })}`);
+  },
+  'st-from-all': async (_, rerender) => { await setTrackFrom(null, rerender); toast('Using all history'); },
   'st-save-key': async () => { await saveSettings({ apiKey: document.getElementById('st-key').value.trim() }); toast('Key saved'); },
   'st-test': async () => {
     const key = document.getElementById('st-key').value.trim();
