@@ -17,9 +17,10 @@ import * as history from './ui/views/history.js';
 import * as importer from './ui/views/importer.js';
 import * as checkin from './ui/views/checkin.js';
 import * as bills from './ui/views/bills.js';
+import * as cards from './ui/views/cards.js';
 
-const VIEWS = { home, budget, afford, insights, accounts, transactions, settings, history, import: importer, checkin, bills };
-const TITLES = { home: 'Overview', budget: 'Budget', afford: 'Afford?', insights: 'Insights', accounts: 'Accounts', transactions: 'Transactions', settings: 'Settings', history: 'Monthly record', import: 'Import', checkin: 'Monthly check-in', bills: 'Bills & subscriptions' };
+const VIEWS = { home, budget, afford, insights, accounts, transactions, settings, history, import: importer, checkin, bills, cards };
+const TITLES = { home: 'Overview', budget: 'Budget', afford: 'Afford?', insights: 'Insights', accounts: 'Accounts', transactions: 'Transactions', settings: 'Settings', history: 'Monthly record', import: 'Import', checkin: 'Monthly check-in', bills: 'Bills & subscriptions', cards: 'Credit cards' };
 let current = 'home';
 
 function parseHash() {
@@ -35,7 +36,7 @@ async function render() {
   main.innerHTML = view.render();
   main.dataset.view = current;
   document.title = `${TITLES[current]} · Pocket Ledger`;
-  document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.view === current || (['transactions', 'history', 'checkin', 'bills', 'import'].includes(current) && a.dataset.view === 'home')));
+  document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.view === current || (['transactions', 'history', 'checkin', 'bills', 'import', 'cards'].includes(current) && a.dataset.view === 'home')));
 }
 
 async function route() {

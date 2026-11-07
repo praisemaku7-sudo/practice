@@ -26,7 +26,7 @@ export function render() {
     const head = t.date !== lastDate ? `<div class="date-head">${prettyDate(t.date)}</div>` : '';
     lastDate = t.date;
     return `${head}<button class="list-row tap" data-action="tx-edit" data-id="${esc(t.id)}">${catChip(t.category)}
-      <div class="grow"><div class="ellipsis">${esc(t.description)}</div><div class="sub">${esc(catName(t.category))} · ${esc(accountName(t.accountId))}${t.manual ? ' · manual' : ''}</div></div>
+      <div class="grow"><div class="ellipsis">${esc(t.description)}</div><div class="sub">${esc(catName(t.category))} · ${state.accounts.find((a) => a.id === t.accountId)?.type === 'credit' ? '💳 ' : ''}${esc(accountName(t.accountId))}${t.manual ? ' · manual' : ''}</div></div>
       <b class="${t.amount > 0 ? 'pos' : ''}">${fmt(t.amount, { sign: true })}</b></button>`;
   }).join('');
   return `

@@ -28,6 +28,8 @@ export function buildBudget(txs, settings = {}, { today = todayISO() } = {}) {
   const avgIncome = Math.round(sums.reduce((a, s) => a + s.income, 0) / n);
   const income = settings.income ?? avgIncome;
   const savingsTarget = settings.savingsTarget ?? roundDown(Math.round(income * 0.2));
+  // Extra paid to credit cards each month (repayments are transfers, so they come out of what's left).
+  const cardPayoff = settings.cardPayoff ?? 0;
 
   const hist = {};
   for (const s of sums) for (const [c, v] of Object.entries(s.byCat)) hist[c] = (hist[c] || 0) + v / n;
@@ -45,7 +47,7 @@ export function buildBudget(txs, settings = {}, { today = todayISO() } = {}) {
   }
 
   const personalCats = CATEGORIES.filter((c) => c.kind === 'personal');
-  const personalPool = income - committed - savingsTarget;
+  const personalPool = income - committed - savingsTarget - cardPayoff;
   const overriddenPersonal = personalCats.filter((c) => overrides[c.id] != null);
   const fixedPersonal = overriddenPersonal.reduce((a, c) => a + overrides[c.id], 0);
   const flexible = personalCats.filter((c) => overrides[c.id] == null && (hist[c.id] || 0) > 0);
@@ -68,10 +70,11 @@ export function buildBudget(txs, settings = {}, { today = todayISO() } = {}) {
     income,
     incomeIsEstimate: settings.income == null,
     savingsTarget,
+    cardPayoff,
     committed,
     personalAllowance,
-    unallocated: income - totalBudget - savingsTarget,
-    shortfall: Math.max(0, committed + savingsTarget - income),
+    unallocated: income - totalBudget - savingsTarget - cardPayoff,
+    shortfall: Math.max(0, committed + savingsTarget + cardPayoff - income),
     avgSpend,
     lines,
     byCategory: Object.fromEntries(lines.map((l) => [l.category, l])),

@@ -47,6 +47,7 @@ export function render() {
   const movers = cmp.hasPrev ? cmp.rows.filter((r) => Math.abs(r.delta) >= 1000 && !['income', 'transfer', 'savings'].includes(r.category)).slice(0, 4) : [];
 
   const missing = derived.coverage.missing;
+  const dupBanner = derived.duplicates.length ? `<a class="card banner" href="#/accounts"><b>${derived.duplicates.length} duplicate transaction${derived.duplicates.length > 1 ? 's' : ''}</b><span class="sub">Imported twice. Totals are inflated until removed.</span><span class="banner-go">Fix ›</span></a>` : '';
   const monthMissing = missing.filter((m) => m.month === month);
   const banner = missing.length ? `<a class="card banner" href="#/accounts">
       <b>${missing.length} statement${missing.length > 1 ? 's' : ''} missing</b>
@@ -61,6 +62,7 @@ export function render() {
   return `
   ${monthSwitcher(month, months)}
   ${ciCard}
+  ${dupBanner}
   ${banner}
   <div class="card hero">
     <div class="hero-row">
@@ -75,6 +77,13 @@ export function render() {
     ${totalBudget ? `${progressBar(s.spend / totalBudget)}<div class="sub">${fmt(s.spend, { whole: true })} of ${fmt(totalBudget, { whole: true })} monthly budget</div>` : ''}
   </div>
   ${funCard}
+  ${derived.cards.cards.length || derived.suspects.length ? (() => {
+    const c = derived.cards;
+    return `<a class="card cards-card ${c.monthSpend > 0 ? 'bad' : ''}" href="#/cards">
+      <div class="grow"><div class="label">💳 Credit cards · goal £0</div>
+      <div><b class="${c.totalOwed > 0 ? 'neg' : 'pos'}">${fmt(c.totalOwed, { whole: true })} owed</b> · <span class="${c.monthSpend > 0 ? 'neg' : 'pos'}">${fmt(c.monthSpend, { whole: true })} new spending this month</span></div>
+      ${derived.suspects.length ? `<div class="sub warn-text">${derived.suspects.length} account${derived.suspects.length > 1 ? 's' : ''} may be a credit card. Tap to confirm.</div>` : ''}</div><span class="banner-go">›</span></a>`;
+  })() : ''}
   ${movers.length ? `<div class="card"><h3>What changed vs last month</h3>
     ${movers.map((r) => `<div class="list-row">${catChip(r.category)}<div class="grow">${esc(catName(r.category))}<div class="sub">${fmt(r.previous, { whole: true })} → ${fmt(r.current, { whole: true })}</div></div>${delta(r.delta)}</div>`).join('')}
   </div>` : ''}

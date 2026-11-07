@@ -74,7 +74,7 @@ function wishlistCard() {
   const { budget, recurring, balance, payday, today } = state.derived;
   return `<div class="card"><h3>Wishlist</h3><p class="sub">Re-checked against your budget every time you open this page.</p>
     ${list.map((w) => {
-      const v = canIAfford({ price: w.price, category: w.category, txs: state.txs, budget, recurring, balance, payday, today, bufferPence: state.settings.bufferPence });
+      const v = canIAfford({ price: w.price, category: w.category, txs: state.txs, budget, recurring, balance, payday, today, bufferPence: state.settings.bufferPence, cardsOwed: state.derived.cards.totalOwed });
       return `<div class="list-row"><span class="verdict-dot ${v.verdict}"></span>
         <div class="grow"><div class="ellipsis">${esc(w.item || catName(w.category))}</div>
         <div class="sub">${v.verdict === 'yes' ? '<b class="pos">Affordable now</b>' : v.verdict === 'tight' ? 'Affordable if you move budget' : 'Not yet'} · added ${prettyDate(w.added)}</div></div>
@@ -94,7 +94,7 @@ function runCheck() {
   if (!price) { toast('Enter a price', { error: true }); return false; }
   const { budget, recurring, balance, payday, today } = state.derived;
   const category = form.category || categorize(form.item, -1);
-  const res = canIAfford({ price, category, txs: state.txs, budget, recurring, balance, payday, today, bufferPence: state.settings.bufferPence });
+  const res = canIAfford({ price, category, txs: state.txs, budget, recurring, balance, payday, today, bufferPence: state.settings.bufferPence, cardsOwed: state.derived.cards.totalOwed });
   form.result = { ...res, price, category };
   const rec = { id: crypto.randomUUID?.() || String(Date.now()), at: Date.now(), date: todayISO(), item: form.item, price, category, verdict: res.verdict };
   form.result.checkId = rec.id;

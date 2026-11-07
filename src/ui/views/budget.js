@@ -36,14 +36,17 @@ export function render() {
       <button class="link" data-action="edit-income">${fmt(budget.income, { whole: true })} ${budget.incomeIsEstimate ? '<small class="pill">estimated</small>' : ''} ✎</button></div>
     <div class="row between"><span class="label">Savings goal</span>
       <button class="link" data-action="edit-savings">${fmt(budget.savingsTarget, { whole: true })} <small class="muted">(${budget.income ? Math.round((budget.savingsTarget / budget.income) * 100) : 0}%)</small> ✎</button></div>
+    <div class="row between"><span class="label">Credit card payoff</span>
+      <a class="link" href="#/cards">${budget.cardPayoff ? fmt(budget.cardPayoff, { whole: true }) + '/mo' : 'Set up'} ›</a></div>
     <div class="row between"><span class="label">Payday</span>
       <button class="link" data-action="edit-payday">${payday ? `${payday}${['th', 'st', 'nd', 'rd'][payday % 10 > 3 || [11, 12, 13].includes(payday) ? 0 : payday % 10]} of the month` : 'Not set'} ${state.settings.payday == null && detectedPayday ? '<small class="pill">detected</small>' : ''} ✎</button></div>
-    <div class="stack-bar">${seg(fixed, 'fixed')}${seg(ess, 'essential')}${seg(budget.personalAllowance, 'personal')}${seg(budget.savingsTarget, 'savings')}</div>
+    <div class="stack-bar">${seg(fixed, 'fixed')}${seg(ess, 'essential')}${seg(budget.personalAllowance, 'personal')}${seg(budget.savingsTarget, 'savings')}${seg(budget.cardPayoff || 0, 'payoff')}</div>
     <div class="legend wrap">
       <span><i class="sw fixed"></i>Bills ${fmt(fixed, { whole: true })}</span>
       <span><i class="sw essential"></i>Essentials ${fmt(ess, { whole: true })}</span>
       <span><i class="sw personal"></i>Fun ${fmt(budget.personalAllowance, { whole: true })}</span>
       <span><i class="sw savings"></i>Savings ${fmt(budget.savingsTarget, { whole: true })}</span>
+      ${budget.cardPayoff ? `<span><i class="sw payoff"></i>Card payoff ${fmt(budget.cardPayoff, { whole: true })}</span>` : ''}
     </div>
     ${budget.shortfall > 0 ? `<div class="alert">Your bills and essentials plus your savings goal come to ${fmt(budget.shortfall, { whole: true })} more than your income. Fun money is £0 until something changes: lower the savings goal, or cut a bill (see Insights).</div>` : ''}
     ${budget.unallocated > 2000 ? `<p class="sub">${fmt(budget.unallocated, { whole: true })}/month isn't allocated. Leave it unspent and it adds to your savings.</p>` : ''}
