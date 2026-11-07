@@ -1,0 +1,20 @@
+{
+  "name": "pocket-ledger",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Personal finance tracker PWA: import UK bank statements, get budgets, ask 'can I afford this?'",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.137.0",
+    "pdfjs-dist": "5.7.284"
+  },
+  "devDependencies": {
+    "vite": "6.3.7"
+  }
+}
