@@ -12,6 +12,8 @@ A personal finance app for your iPhone: a web app you add to your Home Screen. I
 - **Accounts & consolidation**: every regular payment (Direct Debits, standing orders, card subscriptions) detected per account, plus a checklist for moving them all onto one main account, including when to use the Current Account Switch Service instead.
 
 - **Fast imports**: pick every statement at once. Files are read in parallel on the phone and checked against the printed balances; if they add up, no AI is needed. Only unverifiable or scanned PDFs go to Claude, as text (or page images), split into parts read in parallel. Accounts are matched by the last 4 digits of the account number.
+- **Credit cards → £0**: cards are tracked separately from your debit/current accounts. See what you owe on each card, new card spending this month (goal £0, with a streak), and a payoff plan (highest interest or smallest balance first) that's set aside in your budget before fun money. Accounts that look like cards but were filed as current accounts are flagged.
+- **Duplicate cleanup**: payments are matched fuzzily (same amount, within 3 days, similar wording), so overlapping statements or a PDF + CSV of the same month don't double count, and any duplicates already saved can be removed in one tap.
 - **Monthly check-in**: a 4-step routine (import every statement, sort "Other" transactions, review, plan next month).
 - **Bills & subscriptions**: calendar of what's due and paid this month, annual cost, price rises, and a cancel list.
 - **Wishlist**: save a "not right now" item; it's re-checked against your budget every time you open the page.

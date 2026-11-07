@@ -12,7 +12,7 @@ import { fmt } from './money.js';
  *  4. bills   – your current-account balance still covers every bill due before payday
  * Returns { verdict: 'yes'|'tight'|'no', headline, checks[], advice[] }.
  */
-export function canIAfford({ price, category = 'shopping', txs, budget, recurring = [], balance = null, payday = null, today = todayISO(), bufferPence = 5000 }) {
+export function canIAfford({ price, category = 'shopping', txs, budget, recurring = [], balance = null, payday = null, today = todayISO(), bufferPence = 5000, cardsOwed = 0 }) {
   const key = monthKey(today);
   const prog = budgetProgress(txs, budget, key);
   const kind = catKind(category);
@@ -52,9 +52,10 @@ export function canIAfford({ price, category = 'shopping', txs, budget, recurrin
     id: 'category', label: `${catName(category)} budget`, pass: catBudget > 0 && price <= catLeft,
     detail: catBudget > 0 ? `${fmt(Math.max(0, catLeft))} left of ${fmt(catBudget)}` : 'No budget set for this category',
   });
+  const goal = budget.savingsTarget + (budget.cardPayoff || 0);
   checks.push({
-    id: 'savings', label: 'Savings goal protected', pass: savingsAfter >= budget.savingsTarget,
-    detail: `You'd save about ${fmt(Math.max(0, savingsAfter), { whole: true })} this month (goal ${fmt(budget.savingsTarget, { whole: true })})`,
+    id: 'savings', label: budget.cardPayoff ? 'Savings & card payoff protected' : 'Savings goal protected', pass: savingsAfter >= goal,
+    detail: `You'd have about ${fmt(Math.max(0, savingsAfter), { whole: true })} left for it this month (goal ${fmt(budget.savingsTarget, { whole: true })} savings${budget.cardPayoff ? ` + ${fmt(budget.cardPayoff, { whole: true })} to cards` : ''})`,
   });
   if (balance != null) {
     const after = balance - billsBeforePayTotal - price;
@@ -89,6 +90,13 @@ export function canIAfford({ price, category = 'shopping', txs, budget, recurrin
     if (verdict === 'tight') {
       const donor = prog.rows.filter((r) => r.kind === 'personal' && r.category !== category && r.left >= price - Math.max(0, catLeft)).sort((a, b) => b.left - a.left)[0];
       if (donor) advice.push(`${catName(donor.category)} has ${fmt(donor.left)} spare this month. Move it there.`);
+    }
+  }
+  if (cardsOwed > 0) {
+    advice.unshift('Pay with your debit card, not a credit card.');
+    if (budget.cardPayoff > 0) {
+      const days = Math.round((price / budget.cardPayoff) * 30);
+      if (days >= 3) advice.push(`You still owe ${fmt(cardsOwed, { whole: true })} on cards. Putting this money toward them instead would make you debt-free about ${days} days sooner.`);
     }
   }
   if (price >= 10000 && verdict === 'yes') advice.push('Big purchase: check it’s still wanted after a 48-hour wait.');

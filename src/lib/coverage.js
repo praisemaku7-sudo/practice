@@ -1,5 +1,6 @@
 // Statement coverage: which months each account has statements for, and which are missing.
 import { monthKey, addMonths, todayISO } from './dates.js';
+import { matchIncoming } from './duplicates.js';
 
 function monthsBetween(a, b) {
   const out = [];
@@ -44,32 +45,12 @@ export function statementCoverage({ accounts, imports, txs, today = todayISO(), 
 }
 
 /**
- * Compare an incoming statement with what's stored. Matches on date + amount + merchant,
- * ignoring which account it was filed under, so a statement re-imported under a
- * different account name is still caught.
+ * Compare an incoming statement with what's stored. Fuzzy: same amount, dates within 3 days,
+ * similar wording, on any account (so a statement filed under the wrong account is still caught).
  */
 export function overlapReport(incoming, existing) {
-  const sig = (t) => `${t.date}|${t.amount}|${t.merchant}`;
-  const byAccount = new Map();
-  const index = new Map();
-  for (const t of existing) {
-    if (t.manual) continue;
-    const s = sig(t);
-    if (!index.has(s)) index.set(s, []);
-    index.get(s).push(t.accountId);
-  }
-  let matched = 0;
-  const used = new Map();
-  for (const t of incoming) {
-    const s = sig(t);
-    const accs = index.get(s);
-    const n = used.get(s) || 0;
-    if (accs && n < accs.length) {
-      matched += 1;
-      used.set(s, n + 1);
-      byAccount.set(accs[n], (byAccount.get(accs[n]) || 0) + 1);
-    }
-  }
+  const { matches, byAccount } = matchIncoming(incoming, existing);
+  const matched = matches.size;
   const top = [...byAccount.entries()].sort((a, b) => b[1] - a[1])[0];
   const ratio = incoming.length ? matched / incoming.length : 0;
   return {
@@ -77,7 +58,7 @@ export function overlapReport(incoming, existing) {
     total: incoming.length,
     ratio,
     likelyDuplicate: ratio >= 0.8,
-    partialOverlap: ratio > 0 && ratio < 0.8,
+    partialOverlap: matched > 0 && ratio < 0.8,
     matchedAccountId: top ? top[0] : null,
   };
 }

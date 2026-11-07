@@ -367,3 +367,18 @@ a { color: var(--accent); }
 .flag.cancelled { background: var(--good-soft); color: var(--good); border-color: transparent; }
 .list-row.struck .ellipsis { text-decoration: line-through; opacity: .6; }
 .icon-btn.small { min-width: 30px; height: 30px; font-size: 18px; color: var(--muted); }
+
+/* Credit cards & duplicates */
+.cards-card { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ink); position: relative; padding-right: 36px; }
+.cards-card.bad { border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
+.cards-card .banner-go { color: var(--accent); right: 14px; }
+.nospend-bad { border-color: color-mix(in srgb, var(--bad) 40%, transparent); background: linear-gradient(170deg, var(--bad-soft), var(--card) 55%); }
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: var(--track); border-radius: 12px; padding: 4px; }
+.seg button { border: 0; background: none; border-radius: 9px; padding: 9px 6px; font-size: 13px; font-weight: 650; color: var(--muted); cursor: pointer; }
+.seg button.on { background: var(--card); color: var(--ink); box-shadow: var(--shadow); }
+.plan-result { margin-top: 12px; }
+.sw.payoff, .stack-bar .payoff { background: #8a5cd1; }
+.dup-pair { padding: 8px 0; border-top: 1px solid var(--line); }
+.dup-pair:first-child { border-top: 0; }
+.pv-row.struck { opacity: .55; text-decoration: line-through; }
+.preview.tall { max-height: 52vh; }

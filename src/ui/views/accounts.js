@@ -17,15 +17,21 @@ export function render() {
   for (const t of state.txs) counts[t.accountId] = (counts[t.accountId] || 0) + 1;
   const outRec = recurring.filter((r) => r.direction === 'out' && r.active);
 
+  const dups = state.derived.duplicates;
+  const suspects = state.derived.suspects;
   return `
   <h1 class="page-title">Accounts</h1>
+  ${suspects.length ? `<a class="card banner" href="#/cards"><b>${suspects.length} account${suspects.length > 1 ? 's look' : ' looks'} like a credit card</b><span class="sub">${suspects.map((x) => esc(x.name)).join(', ')}: confirm so the app tracks what you owe.</span><span class="banner-go">Fix ›</span></a>` : ''}
+  ${dups.length ? `<div class="card banner"><b>${dups.length} duplicate transaction${dups.length > 1 ? 's' : ''} found</b>
+    <span class="sub">The same payment imported twice (from overlapping statements, or a PDF and CSV of the same month).</span>
+    <div class="row gap"><button class="btn ghost grow" data-action="dup-review">Review</button><button class="btn primary grow" data-action="dup-remove-all">Remove ${dups.length}</button></div></div>` : ''}
   <div class="card">
     ${state.accounts.map((a) => `<button class="list-row tap" data-action="edit-account" data-id="${esc(a.id)}">
       <span class="bank-badge">${esc((a.bank || a.name).slice(0, 2).toUpperCase())}</span>
       <div class="grow"><div>${esc(a.name)} ${a.id === mainId ? '<small class="pill">main</small>' : ''}</div>
       <div class="sub">${[a.bank, TYPE_LABEL[a.type] || a.type].filter(Boolean).map(esc).join(' · ')} · ${counts[a.id] || 0} transactions${a.lastImport ? ' · updated ' + prettyDate(a.lastImport) : ''}</div></div>
-      <b class="${a.balance < 0 ? 'neg' : ''}">${a.balance != null ? fmt(a.balance) : '—'}</b></button>`).join('')}
-    <div class="row gap"><button class="btn primary grow" data-action="import">Import statement</button><button class="btn ghost grow" data-action="go" data-to="transactions">Transactions</button></div>
+      <b class="${a.balance < 0 ? 'neg' : ''}">${a.balance != null ? (a.type === 'credit' ? `${fmt(Math.max(0, -a.balance))} owed` : fmt(a.balance)) : '—'}</b></button>`).join('')}
+    <div class="row gap"><button class="btn primary grow" data-action="import">Import</button><button class="btn ghost grow" data-action="go" data-to="transactions">Transactions</button><a class="btn ghost grow" href="#/cards">💳 Cards</a></div>
   </div>
 
   ${renderStatements()}
@@ -104,7 +110,8 @@ export const actions = {
       <label class="field"><span>Name</span><input id="ea-name" value="${esc(a.name)}"></label>
       <label class="field"><span>Bank</span><input id="ea-bank" value="${esc(a.bank || '')}"></label>
       <label class="field select"><span>Type</span><select id="ea-type">${Object.entries(TYPE_LABEL).map(([k, v]) => `<option value="${k}" ${a.type === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
-      <label class="field"><span>Balance £</span><input id="ea-bal" inputmode="decimal" value="${a.balance != null ? (a.balance / 100).toFixed(2) : ''}" placeholder="unknown"></label>
+      <label class="field"><span>${a.type === 'credit' ? 'Owed £' : 'Balance £'}</span><input id="ea-bal" inputmode="decimal" value="${a.balance != null ? (Math.abs(a.balance) / 100).toFixed(2) : ''}" placeholder="unknown"></label>
+      <p class="sub">Credit card? Set Type to Credit card and enter what you owe. Debit cards belong to your current account.</p>
       <div class="row gap"><button class="btn danger grow" id="ea-del">Delete</button><button class="btn primary grow" id="ea-save">Save</button></div>`, {
       onMount(p) {
         p.querySelector('#ea-save').onclick = async () => {
@@ -115,6 +122,8 @@ export const actions = {
           const neg = raw.startsWith('-');
           const bal = parsePrice(raw.replace(/^-/, ''));
           if (raw && bal != null) { a.balance = neg ? -bal : bal; a.balanceDate = state.derived.today; }
+          // Credit cards store what you owe as a negative balance.
+          if (a.type === 'credit' && a.balance > 0) a.balance = -a.balance;
           await db.put('accounts', a);
           await relinkTransfers();
           recompute(); closeSheet(); rerender();
@@ -137,6 +146,35 @@ export const actions = {
       },
     });
   },
+};
+
+async function removeDuplicates(pairs) {
+  const ids = new Set(pairs.map((p) => p.remove.id));
+  await Promise.all([...ids].map((id) => db.del('tx', id)));
+  state.txs = state.txs.filter((t) => !ids.has(t.id));
+  await relinkTransfers();
+  recompute();
+  return ids.size;
+}
+
+actions['dup-remove-all'] = async (_, rerender) => {
+  const n = await removeDuplicates(state.derived.duplicates);
+  rerender(); toast(`Removed ${n} duplicate${n > 1 ? 's' : ''}`);
+};
+
+actions['dup-review'] = (_, rerender) => {
+  const pairs = state.derived.duplicates;
+  openSheet(`<h2>Duplicates</h2><p class="muted">Each pair is the same payment imported twice. The second line will be removed; the first is kept.</p>
+    <div class="preview tall">${pairs.map((p, i) => `<div class="dup-pair">
+      <div class="pv-row"><span>${prettyDate(p.keep.date)}</span><span class="ellipsis grow">✓ ${esc(p.keep.description)}</span><b>${fmt(p.keep.amount)}</b></div>
+      <div class="pv-row struck"><span>${prettyDate(p.remove.date)}</span><span class="ellipsis grow">✕ ${esc(p.remove.description)}</span><b>${fmt(p.remove.amount)}</b></div>
+      <div class="row between"><span class="sub">${esc(accName(p.keep.accountId))}</span><button class="link" data-dup="${i}">Remove this one</button></div></div>`).join('')}</div>
+    <button class="btn primary full" id="dup-all">Remove all ${pairs.length}</button>`, {
+    onMount(panel) {
+      panel.querySelectorAll('[data-dup]').forEach((b) => { b.onclick = async () => { await removeDuplicates([pairs[+b.dataset.dup]]); b.closest('.dup-pair').remove(); rerender(); }; });
+      panel.querySelector('#dup-all').onclick = async () => { const n = await removeDuplicates(pairs); closeSheet(); rerender(); toast(`Removed ${n} duplicates`); };
+    },
+  });
 };
 
 actions['acc-started'] = async (el, rerender) => {

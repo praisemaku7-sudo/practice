@@ -11,6 +11,7 @@ const MUSIC = /SPOTIFY|APPLE MUSIC|YOUTUBE MUSIC|TIDAL|DEEZER|AMAZON MUSIC/;
  * saving = estimated pence per month you could free up.
  */
 export function buildInsights({ txs, key, budget, recurring, accounts = [] }) {
+  const creditIds = new Set(accounts.filter((a) => a.type === 'credit').map((a) => a.id));
   const out = [];
   const cmp = compareMonths(txs, key);
   const { cur } = cmp;
@@ -79,6 +80,20 @@ export function buildInsights({ txs, key, budget, recurring, accounts = [] }) {
   // Price rises
   for (const r of recurring.filter((x) => x.direction === 'out' && x.priceChange > 0 && x.active)) {
     out.push({ id: 'rise-' + r.key, level: 'warn', title: `${r.name} went up ${fmt(r.priceChange)}`, detail: `Now ${fmt(r.amount)}/month. Worth a call to haggle or switch.`, saving: r.priceChange });
+  }
+
+  // Credit cards: the goal is £0 of new spending on them.
+  if (creditIds.size) {
+    const cardSpend = txs.filter((t) => t.date.startsWith(key) && creditIds.has(t.accountId) && t.amount < 0 && !['transfer', 'excluded'].includes(t.category));
+    const total = cardSpend.reduce((a, t) => a - t.amount, 0);
+    if (total > 0) {
+      const top = {};
+      for (const t of cardSpend) top[t.merchant] = (top[t.merchant] || 0) - t.amount;
+      const names = Object.entries(top).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([n, v]) => `${n} ${fmt(v, { whole: true })}`).join(', ');
+      out.push({ id: 'card-spend', level: 'alert', title: `${fmt(total, { whole: true })} put on credit cards this month`, detail: `Goal is £0. Biggest: ${names}. Use your debit card instead.`, saving: total });
+    }
+    const onCard = recurring.filter((r) => r.direction === 'out' && r.active && creditIds.has(r.accountId));
+    if (onCard.length) out.push({ id: 'card-recurring', level: 'warn', title: `${onCard.length} regular payment${onCard.length > 1 ? 's' : ''} still charged to a credit card`, detail: `${onCard.map((r) => `${r.name} ${fmt(r.amount)}`).join(', ')}. Move ${onCard.length > 1 ? 'them' : 'it'} to your debit card so the card balance can reach £0.`, saving: 0 });
   }
 
   // Fees and interest

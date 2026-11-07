@@ -10,6 +10,8 @@ import { aiReadStatementText, aiReadStatementImages } from '../lib/ai.js';
 import { prettyDate, monthKey, daysBetween } from '../lib/dates.js';
 import { merchantKey } from '../lib/categorize.js';
 import { overlapReport, fileHash } from '../lib/coverage.js';
+import { matchIncoming } from '../lib/duplicates.js';
+import { looksLikeCreditText, isCardIssuer } from '../lib/credit.js';
 
 /** The live import queue, shown by the Import page. */
 export const queue = { items: [], summary: null };
@@ -21,7 +23,8 @@ const isPdf = (f) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
 const pdfLib = () => import('../lib/parse/pdf.js');
 
 function guessType(text) {
-  return /credit card|card statement|minimum payment|credit limit/i.test(text) ? 'credit' : /\bsaver\b|savings|\bisa\b/i.test(text) ? 'savings' : 'current';
+  if (/credit card|card statement/i.test(text) || looksLikeCreditText(text)) return 'credit';
+  return /\bsaver\b|savings|\bisa\b/i.test(text) ? 'savings' : 'current';
 }
 
 function applyTrackFrom(parsed) {
@@ -45,7 +48,8 @@ async function readPdf(item, buf) {
   }
   const pageTexts = res.hasText ? linesToPageTexts(res.lines) : [];
   const text = pageTexts.join('\n');
-  const meta = { bank: guessBank(text), accountType: guessType(text), accountRef: detectAccountRef(text) };
+  const bank = guessBank(text);
+  const meta = { bank, accountType: isCardIssuer(bank) && !/current account/i.test(text) ? 'credit' : guessType(text), accountRef: detectAccountRef(text) };
   const { apiKey, model, pdfMode } = state.settings;
   const canAI = apiKey && pdfMode !== 'never';
 
@@ -78,7 +82,10 @@ async function readFile(item) {
     const text = new TextDecoder().decode(buf);
     const r = parseCSVStatement(text);
     const head = item.name + ' ' + text.slice(0, 600);
-    return { ...r, bank: guessBank(head), accountType: guessType(head), accountRef: detectAccountRef(head), method: 'CSV', verified: reconcile(r).confident };
+    const bank = guessBank(head);
+    const cardRows = r.transactions.filter((t) => /PAYMENT RECEIVED|THANK YOU|INTEREST CHARGED|MINIMUM PAYMENT/i.test(t.description)).length;
+    const type = isCardIssuer(head) || (cardRows && isCardIssuer(bank)) ? 'credit' : guessType(head);
+    return { ...r, bank, accountType: type, accountRef: detectAccountRef(head), method: 'CSV', verified: reconcile(r).confident };
   }
   return readPdf(item, buf);
 }
@@ -174,7 +181,11 @@ async function commitItem(item) {
   const importId = 'imp-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
   const rows = item.flip ? p.transactions.map((r) => ({ ...r, amount: -r.amount })) : p.transactions;
   const txs = toTransactions(rows, { accountId: account.id, importId, source: p.method, userRules: state.settings.userRules });
-  const { fresh, dupes } = dedupe(txs, new Set(state.txs.map((t) => t.id)));
+  const exact = dedupe(txs, new Set(state.txs.map((t) => t.id)));
+  // Also skip payments already saved on this account with a slightly different date or wording.
+  const { matches } = matchIncoming(exact.fresh, state.txs, { sameAccountId: account.id });
+  const fresh = exact.fresh.filter((_, i) => !matches.has(i));
+  const dupes = [...exact.dupes, ...exact.fresh.filter((_, i) => matches.has(i))];
   // Replace "I bought it" manual entries now that the real transaction has arrived.
   const replaced = [];
   for (const t of fresh) {
