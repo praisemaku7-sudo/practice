@@ -38,10 +38,10 @@ export function busy(label) {
   return closeSheet;
 }
 
-export function confirmSheet({ title, body, ok = 'Confirm', danger = false }) {
+export function confirmSheet({ title, body, ok = 'Confirm', cancel = 'Cancel', danger = false }) {
   return new Promise((resolve) => {
     openSheet(`<h2>${esc(title)}</h2><p class="muted">${esc(body)}</p>
-      <div class="row gap"><button class="btn ghost grow" id="c-no">Cancel</button>
+      <div class="row gap"><button class="btn ghost grow" id="c-no">${esc(cancel)}</button>
       <button class="btn ${danger ? 'danger' : 'primary'} grow" id="c-yes">${esc(ok)}</button></div>`, {
       onMount(p) {
         p.querySelector('#c-no').onclick = () => { closeSheet(); resolve(false); };

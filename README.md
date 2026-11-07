@@ -7,6 +7,8 @@ A personal finance app for your iPhone: a web app you add to your Home Screen. I
 - **A budget for every category**, built from your real spending: bills and essentials at what they actually cost, a **savings goal** (default 20%), and **fun money**, which is what's left, split the way you usually spend.
 - **"Can I afford this?"**: type a price, or snap a photo or screenshot of the item. It checks four things: fun money left this month, that category's budget, whether your savings goal still holds, and whether your current-account balance covers every bill before payday. You get **Yes / Yes, if… / Not right now**, plus what to do instead.
 - **Monthly suggestions**: subscriptions, duplicate streaming services, fees and interest, takeaway habits, small spends adding up, categories over budget. Optionally, Claude writes a full monthly review and plan.
+- **Duplicate & missing statement checks**: importing the exact same file again is caught before it's read, and re-importing the same transactions (even under another account) is flagged in the review. Each account gets a month-by-month grid of imported and missing statements, and you can mark months where no statement is expected.
+- **Monthly record**: a row per month (income, spent, savings rate, change vs previous), averages over complete months, category trend lines, and CSV export. Months missing a statement are flagged so they don't skew averages.
 - **Accounts & consolidation**: every regular payment (Direct Debits, standing orders, card subscriptions) detected per account, plus a checklist for moving them all onto one main account, including when to use the Current Account Switch Service instead.
 
 Everything is stored **only on your phone** (IndexedDB). No account, no server, no tracking.

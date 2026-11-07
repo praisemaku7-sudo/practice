@@ -5,6 +5,7 @@ import { buildBudget } from './lib/budget.js';
 import { monthKey, todayISO, daysBetween } from './lib/dates.js';
 import { DEFAULT_MODEL } from './lib/ai.js';
 import { categorize } from './lib/categorize.js';
+import { statementCoverage } from './lib/coverage.js';
 
 export const DEFAULT_SETTINGS = {
   income: null,          // pence/month; null = estimate from statements
@@ -17,6 +18,7 @@ export const DEFAULT_SETTINGS = {
   mainAccountId: null,
   userRules: {},         // merchantKey -> category
   consolidationDone: {},
+  coverageDismissed: {}, // 'accountId|YYYY-MM' -> true (no statement expected)
   bufferPence: 5000,     // keep at least £50 after bills
 };
 
@@ -48,7 +50,8 @@ export function recompute() {
   // A balance older than ~10 days is too stale to trust for the bills check.
   const fresh = currentAccounts.filter((a) => a.balanceDate && daysBetween(a.balanceDate, today) <= 10);
   const balance = fresh.length ? fresh.reduce((s, a) => s + a.balance, 0) : null;
-  state.derived = { today, recurring, payday, detectedPayday: detected, budget, balance, staleBalance: currentAccounts.length > 0 && !fresh.length, months: monthsPresent(state.txs) };
+  const coverage = statementCoverage({ accounts: state.accounts, imports: state.imports, txs: state.txs, today, dismissed: state.settings.coverageDismissed || {} });
+  state.derived = { today, coverage, recurring, payday, detectedPayday: detected, budget, balance, staleBalance: currentAccounts.length > 0 && !fresh.length, months: monthsPresent(state.txs) };
   return state.derived;
 }
 

@@ -61,11 +61,13 @@ function friendlyError(err) {
 const TX_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['bank', 'account_name', 'account_type', 'closing_balance', 'transactions'],
+  required: ['bank', 'account_name', 'account_type', 'statement_start', 'statement_end', 'closing_balance', 'transactions'],
   properties: {
     bank: { type: 'string' },
     account_name: { type: 'string' },
     account_type: { type: 'string', enum: ['current', 'savings', 'credit'] },
+    statement_start: { type: ['string', 'null'], description: 'Statement period start, YYYY-MM-DD' },
+    statement_end: { type: ['string', 'null'], description: 'Statement period end, YYYY-MM-DD' },
     closing_balance: { type: ['number', 'null'] },
     transactions: {
       type: 'array',
@@ -98,6 +100,7 @@ export async function aiReadStatement({ apiKey, model, pdfBase64 }) {
   const p = (n) => (n == null ? null : Math.round(n * 100));
   return {
     bank: r.bank, accountName: r.account_name, accountType: r.account_type, closingBalance: p(r.closing_balance),
+    period: { start: r.statement_start, end: r.statement_end },
     transactions: r.transactions.filter((t) => /^\d{4}-\d{2}-\d{2}$/.test(t.date) && t.amount).map((t) => ({
       date: t.date, description: t.description, amount: p(t.amount), balance: p(t.balance),
     })),

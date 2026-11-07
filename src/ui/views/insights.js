@@ -25,6 +25,7 @@ export function render() {
   const report = reports[state.month];
   return `
   ${monthSwitcher(state.month, months)}
+  ${state.derived.coverage.missing.some((m) => m.month === state.month) ? `<div class="card banner"><b>This month is missing a statement</b><span class="sub">Suggestions may be off until it's imported. See Accounts → Statements.</span></div>` : ''}
   ${potential > 0 ? `<div class="card hero"><div class="label">You could free up roughly</div><div class="big">${fmt(potential, { whole: true })}<small>/month</small></div><div class="sub">Rough total of the suggestions below. Some overlap.</div></div>` : ''}
   <div class="card ai-card">
     <div class="row between"><h3>Monthly review by Claude</h3>${report ? `<button class="link" data-action="ai-report">Refresh</button>` : ''}</div>
