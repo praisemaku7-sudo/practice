@@ -12,7 +12,7 @@ function monthsBetween(a, b) {
  * imports: [{accountId, periodStart, periodEnd}] — periods are ISO dates (may be missing on old imports).
  * Returns per-account coverage and a flat list of missing months.
  */
-export function statementCoverage({ accounts, imports, txs, today = todayISO(), dismissed = {}, graceDays = 7 }) {
+export function statementCoverage({ accounts, imports, txs, today = todayISO(), dismissed = {}, graceDays = 7, startMonth = null }) {
   const thisMonth = monthKey(today);
   // A statement for last month is normally available a few days into this month.
   const expectUpTo = +today.slice(8) > graceDays ? addMonths(thisMonth, -1) : addMonths(thisMonth, -2);
@@ -20,19 +20,23 @@ export function statementCoverage({ accounts, imports, txs, today = todayISO(), 
   const missing = [];
   for (const acc of accounts) {
     const covered = new Set();
+    // Nothing before the tracking start (global, or later for an account opened since) is ever asked for.
+    const accStart = [startMonth, acc.trackFrom ? monthKey(acc.trackFrom) : null].filter(Boolean).sort().pop() || null;
+    const keep = (m) => !accStart || m >= accStart;
     for (const imp of imports.filter((i) => i.accountId === acc.id && i.periodStart && i.periodEnd)) {
-      for (const m of monthsBetween(monthKey(imp.periodStart), monthKey(imp.periodEnd))) covered.add(m);
+      for (const m of monthsBetween(monthKey(imp.periodStart), monthKey(imp.periodEnd))) if (keep(m)) covered.add(m);
     }
     // Months with transactions count as covered too (e.g. CSVs, older imports without a period).
-    for (const t of txs) if (t.accountId === acc.id && !t.manual) covered.add(monthKey(t.date));
+    for (const t of txs) if (t.accountId === acc.id && !t.manual && keep(monthKey(t.date))) covered.add(monthKey(t.date));
     if (!covered.size) { result.push({ account: acc, months: [], covered, missing: [] }); continue; }
     const sorted = [...covered].sort();
-    const first = sorted[0];
+    // Expect statements from the tracking start, so a missing first month (e.g. June) is still flagged.
+    const first = accStart && accStart < sorted[0] ? accStart : sorted[0];
     const last = sorted[sorted.length - 1] > expectUpTo ? sorted[sorted.length - 1] : expectUpTo;
     const months = monthsBetween(first, last);
     const accMissing = months
       .filter((m) => !covered.has(m) && m <= expectUpTo && !dismissed[`${acc.id}|${m}`])
-      .map((m) => ({ accountId: acc.id, accountName: acc.name, month: m, reason: m > sorted[sorted.length - 1] ? 'latest' : 'gap' }));
+      .map((m) => ({ accountId: acc.id, accountName: acc.name, month: m, reason: m > sorted[sorted.length - 1] ? 'latest' : m < sorted[0] ? 'start' : 'gap' }));
     missing.push(...accMissing);
     result.push({ account: acc, months, covered, missing: accMissing });
   }

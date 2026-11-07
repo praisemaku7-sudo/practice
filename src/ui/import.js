@@ -29,6 +29,18 @@ async function parseOnDevice(file, buf) {
   return { ...parsed, hasText: res.hasText, bank: guessBank(text), accountType: /credit card|card statement|minimum payment/i.test(text) ? 'credit' : /saver|savings|isa/i.test(text) ? 'savings' : 'current' };
 }
 
+/** Drop rows from before the tracking start date. */
+function applyTrackFrom(parsed) {
+  const from = state.settings.trackFrom;
+  if (!from) return parsed;
+  const kept = parsed.transactions.filter((t) => t.date >= from);
+  const dropped = parsed.transactions.length - kept.length;
+  if (!dropped) return parsed;
+  const warnings = [...(parsed.warnings || [])];
+  warnings.unshift(`${dropped} transaction${dropped > 1 ? 's' : ''} before ${prettyDate(from)} ${from.slice(0, 4)} skipped (you track from then; change it in Settings).`);
+  return { ...parsed, transactions: kept, warnings, droppedOld: dropped };
+}
+
 async function parseFile(file, buf) {
   const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
   const { apiKey, model, useAIForPDF } = state.settings;
@@ -192,7 +204,7 @@ export async function importFiles(files, rerender) {
       if (!again) { skipped += 1; continue; }
     }
     let parsed;
-    try { parsed = await parseFile(file, buf); } catch (e) {
+    try { parsed = applyTrackFrom(await parseFile(file, buf)); } catch (e) {
       console.error(e);
       toast(`Couldn't read ${file.name}: ${e.message || e}`, { error: true });
       continue;
@@ -214,7 +226,7 @@ async function showCoverageSummary(added, skipped) {
   await new Promise((resolve) => {
     openSheet(`<h2>Any statements missing?</h2>
       <p class="muted">Added ${added} transactions${skipped ? `, skipped ${skipped} file${skipped > 1 ? 's' : ''}` : ''}. These months have no statement yet, so their totals will be too low:</p>
-      ${missing.slice(0, 12).map((m) => `<div class="list-row"><span class="bank-badge">!</span><div class="grow"><b>${esc(m.accountName)}</b><div class="sub">${esc(monthLabel(m.month))}${m.reason === 'latest' ? ' · latest statement' : ' · gap between statements'}</div></div></div>`).join('')}
+      ${missing.slice(0, 12).map((m) => `<div class="list-row"><span class="bank-badge">!</span><div class="grow"><b>${esc(m.accountName)}</b><div class="sub">${esc(monthLabel(m.month))}${m.reason === 'latest' ? ' · latest statement' : m.reason === 'start' ? ' · since you started tracking' : ' · gap between statements'}</div></div></div>`).join('')}
       ${missing.length > 12 ? `<p class="sub">…and ${missing.length - 12} more. See Accounts → Statements.</p>` : ''}
       <div class="row gap"><button class="btn ghost grow" id="cv-later">Later</button><button class="btn primary grow" id="cv-add">Import more</button></div>
       <p class="sub">No statement because the account was quiet or closed? Dismiss that month in Accounts → Statements.</p>`, {

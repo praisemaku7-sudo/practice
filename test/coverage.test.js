@@ -74,3 +74,15 @@ test('monthly record, trends and CSV', () => {
   assert.match(csv, /missing statements/);
   assert.match(csv, /in progress/);
 });
+
+test('tracking start: nothing before June is requested, June onwards is', () => {
+  const imports = [
+    { accountId: 'a', periodStart: '2019-03-01', periodEnd: '2019-03-31' }, // stray ancient statement
+    { accountId: 'a', periodStart: '2026-08-01', periodEnd: '2026-10-31' },
+  ];
+  const txs = [{ accountId: 'a', date: '2021-05-02' }];
+  const r = statementCoverage({ accounts: [{ id: 'a', name: 'Monzo' }], imports, txs, today: '2026-11-20', startMonth: '2026-06' });
+  assert.deepEqual(r.missing.map((m) => `${m.month}:${m.reason}`), ['2026-06:start', '2026-07:start']);
+  const opened = statementCoverage({ accounts: [{ id: 'a', name: 'Monzo', trackFrom: '2026-08-03' }], imports, txs, today: '2026-11-20', startMonth: '2026-06' });
+  assert.deepEqual(opened.missing, [], 'account opened in August needs nothing before it');
+});

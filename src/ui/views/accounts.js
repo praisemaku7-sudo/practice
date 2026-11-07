@@ -50,6 +50,9 @@ export function render() {
   </div>`;
 }
 
+// First month expected for an account (its first row in the grid).
+const c0 = (id) => state.derived.coverage.accounts.find((c) => c.account.id === id)?.months[0];
+
 function renderStatements() {
   const { coverage } = state.derived;
   const rows = coverage.accounts.filter((c) => c.months.length);
@@ -58,7 +61,7 @@ function renderStatements() {
   const dismissed = state.settings.coverageDismissed || {};
   return `<div class="card" id="statements">
     <h3>Statements ${missingCount ? `<small class="pill warn">${missingCount} missing</small>` : '<small class="pill ok">all in ✓</small>'}</h3>
-    <p class="muted">Each box is a month. ✓ imported · ! missing · – no statement expected (tap ! to mark it). Same file twice is caught automatically.</p>
+    <p class="muted">Tracking from <b>${state.settings.trackFrom ? esc(monthLabel(state.settings.trackFrom.slice(0, 7))) : 'the start of your history'}</b> (<a href="#/settings">change</a>). Each box is a month. ✓ imported · ! missing · – no statement expected (tap ! to mark it). Same file twice is caught automatically.</p>
     ${rows.map((c) => `<div class="cov-row"><div class="cov-name ellipsis">${esc(c.account.name)}</div><div class="cov-months">
       ${c.months.map((m) => {
         const key = `${c.account.id}|${m}`;
@@ -71,7 +74,7 @@ function renderStatements() {
         if (miss) return `<button class="cov miss" data-action="cov-toggle" data-key="${esc(key)}" title="${esc(monthLabel(m))}: missing">${label}</button>`;
         return `<span class="cov wait" title="${esc(monthLabel(m))}: not due yet">${label}</span>`;
       }).join('')}</div></div>`).join('')}
-    ${missingCount ? `<div class="list-gap"></div>${coverage.missing.map((m) => `<div class="list-row"><span class="bank-badge warn">!</span><div class="grow"><b>${esc(m.accountName)}</b> · ${esc(monthLabel(m.month))}<div class="sub">${m.reason === 'latest' ? 'Latest statement should be ready in the bank app' : 'Gap between imported statements'}</div></div><button class="link" data-action="cov-toggle" data-key="${esc(m.accountId + '|' + m.month)}">No statement</button></div>`).join('')}
+    ${missingCount ? `<div class="list-gap"></div>${coverage.missing.map((m) => `<div class="list-row"><span class="bank-badge warn">!</span><div class="grow"><b>${esc(m.accountName)}</b> · ${esc(monthLabel(m.month))}<div class="sub">${m.reason === 'latest' ? 'Latest statement should be ready in the bank app' : m.reason === 'start' ? 'Needed from your tracking start month' : 'Gap between imported statements'}</div></div><div class="cov-btns"><button class="link" data-action="cov-toggle" data-key="${esc(m.accountId + '|' + m.month)}">No statement</button>${m.reason === 'start' && m.month === c0(m.accountId) ? `<button class="link" data-action="acc-started" data-id="${esc(m.accountId)}">Opened later</button>` : ''}</div></div>`).join('')}
       <button class="btn primary full" data-action="import">Import missing statements</button>` : ''}
     <h4>Import log</h4>
     ${[...state.imports].sort((a, b) => b.at - a.at).slice(0, 10).map((i) => `<div class="list-row"><div class="grow"><div class="ellipsis">${esc(i.fileName)}</div><div class="sub">${esc(accName(i.accountId))}${i.periodStart ? ` · ${prettyDate(i.periodStart)}–${prettyDate(i.periodEnd)}` : ''} · ${new Date(i.at).toLocaleDateString('en-GB')}</div></div><span class="sub">${i.count} new${i.dupes ? ` · ${i.dupes} dup` : ''}</span></div>`).join('') || '<p class="sub">No imports yet.</p>'}
@@ -118,7 +121,7 @@ export const actions = {
         p.querySelector('#ea-del').onclick = async () => {
           closeSheet();
           if (!(await confirmSheet({ title: `Delete ${a.name}?`, body: 'This removes the account and all its transactions from this phone.', ok: 'Delete', danger: true }))) return;
-          const gone = state.txs.filter((t) => t.accountId === a.id);
+          const gone = (await db.all('tx')).filter((t) => t.accountId === a.id);
           await Promise.all(gone.map((t) => db.del('tx', t.id)));
           await db.del('accounts', a.id);
           const imps = state.imports.filter((i) => i.accountId === a.id);
@@ -133,6 +136,18 @@ export const actions = {
       },
     });
   },
+};
+
+actions['acc-started'] = async (el, rerender) => {
+  // Account opened after the tracking start: expect statements only from its first imported month.
+  const a = state.accounts.find((x) => x.id === el.dataset.id);
+  const first = state.txs.filter((t) => t.accountId === a.id).map((t) => t.date).sort()[0];
+  const firstImp = state.imports.filter((i) => i.accountId === a.id && i.periodStart).map((i) => i.periodStart).sort()[0];
+  a.trackFrom = [first, firstImp].filter(Boolean).sort()[0];
+  if (!a.trackFrom) return;
+  await db.put('accounts', a);
+  recompute(); rerender();
+  toast(`${a.name}: statements expected from ${monthLabel(a.trackFrom.slice(0, 7))}`);
 };
 
 actions['cov-toggle'] = async (el, rerender) => {
