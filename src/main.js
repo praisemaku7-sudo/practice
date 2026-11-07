@@ -18,9 +18,10 @@ import * as importer from './ui/views/importer.js';
 import * as checkin from './ui/views/checkin.js';
 import * as bills from './ui/views/bills.js';
 import * as cards from './ui/views/cards.js';
+import * as setup from './ui/views/setup.js';
 
-const VIEWS = { home, budget, afford, insights, accounts, transactions, settings, history, import: importer, checkin, bills, cards };
-const TITLES = { home: 'Overview', budget: 'Budget', afford: 'Afford?', insights: 'Insights', accounts: 'Accounts', transactions: 'Transactions', settings: 'Settings', history: 'Monthly record', import: 'Import', checkin: 'Monthly check-in', bills: 'Bills & subscriptions', cards: 'Credit cards' };
+const VIEWS = { home, budget, afford, insights, accounts, transactions, settings, history, import: importer, checkin, bills, cards, setup };
+const TITLES = { home: 'Overview', budget: 'Budget', afford: 'Afford?', insights: 'Insights', accounts: 'Accounts', transactions: 'Transactions', settings: 'Settings', history: 'Monthly record', import: 'Import', checkin: 'Monthly check-in', bills: 'Bills & subscriptions', cards: 'Credit cards', setup: 'Fix accounts' };
 let current = 'home';
 
 function parseHash() {
@@ -36,7 +37,7 @@ async function render() {
   main.innerHTML = view.render();
   main.dataset.view = current;
   document.title = `${TITLES[current]} · Pocket Ledger`;
-  document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.view === current || (['transactions', 'history', 'checkin', 'bills', 'import', 'cards'].includes(current) && a.dataset.view === 'home')));
+  document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.view === current || (['transactions', 'history', 'checkin', 'bills', 'import', 'cards'].includes(current) && a.dataset.view === 'home') || (current === 'setup' && a.dataset.view === 'accounts')));
 }
 
 async function route() {
@@ -96,13 +97,15 @@ document.addEventListener('change', (ev) => {
   const fn = el && allChanges[el.dataset.change];
   if (fn) Promise.resolve(fn(el, render)).catch((e) => toast(e.message, { error: true }));
 });
-let inputTimer;
+// Debounce per field, so typing quickly across several fields never drops one.
+const inputTimers = new Map();
 document.addEventListener('input', (ev) => {
   const el = ev.target.closest('[data-input]');
   const fn = el && allInputs[el.dataset.input];
   if (!fn) return;
-  clearTimeout(inputTimer);
-  inputTimer = setTimeout(() => fn(el, render), 200);
+  const key = `${el.dataset.input}|${el.dataset.id || ''}`;
+  clearTimeout(inputTimers.get(key));
+  inputTimers.set(key, setTimeout(() => { inputTimers.delete(key); fn(el, render); }, 200));
 });
 document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeSheet(); });
 

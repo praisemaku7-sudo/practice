@@ -382,3 +382,14 @@ a { color: var(--accent); }
 .dup-pair:first-child { border-top: 0; }
 .pv-row.struck { opacity: .55; text-decoration: line-through; }
 .preview.tall { max-height: 52vh; }
+
+/* Fix accounts */
+.setup-cta { display: flex; align-items: center; text-decoration: none; color: var(--ink); position: relative; padding-right: 36px; background: linear-gradient(160deg, var(--accent-soft), var(--card) 70%); }
+.setup-cta .banner-go { color: var(--accent); right: 14px; }
+.acct-fix { display: grid; gap: 8px; }
+.acct-fix.merging { opacity: .7; border-style: dashed; }
+.name-input { flex: 1; min-width: 0; border: 0; background: none; font-size: 17px; font-weight: 700; padding: 2px 0; outline: none; border-bottom: 1px dashed var(--line); }
+.seg.three { grid-template-columns: 1fr 1fr 1fr; }
+.seg.three button { font-size: 12px; padding: 9px 4px; }
+.bal { display: grid; justify-items: end; }
+.bal small { font-size: 11px; }

@@ -94,3 +94,13 @@ test('card payoff comes out of fun money, not savings', () => {
   assert.ok(withPay.personalAllowance < without.personalAllowance);
   assert.equal(withPay.cardPayoff, 230000);
 });
+
+test('merging the same account imported twice keeps each payment once', async () => {
+  const { mergePlan } = await import('../src/lib/duplicates.js');
+  const a = toTransactions([{ date: '2026-10-02', description: 'TESCO', amount: -2550 }, { date: '2026-10-03', description: 'PRET', amount: -300 }], { accountId: 'rev-card', importId: 'i1' });
+  const b = toTransactions([{ date: '2026-10-02', description: 'Tesco Stores', amount: -2550 }, { date: '2026-10-09', description: 'Salary', amount: 200000 }], { accountId: 'rev-current', importId: 'i2' });
+  const p = mergePlan(a, b);
+  assert.equal(p.drop.length, 1);
+  assert.equal(p.move.length, 1);
+  assert.equal(p.move[0].description, 'PRET');
+});

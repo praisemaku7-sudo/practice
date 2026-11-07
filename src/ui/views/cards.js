@@ -18,7 +18,7 @@ export function render() {
     return `<h1 class="page-title">Credit cards</h1>${suspectBox}
     <div class="card empty"><div class="empty-art">💳</div><h2>No credit cards yet</h2>
     <p class="muted">Import your credit card statements, or mark an existing account as a credit card in Accounts → tap the account → Type.</p>
-    <a class="btn primary" href="#/accounts">Go to Accounts</a></div>`;
+    <a class="btn primary" href="#/setup">Set account types</a></div>`;
   }
   const monthly = s.cardPayoff ?? 0;
   const plan = payoffPlan(sum.cards, monthly, { method: s.cardMethod, startMonth: monthKey(state.derived.today) });
@@ -34,7 +34,9 @@ export function render() {
   <div class="card hero ${sum.totalOwed === 0 && !sum.unknownBalances ? 'verdict yes' : ''}">
     <div class="label">Owed across ${sum.cards.length} card${sum.cards.length > 1 ? 's' : ''} · goal £0</div>
     <div class="big ${sum.totalOwed > 0 ? 'neg' : 'pos'}">${fmt(sum.totalOwed)}</div>
-    ${sum.totalAtStart ? `${progressBar(progress / sum.totalAtStart)}<div class="sub">${fmt(progress, { whole: true })} paid off since ${esc(monthLabel(s.trackFrom.slice(0, 7)))} (was ${fmt(sum.totalAtStart, { whole: true })})</div>` : ''}
+    ${sum.totalAtStart ? `${progressBar(progress / sum.totalAtStart)}<div class="sub">${sum.totalOwed > sum.totalAtStart
+      ? `<span class="neg">Up ${fmt(sum.totalOwed - sum.totalAtStart, { whole: true })}</span> since ${esc(monthLabel(s.trackFrom.slice(0, 7)))} (was ${fmt(sum.totalAtStart, { whole: true })})`
+      : `${fmt(progress, { whole: true })} paid off since ${esc(monthLabel(s.trackFrom.slice(0, 7)))} (was ${fmt(sum.totalAtStart, { whole: true })})`}</div>` : ''}
     ${sum.unknownBalances ? `<div class="sub warn-text">${sum.unknownBalances} card${sum.unknownBalances > 1 ? 's have' : ' has'} no balance yet. Tap the card below to enter what you owe.</div>` : ''}
     ${sum.totalOwed > 0 && plan.feasible && monthly > 0 ? `<div class="sub">Debt-free by <b>${esc(monthLabel(plan.debtFreeMonth))}</b> at ${fmt(monthly, { whole: true })}/month</div>` : ''}
   </div>

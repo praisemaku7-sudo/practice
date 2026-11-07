@@ -93,3 +93,15 @@ export function findStoredDuplicates(txs) {
   }
   return pairs;
 }
+
+/**
+ * Merging account "from" into "to" (the same real account imported under two names):
+ * payments already present in "to" are dropped, the rest move across.
+ */
+export function mergePlan(fromTxs, toTxs) {
+  const { matches } = matchIncoming(fromTxs, toTxs);
+  return {
+    drop: fromTxs.filter((_, i) => matches.has(i)),
+    move: fromTxs.filter((_, i) => !matches.has(i)),
+  };
+}
