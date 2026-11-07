@@ -23,7 +23,7 @@ export function render() {
     ${state.accounts.map((a) => `<button class="list-row tap" data-action="edit-account" data-id="${esc(a.id)}">
       <span class="bank-badge">${esc((a.bank || a.name).slice(0, 2).toUpperCase())}</span>
       <div class="grow"><div>${esc(a.name)} ${a.id === mainId ? '<small class="pill">main</small>' : ''}</div>
-      <div class="sub">${esc(a.bank || '')} · ${TYPE_LABEL[a.type] || a.type} · ${counts[a.id] || 0} transactions${a.lastImport ? ' · updated ' + prettyDate(a.lastImport) : ''}</div></div>
+      <div class="sub">${[a.bank, TYPE_LABEL[a.type] || a.type].filter(Boolean).map(esc).join(' · ')} · ${counts[a.id] || 0} transactions${a.lastImport ? ' · updated ' + prettyDate(a.lastImport) : ''}</div></div>
       <b class="${a.balance < 0 ? 'neg' : ''}">${a.balance != null ? fmt(a.balance) : '—'}</b></button>`).join('')}
     <div class="row gap"><button class="btn primary grow" data-action="import">Import statement</button><button class="btn ghost grow" data-action="go" data-to="transactions">Transactions</button></div>
   </div>
