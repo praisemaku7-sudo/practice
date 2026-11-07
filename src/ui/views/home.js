@@ -45,8 +45,16 @@ export function render() {
 
   const movers = cmp.hasPrev ? cmp.rows.filter((r) => Math.abs(r.delta) >= 1000 && !['income', 'transfer', 'savings'].includes(r.category)).slice(0, 4) : [];
 
+  const missing = derived.coverage.missing;
+  const monthMissing = missing.filter((m) => m.month === month);
+  const banner = missing.length ? `<a class="card banner" href="#/accounts">
+      <b>${missing.length} statement${missing.length > 1 ? 's' : ''} missing</b>
+      <span class="sub">${monthMissing.length ? `${esc(monthLabel(month))} is incomplete: no statement from ${monthMissing.map((m) => esc(m.accountName)).join(', ')}. Totals will be too low.` : missing.slice(0, 3).map((m) => `${esc(m.accountName)} ${esc(monthLabel(m.month, { short: true }))}`).join(' · ')}</span>
+      <span class="banner-go">Review ›</span></a>` : '';
+
   return `
   ${monthSwitcher(month, months)}
+  ${banner}
   <div class="card hero">
     <div class="hero-row">
       <div><div class="label">Spent</div><div class="big">${fmt(s.spend, { whole: true })}</div>
@@ -81,7 +89,8 @@ export function render() {
     ${balance != null ? `<p class="sub">Current-account balance ${fmt(balance)} → ${fmt(balance - upcomingTotal)} after these.</p>` : ''}
   </div>` : ''}
   ${trendData.length > 1 ? `<div class="card"><h3>Last ${trendData.length} months</h3>${trendBars(trendData)}
-    <div class="legend"><span><i class="sw in"></i>Income</span><span><i class="sw out"></i>Spent</span></div></div>` : ''}
+    <div class="legend"><span><i class="sw in"></i>Income</span><span><i class="sw out"></i>Spent</span></div>
+    <a class="btn ghost full" href="#/history">Monthly record &amp; trends</a></div>` : ''}
   <div class="card"><h3>Top merchants</h3>
     ${s.merchants.slice(0, 6).map((m) => `<div class="list-row">${catChip(m.category)}<div class="grow">${esc(m.name)}<div class="sub">${m.count} payment${m.count > 1 ? 's' : ''}</div></div><b>${fmt(m.total)}</b></div>`).join('')}
     <button class="btn ghost full" data-action="go" data-to="transactions">All transactions</button>

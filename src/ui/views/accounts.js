@@ -3,7 +3,7 @@ import { db } from '../../lib/db.js';
 import { esc, openSheet, closeSheet, confirmSheet, toast } from '../dom.js';
 import { fmt, parsePrice } from '../../lib/money.js';
 import { consolidationPlan } from '../../lib/consolidate.js';
-import { prettyDate } from '../../lib/dates.js';
+import { prettyDate, monthLabel } from '../../lib/dates.js';
 import { catChip, emptyState } from '../common.js';
 
 const TYPE_LABEL = { current: 'Current', savings: 'Savings', credit: 'Credit card' };
@@ -28,6 +28,8 @@ export function render() {
     <div class="row gap"><button class="btn primary grow" data-action="import">Import statement</button><button class="btn ghost grow" data-action="go" data-to="transactions">Transactions</button></div>
   </div>
 
+  ${renderStatements()}
+
   <div class="card">
     <h3>Regular payments (${outRec.length}) · ${fmt(outRec.reduce((a, r) => a + r.amount, 0), { whole: true })}/mo</h3>
     ${outRec.map((r) => `<div class="list-row">${catChip(r.category)}<div class="grow">${esc(r.name)}<div class="sub">${esc(r.type)} · ${esc(accName(r.accountId))} · next ${prettyDate(r.nextDue)}${r.priceChange > 0 ? ` · <span class="neg">up ${fmt(r.priceChange)}</span>` : ''}</div></div><b>${fmt(r.amount)}</b></div>`).join('') || '<p class="muted">Payments that repeat monthly show up here once two months of statements are imported.</p>'}
@@ -45,6 +47,34 @@ export function render() {
     <h3>Live bank connection</h3>
     <p class="muted">Not connected yet. UK banks share data through <b>Open Banking</b>. You approve read-only access in each bank's own app, and you never type your bank password into this app. That needs a regulated provider (TrueLayer, GoCardless or Yapily) and a small server to hold its secret key, so it isn't part of this on-device version. Until then, export each month's statement from your bank apps and import it here.</p>
     <a class="btn ghost full" href="https://github.com/praisemaku7-sudo/practice/blob/main/docs/BANK_LINKING.md" target="_blank" rel="noopener">How live linking would work</a>
+  </div>`;
+}
+
+function renderStatements() {
+  const { coverage } = state.derived;
+  const rows = coverage.accounts.filter((c) => c.months.length);
+  if (!rows.length) return '';
+  const missingCount = coverage.missing.length;
+  const dismissed = state.settings.coverageDismissed || {};
+  return `<div class="card" id="statements">
+    <h3>Statements ${missingCount ? `<small class="pill warn">${missingCount} missing</small>` : '<small class="pill ok">all in ✓</small>'}</h3>
+    <p class="muted">Each box is a month. ✓ imported · ! missing · – no statement expected (tap ! to mark it). Same file twice is caught automatically.</p>
+    ${rows.map((c) => `<div class="cov-row"><div class="cov-name ellipsis">${esc(c.account.name)}</div><div class="cov-months">
+      ${c.months.map((m) => {
+        const key = `${c.account.id}|${m}`;
+        const has = c.covered.has(m);
+        const miss = c.missing.some((x) => x.month === m);
+        const dis = dismissed[key];
+        const label = monthLabel(m, { short: true }).split(' ')[0].slice(0, 3);
+        if (has) return `<span class="cov ok" title="${esc(monthLabel(m))}: imported">${label}</span>`;
+        if (dis) return `<button class="cov dis" data-action="cov-toggle" data-key="${esc(key)}" title="${esc(monthLabel(m))}: no statement expected">${label}</button>`;
+        if (miss) return `<button class="cov miss" data-action="cov-toggle" data-key="${esc(key)}" title="${esc(monthLabel(m))}: missing">${label}</button>`;
+        return `<span class="cov wait" title="${esc(monthLabel(m))}: not due yet">${label}</span>`;
+      }).join('')}</div></div>`).join('')}
+    ${missingCount ? `<div class="list-gap"></div>${coverage.missing.map((m) => `<div class="list-row"><span class="bank-badge warn">!</span><div class="grow"><b>${esc(m.accountName)}</b> · ${esc(monthLabel(m.month))}<div class="sub">${m.reason === 'latest' ? 'Latest statement should be ready in the bank app' : 'Gap between imported statements'}</div></div><button class="link" data-action="cov-toggle" data-key="${esc(m.accountId + '|' + m.month)}">No statement</button></div>`).join('')}
+      <button class="btn primary full" data-action="import">Import missing statements</button>` : ''}
+    <h4>Import log</h4>
+    ${[...state.imports].sort((a, b) => b.at - a.at).slice(0, 10).map((i) => `<div class="list-row"><div class="grow"><div class="ellipsis">${esc(i.fileName)}</div><div class="sub">${esc(accName(i.accountId))}${i.periodStart ? ` · ${prettyDate(i.periodStart)}–${prettyDate(i.periodEnd)}` : ''} · ${new Date(i.at).toLocaleDateString('en-GB')}</div></div><span class="sub">${i.count} new${i.dupes ? ` · ${i.dupes} dup` : ''}</span></div>`).join('') || '<p class="sub">No imports yet.</p>'}
   </div>`;
 }
 
@@ -91,6 +121,9 @@ export const actions = {
           const gone = state.txs.filter((t) => t.accountId === a.id);
           await Promise.all(gone.map((t) => db.del('tx', t.id)));
           await db.del('accounts', a.id);
+          const imps = state.imports.filter((i) => i.accountId === a.id);
+          await Promise.all(imps.map((i) => db.del('imports', i.id)));
+          state.imports = state.imports.filter((i) => i.accountId !== a.id);
           state.txs = state.txs.filter((t) => t.accountId !== a.id);
           state.accounts = state.accounts.filter((x) => x.id !== a.id);
           if (state.settings.mainAccountId === a.id) await saveSettings({ mainAccountId: null });
@@ -100,6 +133,13 @@ export const actions = {
       },
     });
   },
+};
+
+actions['cov-toggle'] = async (el, rerender) => {
+  const d = { ...(state.settings.coverageDismissed || {}) };
+  if (d[el.dataset.key]) delete d[el.dataset.key]; else d[el.dataset.key] = true;
+  await saveSettings({ coverageDismissed: d });
+  rerender();
 };
 
 export const changes = {
