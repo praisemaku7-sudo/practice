@@ -3,7 +3,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Schibsted+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
-/* Layout: a working desk. Left rail = today's plan + tasks; right = email queue with reply drafts. Stacks on phones. */
+/* Layout: a working desk. Top = CSV intake; then action summary; left rail = day plan + actions; right = email queue with drafts; bottom = Asana export. Stacks on phones. */
 :root{
   --bg:#f3f5f7; --panel:#ffffff; --ink:#18212b; --muted:#5b6876; --line:#d9dfe5;
   --accent:#1f5fae; --accent-soft:#e3ecf8;
@@ -32,25 +32,33 @@ h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0}
 h1{font-size:1.9rem;font-weight:700;letter-spacing:-.01em}
 h2{font-size:1.15rem;font-weight:700}
 h3{font-size:1rem;font-weight:500}
-.label{font:500 .7rem/1 var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.label{font:500 .7rem/1.2 var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
 .muted{color:var(--muted)}
+.small{font-size:.8rem}
 button{font:600 .875rem var(--body);border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:.55em 1em;cursor:pointer}
 button:hover{border-color:var(--accent)}
 button.primary{background:var(--accent);border-color:var(--accent);color:var(--bg)}
-button:disabled{opacity:.55;cursor:wait}
-button:focus-visible,textarea:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button:disabled{opacity:.55;cursor:default}
+button:focus-visible,textarea:focus-visible,input:focus-visible,select:focus-visible,.drop:focus-within{outline:2px solid var(--accent);outline-offset:2px}
 textarea,input,select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:.6em .7em;width:100%;box-sizing:border-box}
 textarea{resize:vertical}
+select.compact{width:auto;padding:.3em .5em;font-size:.8rem}
 
-header.top{display:flex;flex-wrap:wrap;align-items:end;justify-content:space-between;gap:12px}
-header.top p{margin:.25rem 0 0;max-width:60ch}
+header.top p{margin:.25rem 0 0;max-width:62ch}
 
 .intake{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:16px}
 .intake .col{display:flex;flex-direction:column;gap:8px;min-width:0}
-.intake textarea#paste{min-height:170px;font:13px/1.45 var(--mono)}
+.drop{border:2px dashed var(--line);border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:6px;align-items:flex-start;background:var(--bg)}
+.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.drop input[type=file]{width:auto;border:0;padding:0;background:none}
+.mapping{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.mapping label{display:flex;flex-direction:column;gap:4px}
+details summary{cursor:pointer;font-size:.85rem;color:var(--muted)}
+.intake textarea#paste{min-height:120px;font:13px/1.45 var(--mono);margin-top:8px}
 .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .status{font:500 .8rem var(--mono);color:var(--muted)}
 .status.err{color:var(--now)}
+.status.ok{color:var(--week)}
 
 .banner{background:var(--accent-soft);color:var(--ink);border-radius:10px;padding:10px 14px;font-size:.9rem}
 .overview{font-size:1.05rem;max-width:75ch;margin:0}
@@ -62,6 +70,13 @@ header.top p{margin:.25rem 0 0;max-width:60ch}
 .chip.week{background:var(--week-bg);color:var(--week)}
 .chip.fyi{background:var(--fyi-bg);color:var(--fyi)}
 .chip.reply{background:var(--accent-soft);color:var(--accent)}
+
+.summary-grid{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:20px;align-items:start}
+.progress{display:flex;flex-direction:column;gap:8px}
+.bar{display:flex;height:10px;border-radius:999px;overflow:hidden;background:var(--fyi-bg)}
+.bar span{display:block;height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font:500 .75rem var(--mono);color:var(--muted);font-variant-numeric:tabular-nums}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
 
 .desk{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:20px;align-items:start}
 .stack{display:flex;flex-direction:column;gap:20px;min-width:0}
@@ -76,12 +91,21 @@ section.panel{background:var(--panel);border:1px solid var(--line);border-radius
 .plan .tasks{color:var(--muted);font-size:.875rem}
 
 .tasks-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
-.task{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:start;padding:8px 6px;border-radius:8px}
+.task{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px 10px;align-items:start;padding:8px 6px;border-radius:8px}
 .task:hover{background:var(--bg)}
-.task input{width:auto;margin-top:4px;accent-color:var(--accent)}
+.task > input[type=checkbox]{width:auto;margin-top:4px;accent-color:var(--accent)}
 .task .t{font-weight:500}
 .task.done .t{text-decoration:line-through;color:var(--muted)}
 .task .meta{font:400 .75rem var(--mono);color:var(--muted);text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.task .controls{grid-column:2 / 4;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.task .controls input{flex:1;min-width:10em;padding:.3em .5em;font-size:.8rem}
+.task .controls button{padding:.3em .7em;font-size:.78rem}
+.task .last{grid-column:2 / 4;font-size:.8rem;color:var(--muted)}
+.st{font:500 .7rem/1 var(--mono);padding:3px 7px;border-radius:999px;white-space:nowrap}
+.st.todo{background:var(--fyi-bg);color:var(--fyi)}
+.st.doing{background:var(--accent-soft);color:var(--accent)}
+.st.waiting{background:var(--today-bg);color:var(--today)}
+.st.done{background:var(--week-bg);color:var(--week)}
 .group-label{margin-top:8px}
 
 .coach{margin:0;padding-left:1.1em;display:flex;flex-direction:column;gap:8px}
@@ -103,24 +127,49 @@ section.panel{background:var(--panel);border:1px solid var(--line);border-radius
 .draft .opts{display:grid;grid-template-columns:minmax(0,1fr) 10em;gap:8px}
 .empty{color:var(--muted);font-size:.9rem;margin:0}
 
-@media (max-width:860px){.desk,.intake{grid-template-columns:minmax(0,1fr)}}
+.asana-opts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.asana-opts > div{border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.asana-opts p{margin:0;font-size:.85rem;color:var(--muted)}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%;font-size:.8rem}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font:500 .68rem var(--mono);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap}
+td.desc{max-width:28em;white-space:pre-wrap;color:var(--muted)}
+pre.updates{margin:0;white-space:pre-wrap;font:13px/1.5 var(--mono);background:var(--bg);border-radius:8px;padding:10px;max-height:260px;overflow:auto}
+
+@media (max-width:860px){.desk,.intake,.summary-grid{grid-template-columns:minmax(0,1fr)}.asana-opts{grid-template-columns:minmax(0,1fr)}.mapping{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:480px){.plan li{grid-template-columns:minmax(0,1fr);gap:2px}.draft .opts{grid-template-columns:minmax(0,1fr)}}
-@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
 </style>
 
 <div class="wrap">
   <header class="top">
-    <div>
-      <span class="label">Daily triage</span>
-      <h1>Inbox Triage Desk</h1>
-      <p class="muted">Paste your work email export. You get a prioritised task list, a time-blocked plan for the day, reply drafts, and notes on where you can raise your game.</p>
-    </div>
+    <span class="label">Daily triage</span>
+    <h1>Inbox Triage Desk</h1>
+    <p class="muted">Import your work email CSV. You get a summary of actions to tick off, a time-blocked plan for the day, reply drafts, coaching for your role, and an export of your action updates for Asana.</p>
   </header>
 
   <form class="intake" id="intake">
     <div class="col">
-      <label class="label" for="paste">Email export</label>
-      <textarea id="paste" placeholder="Paste emails here: From / Subject / Date / body. Any format works (Outlook copy, .eml text, a forwarded thread, a CSV export)."></textarea>
+      <span class="label">1 · Import emails</span>
+      <label class="drop" id="drop" for="csvFile">
+        <strong>Drop your email CSV here, or choose a file</strong>
+        <span class="muted small">Exports from Outlook, Gmail or your mail tool. Needs at least a Subject and a Body column.</span>
+        <input type="file" id="csvFile" accept=".csv,text/csv">
+      </label>
+      <div id="csvInfo" hidden>
+        <div class="status ok" id="csvSummary"></div>
+        <div class="mapping" style="margin-top:8px">
+          <label><span class="label">Subject</span><select id="mapSubject" class="compact"></select></label>
+          <label><span class="label">From</span><select id="mapFrom" class="compact"></select></label>
+          <label><span class="label">Date</span><select id="mapDate" class="compact"></select></label>
+          <label><span class="label">Body</span><select id="mapBody" class="compact"></select></label>
+        </div>
+      </div>
+      <details>
+        <summary>Or paste emails as text</summary>
+        <textarea id="paste" placeholder="Paste emails here (From / Subject / Date / body), or paste CSV text."></textarea>
+      </details>
       <div class="row">
         <button class="primary" type="submit" id="go">Triage my inbox</button>
         <button type="button" id="stop" hidden>Stop</button>
@@ -129,13 +178,13 @@ section.panel{background:var(--panel);border:1px solid var(--line);border-radius
       </div>
     </div>
     <div class="col">
-      <label class="label" for="role">About your role</label>
-      <textarea id="role" rows="5" placeholder="e.g. Operations coordinator. Manager: Dana (Head of Ops). Key clients: Northwind, Halden. My goals this quarter: cut supplier response time, own the weekly report."></textarea>
+      <label class="label" for="role">2 · About your role</label>
+      <textarea id="role" rows="5" placeholder="e.g. Operations coordinator. Manager: Dana (Head of Ops). Key clients: Northwind, Halden. Goals this quarter: cut supplier response time, own the weekly report."></textarea>
       <div class="row" style="flex-wrap:nowrap">
         <div style="flex:1;min-width:0"><label class="label" for="start">Day starts</label><input id="start" type="time" value="09:00"></div>
         <div style="flex:1;min-width:0"><label class="label" for="end">Day ends</label><input id="end" type="time" value="17:30"></div>
       </div>
-      <span class="muted" style="font-size:.8rem">Saved in this browser only. It shapes priorities, drafts and coaching.</span>
+      <span class="muted small" id="saveNote">Shapes priorities, drafts and coaching.</span>
     </div>
   </form>
 
@@ -155,37 +204,31 @@ section.panel{background:var(--panel);border:1px solid var(--line);border-radius
     for (const k of kids.flat()) if (k != null && k !== false) n.append(k instanceof Node ? k : String(k));
     return n;
   };
-  const store = {
+  const local = {
     get(k, d) { try { const v = localStorage.getItem("itd:" + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
     set(k, v) { try { localStorage.setItem("itd:" + k, JSON.stringify(v)); } catch {} },
   };
+  const use = (name) => (window.claude?.use ? window.claude.use(name) : Promise.resolve(null)).catch(() => null);
 
   const BUCKETS = {
-    now:   { label: "Do now",       hint: "Urgent and important" },
-    today: { label: "Today",        hint: "Important, schedule it" },
-    week:  { label: "This week",    hint: "Can wait or delegate" },
-    fyi:   { label: "FYI",          hint: "Read, archive, no action" },
+    now:   { label: "Do now",    hint: "Urgent and important" },
+    today: { label: "Today",     hint: "Important, schedule it" },
+    week:  { label: "This week", hint: "Can wait or delegate" },
+    fyi:   { label: "FYI",       hint: "Read, archive, no action" },
+  };
+  const STATUSES = {
+    todo:    { label: "To do",       color: "var(--fyi)" },
+    doing:   { label: "In progress", color: "var(--accent)" },
+    waiting: { label: "Waiting",     color: "var(--today)" },
+    done:    { label: "Done",        color: "var(--week)" },
   };
 
-  const SAMPLE_PASTE = `From: Dana Okafor <dana.okafor@company.com>
-Date: Thu 6 Nov 2026 08:12
-Subject: Board pack numbers - need by 2pm
-Hi, the CFO has moved the board prep to 3pm today. Can you send me the updated Q3 ops figures (on-time delivery %, supplier lead times) by 2pm? Use the October close, not the forecast. Thanks, Dana
-
-From: Marcus Lee <m.lee@northwind-logistics.com>
-Date: Thu 6 Nov 2026 07:40
-Subject: RE: Delayed shipment PO-44817
-We still haven't had confirmation of the revised delivery date for PO-44817. Our warehouse team needs to plan labour for next week. Can you confirm by end of day? This is the second time I've asked.
-
-From: IT Service Desk <servicedesk@company.com>
-Date: Wed 5 Nov 2026 16:03
-Subject: Mandatory: password policy change on 14 Nov
-All staff must enable the authenticator app before 14 November. Guide attached.
-
-From: Priya Shah <priya.shah@company.com>
-Date: Wed 5 Nov 2026 15:20
-Subject: Could you review my supplier scorecard draft?
-No rush - would love your eyes on the scorecard template before I share it with the team next Wednesday. Mainly checking the weighting makes sense.`;
+  // ---------- Example ----------
+  const SAMPLE_CSV = `Subject,From: (Name),From: (Address),Received,Body
+"Board pack numbers - need by 2pm",Dana Okafor,dana.okafor@company.com,06/11/2026 08:12,"Hi, the CFO has moved the board prep to 3pm today. Can you send me the updated Q3 ops figures (on-time delivery %, supplier lead times) by 2pm? Use the October close, not the forecast. Thanks, Dana"
+"RE: Delayed shipment PO-44817",Marcus Lee,m.lee@northwind-logistics.com,06/11/2026 07:40,"We still haven't had confirmation of the revised delivery date for PO-44817. Our warehouse team needs to plan labour for next week. Can you confirm by end of day? This is the second time I've asked."
+"Mandatory: password policy change on 14 Nov",IT Service Desk,servicedesk@company.com,05/11/2026 16:03,"All staff must enable the authenticator app before 14 November. Guide attached."
+"Could you review my supplier scorecard draft?",Priya Shah,priya.shah@company.com,05/11/2026 15:20,"No rush - would love your eyes on the scorecard template before I share it with the team next Wednesday. Mainly checking the weighting makes sense."`;
 
   const SAMPLE_RESULT = {
     example: true,
@@ -197,12 +240,12 @@ No rush - would love your eyes on the scorecard template before I share it with 
       { id: "e4", from: "IT Service Desk", subject: "Mandatory: password policy change on 14 Nov", received: "Wed 16:03", bucket: "fyi", gist: "Enable the authenticator app before 14 Nov.", why: "A five-minute task with a fixed date. No reply needed.", needsReply: false, replyBy: "", asks: [], excerpt: "All staff must enable the authenticator app before 14 November." },
     ],
     tasks: [
-      { id: "t1", emailId: "e2", title: "Get the revised PO-44817 date from the carrier", minutes: 15, bucket: "now", due: "Before 11:00" },
-      { id: "t2", emailId: "e1", title: "Pull October-close on-time delivery % and supplier lead times", minutes: 60, bucket: "now", due: "13:30" },
-      { id: "t3", emailId: "e1", title: "Send figures to Dana with a 3-line summary", minutes: 15, bucket: "now", due: "14:00" },
-      { id: "t4", emailId: "e2", title: "Reply to Marcus with the confirmed date", minutes: 10, bucket: "today", due: "17:00" },
-      { id: "t5", emailId: "e3", title: "Review Priya's scorecard weighting", minutes: 30, bucket: "week", due: "Fri" },
-      { id: "t6", emailId: "e4", title: "Enable authenticator app", minutes: 5, bucket: "week", due: "14 Nov" },
+      { id: "t1", emailId: "e2", title: "Get the revised PO-44817 date from the carrier", minutes: 15, bucket: "now", due: "Before 11:00", dueDate: "2026-11-06" },
+      { id: "t2", emailId: "e1", title: "Pull October-close on-time delivery % and supplier lead times", minutes: 60, bucket: "now", due: "13:30", dueDate: "2026-11-06" },
+      { id: "t3", emailId: "e1", title: "Send figures to Dana with a 3-line summary", minutes: 15, bucket: "now", due: "14:00", dueDate: "2026-11-06" },
+      { id: "t4", emailId: "e2", title: "Reply to Marcus with the confirmed date", minutes: 10, bucket: "today", due: "17:00", dueDate: "2026-11-06" },
+      { id: "t5", emailId: "e3", title: "Review Priya's scorecard weighting", minutes: 30, bucket: "week", due: "Fri", dueDate: "2026-11-07" },
+      { id: "t6", emailId: "e4", title: "Enable authenticator app", minutes: 5, bucket: "week", due: "14 Nov", dueDate: "2026-11-14" },
     ],
     plan: [
       { slot: "09:00–09:15", focus: "Chase the carrier on PO-44817", taskIds: ["t1"] },
@@ -217,41 +260,145 @@ No rush - would love your eyes on the scorecard template before I share it with 
       { point: "Say yes to Priya with a date", detail: "Agree to review by Friday. Being reliable on small favours builds the goodwill you'll need for bigger asks." },
     ],
   };
+  const SAMPLE_ACTIONS = {
+    t1: { status: "done", updatedAt: Date.now() - 36e5 * 3, log: [{ at: Date.now() - 36e5 * 3, text: "Carrier confirmed Tue 11 Nov delivery" }] },
+    t2: { status: "doing", updatedAt: Date.now() - 36e5 * 2, log: [{ at: Date.now() - 36e5 * 2, text: "Lead times done, OTD % pending finance" }] },
+    t4: { status: "waiting", updatedAt: Date.now() - 36e5, log: [{ at: Date.now() - 36e5, text: "Holding reply sent, awaiting slot number" }] },
+  };
 
-  let state = store.get("result", null) || SAMPLE_RESULT;
-  let done = store.get("done", {});
+  // ---------- State (cached locally, synced to your private Claude storage when available) ----------
+  let doc = local.get("doc", null) || { result: SAMPLE_RESULT, actions: SAMPLE_ACTIONS, asanaExported: {}, lastUpdatesAt: 0, savedAt: 0 };
   let filter = "all";
   const drafts = {};
   let ctl = null;
-  let samplePromise = null;
-  const getSample = () => (samplePromise ||= (window.claude?.use ? window.claude.use("sample") : Promise.resolve(null)).catch(() => null));
+  let dbRef = null, saveTimer = null;
+
+  function save() {
+    doc.savedAt = Date.now();
+    local.set("doc", doc);
+    if (!dbRef) return;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      const payload = JSON.parse(JSON.stringify(doc));
+      dbRef.set(payload).catch(() => { $("#saveNote").textContent = "Couldn't sync to your Claude storage. Saved in this browser."; });
+    }, 800);
+  }
+
+  (async () => {
+    const [db, user] = await Promise.all([use("db"), use("user")]);
+    if (!db || !user) { $("#saveNote").textContent = "Saved in this browser only."; return; }
+    try {
+      const id = await user.id();
+      dbRef = db.collection("data/users/" + id).doc("desk");
+      const snap = await dbRef.get();
+      const remote = snap.exists ? snap.data() : null;
+      if (remote && (remote.savedAt || 0) > (doc.savedAt || 0)) { doc = remote; local.set("doc", doc); render(); }
+      else if (doc.savedAt) save();
+      $("#saveNote").textContent = "Your actions and updates sync privately to your Claude account.";
+    } catch { dbRef = null; $("#saveNote").textContent = "Saved in this browser only."; }
+  })();
 
   const roleEl = $("#role"), startEl = $("#start"), endEl = $("#end"), pasteEl = $("#paste");
-  roleEl.value = store.get("role", "");
-  startEl.value = store.get("start", "09:00");
-  endEl.value = store.get("end", "17:30");
-  roleEl.addEventListener("input", () => store.set("role", roleEl.value));
-  startEl.addEventListener("change", () => store.set("start", startEl.value));
-  endEl.addEventListener("change", () => store.set("end", endEl.value));
+  roleEl.value = local.get("role", "");
+  startEl.value = local.get("start", "09:00");
+  endEl.value = local.get("end", "17:30");
+  roleEl.addEventListener("input", () => local.set("role", roleEl.value));
+  startEl.addEventListener("change", () => local.set("start", startEl.value));
+  endEl.addEventListener("change", () => local.set("end", endEl.value));
 
   const statusEl = $("#status");
-  const setStatus = (msg, err = false) => { statusEl.textContent = msg; statusEl.classList.toggle("err", err); };
+  const setStatus = (msg, kind = "") => { statusEl.textContent = msg; statusEl.className = "status " + kind; };
 
   const errCopy = (code) => ({
     not_granted: "Claude access wasn't allowed for this page. Use the page's Permissions menu to allow it.",
     sampling_disabled: "Claude isn't available on this account.",
     rate_limited: "You've hit a usage limit. Wait a few minutes and try again.",
     session_expired: "Sign in to claude.ai again, then retry.",
-    prompt_too_large: "That paste is too long. Paste fewer emails (around 40 at a time).",
+    prompt_too_large: "That export is too long. Export fewer emails (around 60 at a time).",
     invalid_json: "The triage came back malformed. Press Triage again.",
     refused: "Claude declined to process that content. Remove anything sensitive and try again.",
   }[code] || "Something went wrong. Try again.");
 
+  // ---------- CSV ----------
+  function parseCSV(text) {
+    text = text.replace(/^﻿/, "");
+    const firstLine = text.slice(0, text.indexOf("\n") + 1 || text.length);
+    const delim = (firstLine.match(/;/g) || []).length > (firstLine.match(/,/g) || []).length ? ";" : (firstLine.includes("\t") && !firstLine.includes(",") ? "\t" : ",");
+    const rows = []; let row = [], f = "", q = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (q) {
+        if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; }
+        else f += c;
+      } else if (c === '"') q = true;
+      else if (c === delim) { row.push(f); f = ""; }
+      else if (c === "\n" || c === "\r") {
+        if (c === "\r" && text[i + 1] === "\n") i++;
+        row.push(f); f = ""; if (row.some(x => x.trim())) rows.push(row); row = [];
+      } else f += c;
+    }
+    row.push(f); if (row.some(x => x.trim())) rows.push(row);
+    return rows;
+  }
+  const GUESS = {
+    subject: [/^subject$/i, /subject|title|topic/i],
+    from: [/^from(: \(name\))?$/i, /^sender/i, /from.*name/i, /from|sender|author/i],
+    date: [/^(received|date|sent)/i, /date|time|received|sent/i],
+    body: [/^(body|message|content)$/i, /body|message|content|text|snippet|preview/i],
+  };
+  let csv = null; // {name, headers, rows}
+  function guessCol(headers, key) {
+    for (const re of GUESS[key]) { const i = headers.findIndex(h => re.test(h.trim())); if (i >= 0) return i; }
+    return -1;
+  }
+  function loadCSV(text, name) {
+    const rows = parseCSV(text);
+    if (rows.length < 2) { setStatus("That file has no email rows. Check it's a CSV export with a header row.", "err"); return false; }
+    const headers = rows[0].map(h => h.trim());
+    csv = { name, headers, rows: rows.slice(1) };
+    for (const [key, id] of [["subject", "mapSubject"], ["from", "mapFrom"], ["date", "mapDate"], ["body", "mapBody"]]) {
+      const sel = $("#" + id);
+      sel.replaceChildren(el("option", { value: "-1" }, "(none)"), ...headers.map((h, i) => el("option", { value: String(i) }, h || `Column ${i + 1}`)));
+      sel.value = String(guessCol(headers, key));
+    }
+    // Outlook splits sender into name + address; fold the address in if both exist
+    csv.fromAddr = headers.findIndex(h => /from.*address|sender.*email|from.*email/i.test(h));
+    $("#csvInfo").hidden = false;
+    $("#csvSummary").textContent = `${csv.rows.length} emails loaded from ${name}. Check the columns below.`;
+    setStatus("");
+    return true;
+  }
+  function csvToText() {
+    const ix = k => +$("#" + k).value;
+    const s = ix("mapSubject"), fr = ix("mapFrom"), d = ix("mapDate"), b = ix("mapBody");
+    if (s < 0 && b < 0) return { error: "Pick at least the Subject or Body column." };
+    const parts = []; let total = 0, used = 0;
+    for (const [n, r] of csv.rows.entries()) {
+      const from = [fr >= 0 ? r[fr] : "", csv.fromAddr >= 0 && csv.fromAddr !== fr ? `<${r[csv.fromAddr] || ""}>` : ""].join(" ").trim();
+      const body = (b >= 0 ? r[b] || "" : "").replace(/\s+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim().slice(0, 2500);
+      const chunk = `--- Email ${n + 1}\nFrom: ${from}\nDate: ${d >= 0 ? r[d] || "" : ""}\nSubject: ${s >= 0 ? r[s] || "" : ""}\n${body}\n`;
+      if (total + chunk.length > 170000) break;
+      parts.push(chunk); total += chunk.length; used++;
+    }
+    return { text: parts.join("\n"), used, of: csv.rows.length };
+  }
+  const drop = $("#drop");
+  async function readFile(file) {
+    if (!file) return;
+    const text = await file.text();
+    loadCSV(text, file.name);
+  }
+  $("#csvFile").addEventListener("change", e => readFile(e.target.files[0]));
+  drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+  drop.addEventListener("drop", e => { e.preventDefault(); drop.classList.remove("over"); readFile(e.dataTransfer.files[0]); });
+
+  // ---------- Claude ----------
   function roleContext() {
     const r = roleEl.value.trim();
-    return `About me: ${r || "(not provided; infer my role from the emails)"}\nMy working day: ${startEl.value || "09:00"} to ${endEl.value || "17:30"}.\nToday is ${new Date().toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}, current time ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.`;
+    const now = new Date();
+    return `About me: ${r || "(not provided; infer my role from the emails)"}\nMy working day: ${startEl.value || "09:00"} to ${endEl.value || "17:30"}.\nToday is ${now.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })} (${now.toISOString().slice(0, 10)}), current time ${now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.`;
   }
-
   function triagePrompt(text) {
     return `You are a sharp chief-of-staff triaging a professional's work inbox. Be decisive and specific; use real names, numbers and dates from the emails.
 
@@ -259,8 +406,9 @@ ${roleContext()}
 
 Rules:
 - bucket: "now" = urgent AND important (manager/client/exec, deadline today, blocking others, repeat chase). "today" = important, do today. "week" = can wait or be delegated. "fyi" = newsletters, notices, no action.
-- Break every actionable email into concrete verb-first tasks, each 5-90 minutes. Split big work into steps.
-- plan: time blocks from now (or the start of day if earlier) to end of day. Put the hardest "now" work early, batch small replies, leave buffer. Only schedule what fits; use slot format "HH:MM–HH:MM".
+- Break every actionable email into concrete verb-first actions, each 5-90 minutes. Split big work into steps.
+- dueDate: ISO YYYY-MM-DD when a date is stated or clearly implied, else "".
+- plan: time blocks from now (or the start of day if earlier) to end of day. Hardest "now" work early, batch small replies, leave buffer. Only schedule what fits; slot format "HH:MM–HH:MM".
 - needsReply true only if someone expects a response from me.
 - coaching: 3-5 specific, candid points on how I can perform better in this role based on THIS inbox (reliability, managing up, stakeholder trust, what to delegate or decline, patterns). No generic advice.
 - excerpt: the key sentences of the email verbatim, max 700 characters.
@@ -268,7 +416,7 @@ Rules:
 Reply with ONLY this JSON shape:
 {"overview":"2-3 sentences, lead with what matters most",
  "emails":[{"id":"e1","from":"Name (relationship if clear)","subject":"","received":"short","bucket":"now|today|week|fyi","gist":"one line","why":"why this priority","needsReply":true,"replyBy":"short or empty","asks":["what they want from me"],"excerpt":""}],
- "tasks":[{"id":"t1","emailId":"e1","title":"","minutes":15,"bucket":"now|today|week","due":"short or empty"}],
+ "tasks":[{"id":"t1","emailId":"e1","title":"","minutes":15,"bucket":"now|today|week","due":"short or empty","dueDate":"YYYY-MM-DD or empty"}],
  "plan":[{"slot":"09:00–09:30","focus":"","taskIds":["t1"]}],
  "coaching":[{"point":"short headline","detail":"1-2 sentences"}]}
 Order emails and tasks by priority.
@@ -279,43 +427,50 @@ ${text}`;
 
   async function triage(e) {
     e.preventDefault();
-    const text = pasteEl.value.trim();
-    if (!text) { setStatus("Paste some emails first, or load the example.", true); pasteEl.focus(); return; }
-    const sample = await getSample();
-    if (!sample) { setStatus("Triage needs Claude. Open this page on claude.ai to use it.", true); return; }
+    let text = "", note = "";
+    if (csv) {
+      const r = csvToText();
+      if (r.error) { setStatus(r.error, "err"); return; }
+      text = r.text;
+      if (r.used < r.of) note = ` Only the first ${r.used} of ${r.of} emails fit; export a smaller date range for the rest.`;
+    } else {
+      text = pasteEl.value.trim();
+      if (text && /^[^\n]*(subject|body)[^\n]*,/i.test(text) && loadCSV(text, "pasted CSV")) { const r = csvToText(); text = r.text; }
+    }
+    if (!text) { setStatus("Import a CSV first, or load the example.", "err"); return; }
+    const sample = await use("sample");
+    if (!sample) { setStatus("Triage needs Claude. Open this page on claude.ai to use it.", "err"); return; }
     const go = $("#go"), stop = $("#stop");
     go.disabled = true; stop.hidden = false;
     ctl = new AbortController();
     setStatus("Reading your inbox…");
     try {
-      const out = await sample.json(triagePrompt(text.slice(0, 180000)), {
+      const out = await sample.json(triagePrompt(text), {
         signal: ctl.signal, modelTier: "default",
-        onText: ({ text }) => setStatus(`Working… ${Math.round(text.length / 100) / 10}k characters`),
+        onText: ({ text }) => setStatus(`Working… ${(text.length / 1000).toFixed(1)}k characters`),
       });
       if (!out || !Array.isArray(out.emails)) throw { code: "invalid_json" };
-      out.emails ||= []; out.tasks ||= []; out.plan ||= []; out.coaching ||= [];
-      state = out; done = {}; filter = "all";
+      out.tasks ||= []; out.plan ||= []; out.coaching ||= [];
+      doc = { result: out, actions: {}, asanaExported: {}, lastUpdatesAt: Date.now(), savedAt: 0 };
+      filter = "all";
       for (const k in drafts) delete drafts[k];
-      store.set("result", state); store.set("done", done);
-      setStatus(`Triaged ${out.emails.length} emails into ${out.tasks.length} tasks.`);
+      save();
+      setStatus(`Triaged ${out.emails.length} emails into ${out.tasks.length} actions.${note}`, "ok");
       render();
       $("#results").scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (err) {
       if (err?.code === "cancelled") setStatus("Stopped.");
-      else setStatus(errCopy(err?.code), true);
-    } finally {
-      go.disabled = false; stop.hidden = true; ctl = null;
-    }
+      else setStatus(errCopy(err?.code), "err");
+    } finally { go.disabled = false; stop.hidden = true; ctl = null; }
   }
 
   async function draftReply(mail, box) {
-    const sample = await getSample();
+    const sample = await use("sample");
     const out = box.querySelector("textarea.out"), btn = box.querySelector("button.gen"), note = box.querySelector(".dnote");
     if (!sample) { note.textContent = "Drafting needs Claude. Open this page on claude.ai."; return; }
     const tone = box.querySelector("select").value;
     const steer = box.querySelector("input").value.trim();
     btn.disabled = true; out.value = "Thinking…"; note.textContent = "";
-    const c = new AbortController();
     try {
       const { text, truncated } = await sample(
 `Write an email reply I can send. ${roleContext()}
@@ -327,9 +482,8 @@ My instruction for this reply: ${steer || "Answer what they asked. If I can't fu
 Tone: ${tone}.
 
 Rules: start with "Subject: Re: ..." on the first line, then a blank line, then the body. Lead with the answer or commitment. Short paragraphs. Commit to concrete times, not "soon". Put [square brackets] around any fact I must fill in (numbers, dates) rather than inventing it. Sign off with my first name as [Name] unless my role notes give it. No preamble or notes outside the email.`,
-        { signal: c.signal, cache: false, onText: ({ text }) => { out.value = text; } });
-      out.value = text;
-      drafts[mail.id] = text;
+        { cache: false, onText: ({ text }) => { out.value = text; } });
+      out.value = text; drafts[mail.id] = text;
       note.textContent = truncated ? "Cut short. Shorten the instruction and regenerate." : "Check anything in [brackets] before sending.";
     } catch (err) {
       out.value = err?.text || drafts[mail.id] || "";
@@ -337,38 +491,135 @@ Rules: start with "Subject: Re: ..." on the first line, then a blank line, then 
     } finally { btn.disabled = false; btn.textContent = "Regenerate"; }
   }
 
-  function copyDraft(box) {
-    const ta = box.querySelector("textarea.out"), note = box.querySelector(".dnote");
-    const p = navigator.clipboard?.writeText ? navigator.clipboard.writeText(ta.value) : Promise.reject();
-    p.then(() => { note.textContent = "Copied. Paste it into your mail client."; })
-     .catch(() => { ta.focus(); ta.select(); note.textContent = "Selected. Press Ctrl/Cmd+C to copy."; });
+  function copyText(text, noteEl, ta) {
+    const p = navigator.clipboard?.writeText ? navigator.clipboard.writeText(text) : Promise.reject();
+    return p.then(() => { noteEl.textContent = "Copied."; noteEl.className = "status ok"; })
+      .catch(() => { if (ta) { ta.focus(); ta.select(); } noteEl.textContent = "Couldn't copy automatically. Select the text and press Ctrl/Cmd+C."; noteEl.className = "status err"; });
   }
 
+  // ---------- Actions ----------
+  const act = (id) => doc.actions[id] || { status: "todo", log: [], updatedAt: 0 };
+  function setAction(id, patch, logText) {
+    const a = { ...act(id), ...patch, updatedAt: Date.now() };
+    a.log = [...(a.log || [])];
+    if (logText) a.log.push({ at: Date.now(), text: logText });
+    doc.actions[id] = a; save(); render();
+  }
+  const fmtTime = (t) => new Date(t).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+  // ---------- Asana ----------
+  const csvCell = (v) => { v = String(v ?? ""); return /[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; };
+  function asanaRows(tasks) {
+    const mails = Object.fromEntries((doc.result.emails || []).map(m => [m.id, m]));
+    return tasks.map(t => {
+      const a = act(t.id), m = mails[t.emailId];
+      const desc = [
+        m ? `From email: "${m.subject}" (${m.from})` : "",
+        m?.why ? `Why it matters: ${m.why}` : "",
+        `Estimate: ${t.minutes || "?"} min${t.due ? " · Due: " + t.due : ""}`,
+        (a.log || []).length ? "Updates:\n" + a.log.map(l => `- ${fmtTime(l.at)}: ${l.text}`).join("\n") : "",
+      ].filter(Boolean).join("\n");
+      return { Name: t.title, "Section/Column": STATUSES[a.status].label, "Due Date": t.dueDate || "", Tags: BUCKETS[t.bucket]?.label || "", Description: desc };
+    });
+  }
+  const toCSV = (rows) => {
+    const cols = ["Name", "Section/Column", "Due Date", "Tags", "Description"];
+    return [cols.join(","), ...rows.map(r => cols.map(c => csvCell(r[c])).join(","))].join("\r\n");
+  };
+  function updatesText() {
+    const since = doc.lastUpdatesAt || 0;
+    const tasks = (doc.result.tasks || []).filter(t => act(t.id).updatedAt > since);
+    if (!tasks.length) return "";
+    const lines = [`Action updates · ${new Date().toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })}`, ""];
+    for (const s of ["done", "doing", "waiting", "todo"]) {
+      const list = tasks.filter(t => act(t.id).status === s);
+      if (!list.length) continue;
+      lines.push(`${STATUSES[s].label}:`);
+      for (const t of list) {
+        const newLogs = (act(t.id).log || []).filter(l => l.at > since);
+        lines.push(`• ${t.title}${newLogs.length ? " — " + newLogs.map(l => l.text).join("; ") : ""}`);
+      }
+      lines.push("");
+    }
+    return lines.join("\n").trim();
+  }
+  async function saveCSV(tasks, filename, noteEl, markExported) {
+    const content = toCSV(asanaRows(tasks));
+    const dl = await use("downloads");
+    if (!dl) { noteEl.textContent = "Downloads aren't available here. Use Copy CSV and paste into a .csv file."; noteEl.className = "status err"; return; }
+    try {
+      await dl.save({ filename, data: content });
+      if (markExported) { const now = Date.now(); tasks.forEach(t => doc.asanaExported[t.id] = now); save(); render(); }
+      else { noteEl.textContent = "Saved."; noteEl.className = "status ok"; }
+    } catch (err) {
+      if (err?.code !== "declined") { noteEl.textContent = "Couldn't save the file. Use Copy CSV instead."; noteEl.className = "status err"; }
+    }
+  }
+
+  // ---------- Render ----------
   const chip = (b) => el("span", { class: "chip " + b }, BUCKETS[b]?.label || b);
   const mins = (m) => m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? " " + (m % 60) + "m" : ""}` : `${m}m`;
 
   function render() {
     const root = $("#results");
     root.replaceChildren();
+    const state = doc.result;
     const emails = state.emails || [], tasks = state.tasks || [];
     const byId = Object.fromEntries(tasks.map(t => [t.id, t]));
     const mailById = Object.fromEntries(emails.map(m => [m.id, m]));
 
-    if (state.example) root.append(el("div", { class: "banner" }, "You're looking at an example triage of 4 made-up emails. Paste your own export above and press Triage my inbox."));
+    if (state.example) root.append(el("div", { class: "banner" }, "You're looking at an example built from 4 made-up emails. Import your own CSV above and press Triage my inbox."));
 
+    // Action summary
+    const sc = { todo: 0, doing: 0, waiting: 0, done: 0 };
+    tasks.forEach(t => sc[act(t.id).status]++);
     const counts = {}; emails.forEach(m => counts[m.bucket] = (counts[m.bucket] || 0) + 1);
     const replies = emails.filter(m => m.needsReply).length;
-    const openMins = tasks.filter(t => !done[t.id] && t.bucket !== "week").reduce((a, t) => a + (+t.minutes || 0), 0);
+    const openMins = tasks.filter(t => act(t.id).status !== "done" && t.bucket !== "week").reduce((a, t) => a + (+t.minutes || 0), 0);
+    const nextUp = tasks.find(t => act(t.id).status !== "done" && act(t.id).status !== "waiting");
     root.append(el("section", { class: "panel" },
-      el("span", { class: "label" }, "The headline"),
-      el("p", { class: "overview" }, state.overview || ""),
-      el("div", { class: "counts" },
-        ...Object.keys(BUCKETS).filter(b => counts[b]).map(b => el("span", { class: "chip " + b }, `${counts[b]} ${BUCKETS[b].label}`)),
-        replies ? el("span", { class: "chip reply" }, `${replies} need a reply`) : null,
-        el("span", { class: "chip fyi" }, `${mins(openMins)} of work for today`))));
+      el("div", { class: "panel-head" }, el("h2", {}, "Action summary"), el("span", { class: "label" }, `${sc.done} of ${tasks.length} done`)),
+      el("div", { class: "summary-grid" },
+        el("div", { class: "stack", style: "gap:10px" },
+          el("p", { class: "overview" }, state.overview || ""),
+          el("div", { class: "counts" },
+            ...Object.keys(BUCKETS).filter(b => counts[b]).map(b => el("span", { class: "chip " + b }, `${counts[b]} ${BUCKETS[b].label}`)),
+            replies ? el("span", { class: "chip reply" }, `${replies} need a reply`) : null)),
+        el("div", { class: "progress" },
+          el("div", { class: "bar", role: "img", "aria-label": `${sc.done} done, ${sc.doing} in progress, ${sc.waiting} waiting, ${sc.todo} to do` },
+            ...["done", "doing", "waiting", "todo"].map(s => tasks.length && sc[s] ? el("span", { style: `width:${sc[s] / tasks.length * 100}%;background:${STATUSES[s].color}` }) : null)),
+          el("div", { class: "legend" }, ...["done", "doing", "waiting", "todo"].map(s => el("span", {}, el("i", { style: `background:${STATUSES[s].color}` }), `${sc[s]} ${STATUSES[s].label}`))),
+          el("div", { class: "small muted" }, `${mins(openMins)} of today's work left`),
+          nextUp ? el("div", { class: "small" }, el("span", { class: "label" }, "Next up "), nextUp.title) : el("div", { class: "small" }, "Everything actionable is done or waiting.")))));
 
     // Left column
     const left = el("div", { class: "stack" });
+    const actPanel = el("section", { class: "panel" },
+      el("div", { class: "panel-head" }, el("h2", {}, "Actions"), el("span", { class: "label" }, "Tick off · add updates")));
+    for (const b of ["now", "today", "week"]) {
+      const list = tasks.filter(t => (BUCKETS[t.bucket] ? t.bucket : "week") === b);
+      if (!list.length) continue;
+      actPanel.append(el("div", { class: "label group-label" }, `${BUCKETS[b].label} · ${BUCKETS[b].hint}`));
+      actPanel.append(el("ul", { class: "tasks-list" }, list.map(t => {
+        const a = act(t.id), id = "task-" + t.id, last = (a.log || []).at(-1);
+        const upd = el("input", { id: "upd-" + t.id, placeholder: "Add an update", "aria-label": "Update for " + t.title });
+        const addUpd = () => { const v = upd.value.trim(); if (v) setAction(t.id, {}, v); };
+        upd.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); addUpd(); } });
+        const sel = el("select", { class: "compact", id: "st-" + t.id, "aria-label": "Status", onchange: e => setAction(t.id, { status: e.target.value }) },
+          Object.entries(STATUSES).map(([k, v]) => el("option", { value: k, selected: k === a.status }, v.label)));
+        return el("li", { class: "task" + (a.status === "done" ? " done" : "") },
+          el("input", { type: "checkbox", id, checked: a.status === "done", onchange: e => setAction(t.id, { status: e.target.checked ? "done" : "todo" }) }),
+          el("label", { for: id },
+            el("div", { class: "t" }, t.title),
+            mailById[t.emailId] ? el("div", { class: "muted small" }, mailById[t.emailId].subject) : null),
+          el("div", { class: "meta" }, el("span", { class: "st " + a.status }, STATUSES[a.status].label), el("br"), mins(+t.minutes || 0), t.due ? " · " + t.due : ""),
+          last ? el("div", { class: "last" }, `${fmtTime(last.at)} · ${last.text}`) : null,
+          el("div", { class: "controls" }, sel, upd, el("button", { type: "button", onclick: addUpd }, "Add")));
+      })));
+    }
+    if (!tasks.length) actPanel.append(el("p", { class: "empty" }, "No actions found in these emails."));
+    left.append(actPanel);
+
     if (state.plan?.length) left.append(el("section", { class: "panel" },
       el("div", { class: "panel-head" }, el("h2", {}, "Your day"), el("span", { class: "label" }, "Time blocks")),
       el("ol", { class: "plan" }, state.plan.map(p => el("li", {},
@@ -376,40 +627,18 @@ Rules: start with "Subject: Re: ..." on the first line, then a blank line, then 
         el("div", {}, el("div", { class: "focus" }, p.focus),
           (p.taskIds || []).length ? el("div", { class: "tasks" }, p.taskIds.map(id => byId[id]?.title).filter(Boolean).join(" · ")) : null))))));
 
-    const tl = el("section", { class: "panel" },
-      el("div", { class: "panel-head" }, el("h2", {}, "Tasks"), el("span", { class: "label" }, `${tasks.filter(t => done[t.id]).length}/${tasks.length} done`)));
-    for (const b of ["now", "today", "week"]) {
-      const list = tasks.filter(t => t.bucket === b);
-      if (!list.length) continue;
-      tl.append(el("div", { class: "label group-label" }, `${BUCKETS[b].label} · ${BUCKETS[b].hint}`));
-      tl.append(el("ul", { class: "tasks-list" }, list.map(t => {
-        const id = "task-" + t.id;
-        const li = el("li", { class: "task" + (done[t.id] ? " done" : "") },
-          el("input", { type: "checkbox", id, checked: !!done[t.id], onchange: (ev) => {
-            done[t.id] = ev.target.checked; store.set("done", done); li.classList.toggle("done", ev.target.checked);
-            tl.querySelector(".panel-head .label").textContent = `${tasks.filter(x => done[x.id]).length}/${tasks.length} done`;
-          } }),
-          el("label", { for: id },
-            el("div", { class: "t" }, t.title),
-            mailById[t.emailId] ? el("div", { class: "muted", style: "font-size:.8rem" }, mailById[t.emailId].subject) : null),
-          el("div", { class: "meta" }, mins(+t.minutes || 0), t.due ? el("br") : null, t.due || ""));
-        return li;
-      })));
-    }
-    left.append(tl);
-
     if (state.coaching?.length) left.append(el("section", { class: "panel" },
-      el("div", { class: "panel-head" }, el("h2", {}, "Raise your game"), el("span", { class: "label" }, "From today's inbox")),
+      el("div", { class: "panel-head" }, el("h2", {}, "Raise your game"), el("span", { class: "label" }, "From this inbox")),
       el("ul", { class: "coach" }, state.coaching.map(c => el("li", {}, el("b", {}, c.point), el("span", { class: "muted" }, c.detail))))));
 
     // Right column: emails
     const right = el("section", { class: "panel" });
     const filters = [["all", "All"], ["reply", "Needs reply"], ...Object.entries(BUCKETS).map(([k, v]) => [k, v.label])];
     const listWrap = el("div", { class: "stack", style: "gap:12px" });
-    const fbar = el("div", { class: "filters", role: "group", "aria-label": "Filter emails" },
-      filters.map(([k, lab]) => el("button", { type: "button", "aria-pressed": String(filter === k), onclick: () => { filter = k; render(); } }, lab)));
-    right.append(el("div", { class: "panel-head" }, el("h2", {}, "Emails"), el("span", { class: "label" }, "By priority")), fbar, listWrap);
-
+    right.append(el("div", { class: "panel-head" }, el("h2", {}, "Emails"), el("span", { class: "label" }, "By priority")),
+      el("div", { class: "filters", role: "group", "aria-label": "Filter emails" },
+        filters.map(([k, lab]) => el("button", { type: "button", "aria-pressed": String(filter === k), onclick: () => { filter = k; render(); } }, lab))),
+      listWrap);
     const shown = emails.filter(m => filter === "all" || (filter === "reply" ? m.needsReply : m.bucket === filter));
     if (!shown.length) listWrap.append(el("p", { class: "empty" }, "Nothing in this view."));
     for (const m of shown) {
@@ -432,26 +661,58 @@ Rules: start with "Subject: Re: ..." on the first line, then a blank line, then 
           el("textarea", { class: "out", id: "draft-" + m.id, hidden: !drafts[m.id], "aria-label": "Draft reply" }),
           el("div", { class: "row" },
             el("button", { type: "button", class: "gen primary", onclick: () => { box.querySelector("textarea.out").hidden = false; box.querySelector(".copy").hidden = false; draftReply(m, box); } }, drafts[m.id] ? "Regenerate" : "Draft reply"),
-            el("button", { type: "button", class: "copy", hidden: !drafts[m.id], onclick: () => copyDraft(box) }, "Copy"),
+            el("button", { type: "button", class: "copy", hidden: !drafts[m.id], onclick: () => { const ta = box.querySelector("textarea.out"); copyText(ta.value, box.querySelector(".dnote"), ta); } }, "Copy"),
             el("span", { class: "status dnote" })));
         if (drafts[m.id]) box.querySelector("textarea.out").value = drafts[m.id];
         card.append(box);
       }
       listWrap.append(card);
     }
-
     root.append(el("div", { class: "desk" }, left, right));
+
+    // Asana export
+    const fresh = tasks.filter(t => !doc.asanaExported[t.id]);
+    const upd = updatesText();
+    const asNote = el("span", { class: "status" });
+    const rows = asanaRows(tasks);
+    root.append(el("section", { class: "panel", id: "asana" },
+      el("div", { class: "panel-head" }, el("h2", {}, "Export to Asana"), el("span", { class: "label" }, `${fresh.length} new · ${tasks.length - fresh.length} already exported`)),
+      el("div", { class: "asana-opts" },
+        el("div", {},
+          el("h3", {}, "New actions"),
+          el("p", {}, "Creates tasks in Asana. Includes only actions you haven't exported yet, so re-importing won't duplicate them. In Asana: project menu → Import → CSV."),
+          el("button", { type: "button", class: "primary", disabled: !fresh.length, onclick: () => saveCSV(fresh, `asana-new-actions-${new Date().toISOString().slice(0, 10)}.csv`, asNote, true) }, fresh.length ? `Download ${fresh.length} as CSV` : "Nothing new")),
+        el("div", {},
+          el("h3", {}, "Updates since last time"),
+          el("p", {}, "Asana's CSV import can't update tasks that already exist. Paste this into a project status update or a task comment instead."),
+          upd ? el("pre", { class: "updates", id: "updText" }, upd) : el("p", {}, el("i", {}, "No changes since your last copy.")),
+          el("div", { class: "row" },
+            el("button", { type: "button", disabled: !upd, onclick: () => copyText(upd, asNote).then(() => { doc.lastUpdatesAt = Date.now(); save(); }) }, "Copy updates"))),
+        el("div", {},
+          el("h3", {}, "Full snapshot"),
+          el("p", {}, "Every action with its current status as the column, priority as a tag and the full update history in the description."),
+          el("div", { class: "row" },
+            el("button", { type: "button", disabled: !tasks.length, onclick: () => saveCSV(tasks, `asana-all-actions-${new Date().toISOString().slice(0, 10)}.csv`, asNote, false) }, "Download CSV"),
+            el("button", { type: "button", disabled: !tasks.length, onclick: () => copyText(toCSV(rows), asNote) }, "Copy CSV")))),
+      asNote,
+      el("details", {},
+        el("summary", {}, "Preview the CSV columns"),
+        el("div", { class: "tablewrap", style: "margin-top:8px" },
+          el("table", {},
+            el("thead", {}, el("tr", {}, ["Name", "Section/Column", "Due Date", "Tags", "Description"].map(c => el("th", {}, c)))),
+            el("tbody", {}, rows.map(r => el("tr", {}, el("td", {}, r.Name), el("td", {}, r["Section/Column"]), el("td", {}, r["Due Date"]), el("td", {}, r.Tags), el("td", { class: "desc" }, r.Description)))))))));
   }
 
   $("#intake").addEventListener("submit", triage);
   $("#stop").addEventListener("click", () => ctl?.abort());
   $("#loadSample").addEventListener("click", () => {
-    pasteEl.value = SAMPLE_PASTE;
-    state = SAMPLE_RESULT; done = {}; store.set("done", done);
-    setStatus("Example loaded. Press Triage to run it live.");
+    loadCSV(SAMPLE_CSV, "example.csv");
+    doc = { result: SAMPLE_RESULT, actions: JSON.parse(JSON.stringify(SAMPLE_ACTIONS)), asanaExported: {}, lastUpdatesAt: 0, savedAt: 0 };
+    local.set("doc", doc);
+    setStatus("Example CSV loaded. Press Triage to run it live.");
     render();
   });
   render();
-  getSample();
+  use("sample");
 })();
 </script>
