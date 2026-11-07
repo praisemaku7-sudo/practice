@@ -24,6 +24,7 @@ export const CATEGORIES = [
   { id: 'other', name: 'Other', kind: 'personal', color: '#8a8f98', icon: '•' },
   { id: 'savings', name: 'Savings & Investing', kind: 'savings', color: '#1f8f5f', icon: '🏦' },
   { id: 'transfer', name: 'Own-account Transfer', kind: 'transfer', color: '#9aa0a8', icon: '↔️' },
+  { id: 'excluded', name: 'Excluded (not my spending)', kind: 'transfer', color: '#b4b8bd', icon: '🚫' },
 ];
 
 export const CAT = Object.fromEntries(CATEGORIES.map((c) => [c.id, c]));

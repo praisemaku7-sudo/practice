@@ -5,7 +5,7 @@ import { toTransactions } from './lib/importer.js';
 import { demoData } from './lib/demo.js';
 import { monthKey } from './lib/dates.js';
 import { $, closeSheet, toast, confirmSheet } from './ui/dom.js';
-import { pickFiles, importFiles } from './ui/import.js';
+import { pickFiles, addFiles, onQueueChange } from './ui/import.js';
 import * as home from './ui/views/home.js';
 import * as budget from './ui/views/budget.js';
 import * as afford from './ui/views/afford.js';
@@ -14,9 +14,12 @@ import * as accounts from './ui/views/accounts.js';
 import * as transactions from './ui/views/transactions.js';
 import * as settings from './ui/views/settings.js';
 import * as history from './ui/views/history.js';
+import * as importer from './ui/views/importer.js';
+import * as checkin from './ui/views/checkin.js';
+import * as bills from './ui/views/bills.js';
 
-const VIEWS = { home, budget, afford, insights, accounts, transactions, settings, history };
-const TITLES = { home: 'Overview', budget: 'Budget', afford: 'Afford?', insights: 'Insights', accounts: 'Accounts', transactions: 'Transactions', settings: 'Settings', history: 'Monthly record' };
+const VIEWS = { home, budget, afford, insights, accounts, transactions, settings, history, import: importer, checkin, bills };
+const TITLES = { home: 'Overview', budget: 'Budget', afford: 'Afford?', insights: 'Insights', accounts: 'Accounts', transactions: 'Transactions', settings: 'Settings', history: 'Monthly record', import: 'Import', checkin: 'Monthly check-in', bills: 'Bills & subscriptions' };
 let current = 'home';
 
 function parseHash() {
@@ -24,13 +27,15 @@ function parseHash() {
   return { view: VIEWS[path] ? path : 'home', params: new URLSearchParams(query || '') };
 }
 
+let pendingRender = false;
 async function render() {
   const view = VIEWS[current];
   if (view.preload) await view.preload();
   const main = $('#main');
   main.innerHTML = view.render();
+  main.dataset.view = current;
   document.title = `${TITLES[current]} · Pocket Ledger`;
-  document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.view === current || (['transactions', 'history'].includes(current) && a.dataset.view === 'home')));
+  document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.view === current || (['transactions', 'history', 'checkin', 'bills', 'import'].includes(current) && a.dataset.view === 'home')));
 }
 
 async function route() {
@@ -39,6 +44,8 @@ async function route() {
   current = view;
   VIEWS[view].applyParams?.(params);
   closeSheet();
+  const main = $('#main');
+  if (changed) { main.classList.add('enter'); setTimeout(() => main.classList.remove('enter'), 300); }
   await render();
   if (changed) window.scrollTo(0, 0);
 }
@@ -50,7 +57,7 @@ const globalActions = {
     const q = el.dataset.cat ? `?cat=${el.dataset.cat}` : '';
     location.hash = `#/${el.dataset.to}${q}`;
   },
-  import: () => pickFiles(render),
+  import: () => pickFiles(),
   'load-demo': async () => {
     if (state.txs.length && !(await confirmSheet({ title: 'Load sample data?', body: 'Adds 5 months of made-up transactions across 4 sample accounts. You can delete them later from Accounts.', ok: 'Load' }))) return;
     const { accounts: accs, rows, balances } = demoData(state.derived.today);
@@ -103,10 +110,21 @@ document.addEventListener('dragover', (e) => e.preventDefault());
 document.addEventListener('drop', (e) => {
   e.preventDefault();
   const files = [...(e.dataTransfer?.files || [])];
-  if (files.length) importFiles(files, render);
+  if (files.length) addFiles(files);
 });
 
 window.addEventListener('hashchange', route);
+
+// Live import progress: redraw the Import page as files finish, but never while you're typing.
+let raf = 0;
+onQueueChange(() => {
+  if (current !== 'import') return;
+  const el = document.activeElement;
+  if (el && el.tagName === 'INPUT' && $('#main').contains(el)) { pendingRender = true; return; }
+  cancelAnimationFrame(raf);
+  raf = requestAnimationFrame(() => render());
+});
+document.addEventListener('focusout', () => { if (pendingRender) { pendingRender = false; setTimeout(render, 0); } });
 
 (async function boot() {
   try {
@@ -117,6 +135,8 @@ window.addEventListener('hashchange', route);
   }
   requestPersistence();
   await route();
+  // Warm up the PDF engine in the background so the first import starts instantly.
+  (window.requestIdleCallback || ((f) => setTimeout(f, 1500)))(() => import('./lib/parse/pdf.js'));
   if ('serviceWorker' in navigator && import.meta.env.PROD) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   }

@@ -105,7 +105,7 @@ const median = (arr) => {
 export function detectRecurring(txs, { today = todayISO() } = {}) {
   const groups = new Map();
   for (const t of txs) {
-    if (t.category === 'transfer') continue;
+    if (t.category === 'transfer' || t.category === 'excluded') continue;
     const dir = t.amount < 0 ? 'out' : 'in';
     const key = `${dir}|${t.merchant || merchantKey(t.description)}`;
     if (!groups.has(key)) groups.set(key, []);

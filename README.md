@@ -11,6 +11,11 @@ A personal finance app for your iPhone: a web app you add to your Home Screen. I
 - **Monthly record**: a row per month (income, spent, savings rate, change vs previous), averages over complete months, category trend lines, and CSV export. Months missing a statement are flagged so they don't skew averages.
 - **Accounts & consolidation**: every regular payment (Direct Debits, standing orders, card subscriptions) detected per account, plus a checklist for moving them all onto one main account, including when to use the Current Account Switch Service instead.
 
+- **Fast imports**: pick every statement at once. Files are read in parallel on the phone and checked against the printed balances; if they add up, no AI is needed. Only unverifiable or scanned PDFs go to Claude, as text (or page images), split into parts read in parallel. Accounts are matched by the last 4 digits of the account number.
+- **Monthly check-in**: a 4-step routine (import every statement, sort "Other" transactions, review, plan next month).
+- **Bills & subscriptions**: calendar of what's due and paid this month, annual cost, price rises, and a cancel list.
+- **Wishlist**: save a "not right now" item; it's re-checked against your budget every time you open the page.
+
 Everything is stored **only on your phone** (IndexedDB). No account, no server, no tracking.
 
 ## Use it on your iPhone

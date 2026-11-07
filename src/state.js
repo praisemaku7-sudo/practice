@@ -14,12 +14,15 @@ export const DEFAULT_SETTINGS = {
   payday: null,          // day of month; null = detect from salary
   apiKey: '',
   model: DEFAULT_MODEL,
-  useAIForPDF: true,
+  pdfMode: 'auto',       // 'auto' = on-device first, Claude only if balances don't add up; 'always'; 'never'
   mainAccountId: null,
   userRules: {},         // merchantKey -> category
   consolidationDone: {},
   trackFrom: '2026-06-01', // ignore everything before this date (null = keep all history)
   coverageDismissed: {}, // 'accountId|YYYY-MM' -> true (no statement expected)
+  checkins: {},          // 'YYYY-MM' -> ISO date the monthly check-in was completed
+  billFlags: {},         // recurring key -> 'cancel' | 'cancelled'
+  wishlist: [],          // [{id, item, price, category, added}]
   bufferPence: 5000,     // keep at least £50 after bills
 };
 
@@ -35,6 +38,8 @@ export async function load() {
     db.all('tx'), db.all('accounts'), db.all('imports'), db.all('checks'), db.kvGet('settings', {}),
   ]);
   state.settings = { ...DEFAULT_SETTINGS, ...settings };
+  if (settings.useAIForPDF === false && !settings.pdfMode) state.settings.pdfMode = 'never';
+  state.settings.wishlist = state.settings.wishlist || [];
   const from = state.settings.trackFrom;
   // Older transactions stay stored (so changing the date back restores them) but are hidden everywhere.
   state.hiddenCount = from ? txs.filter((t) => t.date < from).length : 0;

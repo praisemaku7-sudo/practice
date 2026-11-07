@@ -1,4 +1,4 @@
-import { state, recompute } from '../../state.js';
+import { state, recompute, saveSettings } from '../../state.js';
 import { db } from '../../lib/db.js';
 import { esc, toast, imageForUpload, busy } from '../dom.js';
 import { fmt, parsePrice } from '../../lib/money.js';
@@ -45,6 +45,7 @@ export function render() {
     <button class="btn primary full" data-action="afford-check">Check</button>
   </div>
   ${r ? verdictCard(r) : ''}
+  ${wishlistCard()}
   ${state.checks.length ? `<div class="card"><h3>Recent checks</h3>
     ${state.checks.slice(0, 8).map((c) => `<div class="list-row"><span class="verdict-dot ${c.verdict}"></span><div class="grow">${esc(c.item || catName(c.category))}<div class="sub">${prettyDate(c.date)} · ${esc(catName(c.category))}${c.bought ? ' · bought' : ''}</div></div><b>${fmt(c.price)}</b></div>`).join('')}
   </div>` : ''}
@@ -59,11 +60,27 @@ function verdictCard(r) {
     <ul class="checks">${r.checks.map((c) => `<li class="${c.pass === true ? 'pass' : c.pass === false ? 'fail' : 'skip'}"><b>${esc(c.label)}</b><span>${esc(c.detail)}</span></li>`).join('')}</ul>
     ${r.advice.length ? `<ul class="advice">${r.advice.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}
     <div class="row gap">
+      ${r.verdict !== 'yes' ? '<button class="btn primary grow" data-action="wish-add">Save to wishlist</button>' : ''}
       <button class="btn ghost grow" data-action="afford-bought">I bought it</button>
       <button class="btn ghost grow" data-action="afford-clear">New check</button>
     </div>
     <p class="sub">"I bought it" counts it against your budget now, and it's swapped for the real transaction when you next import that statement.</p>
   </div>`;
+}
+
+function wishlistCard() {
+  const list = state.settings.wishlist;
+  if (!list.length) return '';
+  const { budget, recurring, balance, payday, today } = state.derived;
+  return `<div class="card"><h3>Wishlist</h3><p class="sub">Re-checked against your budget every time you open this page.</p>
+    ${list.map((w) => {
+      const v = canIAfford({ price: w.price, category: w.category, txs: state.txs, budget, recurring, balance, payday, today, bufferPence: state.settings.bufferPence });
+      return `<div class="list-row"><span class="verdict-dot ${v.verdict}"></span>
+        <div class="grow"><div class="ellipsis">${esc(w.item || catName(w.category))}</div>
+        <div class="sub">${v.verdict === 'yes' ? '<b class="pos">Affordable now</b>' : v.verdict === 'tight' ? 'Affordable if you move budget' : 'Not yet'} · added ${prettyDate(w.added)}</div></div>
+        <b>${fmt(w.price)}</b>
+        <button class="icon-btn small" data-action="wish-remove" data-id="${esc(w.id)}" aria-label="Remove">×</button></div>`;
+    }).join('')}</div>`;
 }
 
 function readForm() {
@@ -87,6 +104,15 @@ function runCheck() {
 }
 
 export const actions = {
+  'wish-add': async (_, rerender) => {
+    const r = form.result;
+    if (!r) return;
+    const w = { id: r.checkId, item: form.item, price: r.price, category: r.category, added: todayISO() };
+    await saveSettings({ wishlist: [w, ...state.settings.wishlist.filter((x) => x.id !== w.id)] });
+    toast('Saved to wishlist. It tells you when it becomes affordable.');
+    actions['afford-clear'](null, rerender);
+  },
+  'wish-remove': async (el, rerender) => { await saveSettings({ wishlist: state.settings.wishlist.filter((w) => w.id !== el.dataset.id) }); rerender(); },
   'afford-check': (_, rerender) => { readForm(); if (runCheck()) rerender(); },
   'afford-clear': (_, rerender) => { Object.assign(form, { item: '', price: '', category: '', photo: null, result: null, note: '' }); rerender(); },
   'afford-bought': async (_, rerender) => {
