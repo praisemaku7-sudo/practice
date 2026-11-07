@@ -27,6 +27,7 @@ export const DEFAULT_SETTINGS = {
   wishlist: [],          // [{id, item, price, category, added}]
   cardPayoff: null,      // pence/month extra toward credit cards
   cardMethod: 'avalanche',
+  ownNames: [],          // how your name appears on transfers between your own accounts
   bufferPence: 5000,     // keep at least £50 after bills
 };
 
@@ -79,16 +80,16 @@ export async function saveSettings(patch) {
 
 /** Re-run transfer pairing over everything and persist any category changes. */
 export async function relinkTransfers() {
-  const before = new Map(state.txs.map((t) => [t.id, t.category + '|' + (t.pairId || '')]));
+  const before = new Map(state.txs.map((t) => [t.id, t.category + '|' + (t.pairId || '') + '|' + (t.autoTransfer ? 1 : 0)]));
   for (const t of state.txs) {
-    if (t.pairId && !t.userCategory) {
-      delete t.pairId;
+    if ((t.pairId || t.autoTransfer) && !t.userCategory) {
+      delete t.pairId; delete t.autoTransfer;
       t.category = categorize(t.description, t.amount, state.settings.userRules);
     }
   }
   const byAcc = Object.fromEntries(state.accounts.map((a) => [a.id, a]));
-  markTransfers(state.txs, byAcc);
-  const changed = state.txs.filter((t) => before.get(t.id) !== t.category + '|' + (t.pairId || ''));
+  markTransfers(state.txs, byAcc, { ownNames: state.settings.ownNames || [] });
+  const changed = state.txs.filter((t) => before.get(t.id) !== t.category + '|' + (t.pairId || '') + '|' + (t.autoTransfer ? 1 : 0));
   if (changed.length) await db.putMany('tx', changed);
 }
 

@@ -1,5 +1,5 @@
 import './styles.css';
-import { state, load, recompute, relinkTransfers } from './state.js';
+import { state, load, recompute, relinkTransfers, saveSettings } from './state.js';
 import { db, requestPersistence } from './lib/db.js';
 import { toTransactions } from './lib/importer.js';
 import { demoData } from './lib/demo.js';
@@ -19,9 +19,10 @@ import * as checkin from './ui/views/checkin.js';
 import * as bills from './ui/views/bills.js';
 import * as cards from './ui/views/cards.js';
 import * as setup from './ui/views/setup.js';
+import * as audit from './ui/views/audit.js';
 
-const VIEWS = { home, budget, afford, insights, accounts, transactions, settings, history, import: importer, checkin, bills, cards, setup };
-const TITLES = { home: 'Overview', budget: 'Budget', afford: 'Afford?', insights: 'Insights', accounts: 'Accounts', transactions: 'Transactions', settings: 'Settings', history: 'Monthly record', import: 'Import', checkin: 'Monthly check-in', bills: 'Bills & subscriptions', cards: 'Credit cards', setup: 'Fix accounts' };
+const VIEWS = { home, budget, afford, insights, accounts, transactions, settings, history, import: importer, checkin, bills, cards, setup, audit };
+const TITLES = { home: 'Overview', budget: 'Budget', afford: 'Afford?', insights: 'Insights', accounts: 'Accounts', transactions: 'Transactions', settings: 'Settings', history: 'Monthly record', import: 'Import', checkin: 'Monthly check-in', bills: 'Bills & subscriptions', cards: 'Credit cards', setup: 'Fix accounts', audit: 'Check my numbers' };
 let current = 'home';
 
 function parseHash() {
@@ -37,7 +38,7 @@ async function render() {
   main.innerHTML = view.render();
   main.dataset.view = current;
   document.title = `${TITLES[current]} · Pocket Ledger`;
-  document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.view === current || (['transactions', 'history', 'checkin', 'bills', 'import', 'cards'].includes(current) && a.dataset.view === 'home') || (current === 'setup' && a.dataset.view === 'accounts')));
+  document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.view === current || (['transactions', 'history', 'checkin', 'bills', 'import', 'cards', 'audit'].includes(current) && a.dataset.view === 'home') || (current === 'setup' && a.dataset.view === 'accounts')));
 }
 
 async function route() {
@@ -138,6 +139,11 @@ document.addEventListener('focusout', () => { if (pendingRender) { pendingRender
     return;
   }
   requestPersistence();
+  // One-off: re-run transfer detection on existing data when the rules improve.
+  if (state.txs.length && (state.settings.transferRulesVersion || 1) < 2) {
+    await relinkTransfers();
+    await saveSettings({ transferRulesVersion: 2 });
+  }
   await route();
   // Warm up the PDF engine in the background so the first import starts instantly.
   (window.requestIdleCallback || ((f) => setTimeout(f, 1500)))(() => import('./lib/parse/pdf.js'));

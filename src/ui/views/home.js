@@ -47,6 +47,8 @@ export function render() {
   const movers = cmp.hasPrev ? cmp.rows.filter((r) => Math.abs(r.delta) >= 1000 && !['income', 'transfer', 'savings'].includes(r.category)).slice(0, 4) : [];
 
   const missing = derived.coverage.missing;
+  const looksOff = (budget.income > 0 && s.income > budget.income * 1.8) || (budget.avgSpend > 0 && s.spend > budget.avgSpend * 1.8) || (s.spend > 0 && s.income > 0 && s.spend > s.income * 1.5);
+  const offBanner = looksOff ? `<a class="card banner bad" href="#/audit"><b>These totals look too high</b><span class="sub">Usually money moving between your own accounts counted as spending and income, or one account imported twice. Tap to see what's counted and fix it.</span><span class="banner-go">Check ›</span></a>` : '';
   const dupBanner = derived.duplicates.length ? `<a class="card banner" href="#/accounts"><b>${derived.duplicates.length} duplicate transaction${derived.duplicates.length > 1 ? 's' : ''}</b><span class="sub">Imported twice. Totals are inflated until removed.</span><span class="banner-go">Fix ›</span></a>` : '';
   const monthMissing = missing.filter((m) => m.month === month);
   const banner = missing.length ? `<a class="card banner" href="#/accounts">
@@ -62,6 +64,7 @@ export function render() {
   return `
   ${monthSwitcher(month, months)}
   ${ciCard}
+  ${offBanner}
   ${dupBanner}
   ${banner}
   <div class="card hero">
@@ -75,6 +78,7 @@ export function render() {
       </div>
     </div>
     ${totalBudget ? `${progressBar(s.spend / totalBudget)}<div class="sub">${fmt(s.spend, { whole: true })} of ${fmt(totalBudget, { whole: true })} monthly budget</div>` : ''}
+    <a class="link small-link" href="#/audit">What's counted here? ›</a>
   </div>
   ${funCard}
   ${derived.cards.cards.length || derived.suspects.length ? (() => {
