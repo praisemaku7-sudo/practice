@@ -402,3 +402,13 @@ a { color: var(--accent); }
 .banner.bad { background: var(--bad-soft); border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
 .banner.bad .banner-go { color: var(--bad); }
 .small-link { display: inline-block; font-size: 13px; text-decoration: none; margin-top: 4px; }
+
+/* Closeable banners, tappable numbers, locked accounts */
+.hideable { position: relative; }
+.hideable > .card { padding-right: 84px; }
+.banner-x { position: absolute; top: 8px; right: 8px; width: 30px; height: 30px; border-radius: 50%; border: 0; background: color-mix(in srgb, var(--ink) 10%, transparent); color: var(--ink); font-size: 18px; line-height: 1; cursor: pointer; z-index: 2; }
+.hideable .banner-go { right: 46px; }
+.explain { all: unset; cursor: pointer; display: block; text-align: inherit; }
+.hero-side .explain { display: block; }
+.explain:active { opacity: .6; }
+.acct-fix.locked { gap: 4px; opacity: .95; }

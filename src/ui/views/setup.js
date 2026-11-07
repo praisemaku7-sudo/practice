@@ -23,7 +23,7 @@ export function render() {
   return `
   <h1 class="page-title">Fix accounts</h1>
   <div class="card tip-box">
-    <b>For each account:</b> choose what it really is, and type today's figure from that bank's app.
+    <b>For each account:</b> choose what it really is, and type today's figure from that bank's app. When you save, each account's type is <b>locked</b> 🔒 and the prompts about it stop. Tap Edit to change it later.
     <ul class="tips">
       <li><b>Current / debit card</b>: your everyday account; the debit card is part of it. Enter the balance.</li>
       <li><b>Credit card</b>: money you borrow. Enter what you <b>owe</b> (current balance), not the available credit.</li>
@@ -33,6 +33,15 @@ export function render() {
   ${state.accounts.map((a) => {
     const x = d(a);
     const shown = a.balance == null ? null : a.type === 'credit' ? Math.max(0, -a.balance) : a.balance;
+    if (a.typeLocked && !x.editing) {
+      // Confirmed accounts stay locked: just a quick balance update, or Edit to change anything.
+      return `<div class="card acct-fix locked">
+        <div class="row between"><b class="ellipsis grow">🔒 ${esc(a.name)}</b><button class="link" data-action="su-edit" data-id="${esc(a.id)}">Edit</button></div>
+        <div class="sub">${esc(TYPES.find(([k]) => k === a.type)?.[1] || a.type)} · ${shown == null ? 'no balance' : `${fmt(shown)}${a.type === 'credit' ? ' owed' : ''}`}${a.balanceDate ? ` on ${prettyDate(a.balanceDate)}` : ''}</div>
+        <label class="field slim"><span>${a.type === 'credit' ? 'Owed today £' : 'Balance today £'}</span>
+          <input inputmode="decimal" placeholder="update from the bank app" value="${esc(x.balance)}" data-input="su-bal" data-id="${esc(a.id)}"></label>
+      </div>`;
+    }
     return `<div class="card acct-fix ${x.mergeInto ? 'merging' : ''}">
       <div class="row between"><input class="name-input" value="${esc(x.name)}" data-input="su-name" data-id="${esc(a.id)}" aria-label="Account name">
         ${suspects.has(a.id) ? '<span class="pill warn">looks like a card</span>' : ''}</div>
@@ -69,6 +78,7 @@ async function mergeAccount(from, to) {
 }
 
 export const actions = {
+  'su-edit': (el, rerender) => { const a = state.accounts.find((x) => x.id === el.dataset.id); d(a).editing = true; rerender(); },
   'su-type': (el, rerender) => { const a = state.accounts.find((x) => x.id === el.dataset.id); d(a).type = el.dataset.type; rerender(); },
   'su-save': async (_, rerender) => {
     const merges = state.accounts.filter((a) => draft[a.id]?.mergeInto);
@@ -80,6 +90,7 @@ export const actions = {
       a.name = x.name.trim() || a.name;
       const wasCredit = a.type === 'credit';
       a.type = x.type;
+      a.typeLocked = true; // confirmed: no more "looks like a card" prompts, stays until you tap Edit
       const v = x.balance.trim() ? parsePrice(x.balance.replace(/^-/, '')) : null;
       if (v != null) {
         const neg = x.balance.trim().startsWith('-');

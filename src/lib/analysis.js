@@ -1,5 +1,6 @@
 import { CAT, catKind, isSpendCategory } from './categories.js';
 import { merchantKey } from './categorize.js';
+import { isSummaryLine } from './parse/junk.js';
 import { monthKey, addMonths, daysBetween, addDays, todayISO } from './dates.js';
 
 const OWN_TRANSFER = /\b(TOP[- ]?UP|TOPUP|TOPPED UP|TRANSFER|TFR|INTERNAL|OWN ACCOUNT|TO POT|FROM POT|POT TRANSFER|ROUND[- ]?UPS?|SPARE CHANGE|SAVINGS POT|VAULT|SAVER|MOVED (TO|FROM)|SENT FROM|DEPOSIT FROM|WITHDRAWAL TO|INSTANT ACCESS|EASY ACCESS)\b/;
@@ -148,7 +149,7 @@ const median = (arr) => {
 export function detectRecurring(txs, { today = todayISO() } = {}) {
   const groups = new Map();
   for (const t of txs) {
-    if (t.category === 'transfer' || t.category === 'excluded') continue;
+    if (t.category === 'transfer' || t.category === 'excluded' || isSummaryLine(t.description)) continue;
     const dir = t.amount < 0 ? 'out' : 'in';
     const key = `${dir}|${t.merchant || merchantKey(t.description)}`;
     if (!groups.has(key)) groups.set(key, []);
@@ -173,6 +174,7 @@ export function detectRecurring(txs, { today = todayISO() } = {}) {
     const prev = list[list.length - 2];
     const desc = list.map((t) => t.description.toUpperCase()).join(' ');
     const type = key.startsWith('in') ? 'income'
+      : last.category === 'fees' || /\bINTEREST\b/.test(desc) ? 'Interest / fee'
       : /\b(DD|DIRECT DEBIT|D\/D)\b/.test(desc) ? 'Direct Debit'
       : /\b(SO|STO|STANDING ORDER|S\/O)\b/.test(desc) ? 'Standing Order'
       : 'Card / Subscription';

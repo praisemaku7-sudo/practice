@@ -1,12 +1,12 @@
-import { state } from '../../state.js';
-import { esc } from '../dom.js';
+import { state, accountName } from '../../state.js';
+import { esc, openSheet } from '../dom.js';
 import { fmt } from '../../lib/money.js';
 import { compareMonths, spendCategoriesOf, summarizeMonth } from '../../lib/analysis.js';
 import { budgetProgress } from '../../lib/budget.js';
-import { catName } from '../../lib/categories.js';
+import { catName, catKind } from '../../lib/categories.js';
 import { monthKey, addMonths, monthLabel, prettyDate, nextDayOfMonth, daysBetween } from '../../lib/dates.js';
 import { donut, trendBars, progressBar } from '../charts.js';
-import { monthSwitcher, catChip, delta, emptyState } from '../common.js';
+import { monthSwitcher, catChip, delta, emptyState, hideable } from '../common.js';
 import { checkinStatus } from './checkin.js';
 
 export function render() {
@@ -27,8 +27,8 @@ export function render() {
     const daysLeft = daysBetween(today, `${addMonths(month, 1)}-01`);
     const perDay = left > 0 ? Math.floor(left / Math.max(daysLeft, 1)) : 0;
     return `<div class="card fun ${left < 0 ? 'neg' : ''}">
-      <div class="label">Fun money left this month</div>
-      <div class="big">${fmt(left)}</div>
+      <button class="explain" data-action="explain" data-what="fun"><div class="label">Fun money left this month ⓘ</div>
+      <div class="big">${fmt(left)}</div></button>
       ${progressBar(budget.personalAllowance ? prog.personalSpent / budget.personalAllowance : 1)}
       <div class="sub">${fmt(prog.personalSpent, { whole: true })} of ${fmt(budget.personalAllowance, { whole: true })} used · ${left > 0 ? `about ${fmt(perDay, { whole: true })}/day for ${daysLeft} days` : 'over for this month'}</div>
       <button class="btn primary small" data-action="go" data-to="afford">Can I afford…?</button>
@@ -63,18 +63,18 @@ export function render() {
 
   return `
   ${monthSwitcher(month, months)}
-  ${ciCard}
-  ${offBanner}
-  ${dupBanner}
-  ${banner}
+  ${hideable('checkin:' + ci.month, ci.done, ciCard)}
+  ${hideable('off:' + month, Math.round(s.spend / 10000) + '|' + Math.round(s.income / 10000), offBanner)}
+  ${hideable('dups', derived.duplicates.length, dupBanner)}
+  ${hideable('missing', missing.map((m) => m.accountId + m.month).join(','), banner)}
   <div class="card hero">
     <div class="hero-row">
-      <div><div class="label">Spent</div><div class="big">${fmt(s.spend, { whole: true })}</div>
+      <div><button class="explain" data-action="explain" data-what="spent"><div class="label">Spent ⓘ</div><div class="big">${fmt(s.spend, { whole: true })}</div></button>
         ${cmp.hasPrev ? `<div class="sub">${delta(s.spend - cmp.prev.spend)} vs ${esc(monthLabel(addMonths(month, -1), { short: true }))}</div>` : ''}</div>
       <div class="hero-side">
-        <div><span class="label">In</span> <b class="pos">${fmt(s.income, { whole: true })}</b></div>
-        <div><span class="label">Saved</span> <b>${fmt(s.saved, { whole: true })}</b></div>
-        <div><span class="label">Left over</span> <b class="${s.net < 0 ? 'neg' : 'pos'}">${fmt(s.net, { whole: true, sign: true })}</b></div>
+        <button class="explain" data-action="explain" data-what="in"><span class="label">In ⓘ</span> <b class="pos">${fmt(s.income, { whole: true })}</b></button>
+        <button class="explain" data-action="explain" data-what="saved"><span class="label">Saved ⓘ</span> <b>${fmt(s.saved, { whole: true })}</b></button>
+        <button class="explain" data-action="explain" data-what="left"><span class="label">Left over ⓘ</span> <b class="${s.net < 0 ? 'neg' : 'pos'}">${fmt(s.net, { whole: true, sign: true })}</b></button>
       </div>
     </div>
     ${totalBudget ? `${progressBar(s.spend / totalBudget)}<div class="sub">${fmt(s.spend, { whole: true })} of ${fmt(totalBudget, { whole: true })} monthly budget</div>` : ''}
@@ -118,3 +118,58 @@ export function render() {
   </div>`;
 }
 
+
+// "How is this worked out?" — every main number can be traced to the transactions behind it.
+
+function lines(rows) {
+  return rows.map(([label, value, cls = '']) => `<div class="list-row"><div class="grow">${label}</div><b class="${cls}">${value}</b></div>`).join('');
+}
+function txList(txs, n = 12) {
+  return txs.slice(0, n).map((t) => `<div class="pv-row"><span>${prettyDate(t.date)}</span><span class="ellipsis grow">${esc(t.description)} <small class="muted">${esc(accountName(t.accountId))}</small></span><b>${fmt(Math.abs(t.amount))}</b></div>`).join('');
+}
+
+export const actions = {
+  explain: (el) => {
+    const month = state.month;
+    const { budget, recurring, today } = state.derived;
+    const m = state.txs.filter((t) => monthKey(t.date) === month);
+    const s = summarizeMonth(state.txs, month);
+    const what = el.dataset.what;
+    let title = '', body = '';
+    if (what === 'spent') {
+      title = `Spent ${fmt(s.spend)}`;
+      const spend = m.filter((t) => !['income', 'transfer', 'savings'].includes(catKind(t.category))).sort((a, b) => a.amount - b.amount);
+      body = `<p class="muted">Every money-out payment in ${esc(monthLabel(month))}, minus refunds, excluding transfers between your accounts and money moved to savings.</p>
+        ${lines(Object.entries(s.byCat).sort((a, b) => b[1] - a[1]).map(([c, v]) => [esc(catName(c)), fmt(v)]))}
+        <h4>Biggest payments</h4><div class="preview">${txList(spend)}</div>`;
+    } else if (what === 'in') {
+      title = `In ${fmt(s.income)}`;
+      const inc = m.filter((t) => catKind(t.category) === 'income').sort((a, b) => b.amount - a.amount);
+      body = `<p class="muted">Money in categorised as income. Transfers from your own accounts are not counted.</p><div class="preview">${txList(inc, 30)}</div>`;
+    } else if (what === 'saved') {
+      title = `Saved ${fmt(s.saved)}`;
+      const sv = m.filter((t) => t.category === 'savings').sort((a, b) => a.amount - b.amount);
+      body = `<p class="muted">Money moved into savings or investments, minus money taken back out.</p><div class="preview">${txList(sv, 30)}</div>`;
+    } else if (what === 'left') {
+      title = `Left over ${fmt(s.net, { sign: true })}`;
+      body = lines([['In', fmt(s.income), 'pos'], ['− Spent', fmt(s.spend)], ['− Moved to savings', fmt(s.saved)], ['= Left over', fmt(s.net, { sign: true }), s.net < 0 ? 'neg' : 'pos']]);
+    } else if (what === 'fun') {
+      const prog = budgetProgress(state.txs, budget, monthKey(today));
+      const personal = prog.rows.filter((r) => r.kind === 'personal' && r.spent > 0).sort((a, b) => b.spent - a.spent);
+      const fixed = budget.lines.filter((l) => l.kind === 'fixed').reduce((a, l) => a + l.budget, 0);
+      const ess = budget.lines.filter((l) => l.kind === 'essential').reduce((a, l) => a + l.budget, 0);
+      title = `Fun money left ${fmt(prog.personalLeft)}`;
+      body = `<h4>This month's allowance</h4>${lines([
+        [`Income${budget.incomeIsEstimate ? ' (average of your statements)' : ''}`, fmt(budget.income), 'pos'],
+        ['− Bills & commitments', fmt(fixed)], ['− Essentials', fmt(ess)], ['− Savings goal', fmt(budget.savingsTarget)],
+        ...(budget.cardPayoff ? [['− Credit card payoff', fmt(budget.cardPayoff)]] : []),
+        ['= Fun money (capped near what you usually spend)', fmt(budget.personalAllowance)],
+      ])}
+        <h4>Spent so far</h4>${lines(personal.map((r) => [esc(catName(r.category)), fmt(r.spent)]))}
+        ${lines([['Left', fmt(prog.personalLeft), prog.personalLeft < 0 ? 'neg' : 'pos']])}
+        <p class="sub">Wrong income? Set it in Budget. Wrong categories? Fix them in Transactions or Check my numbers.</p>
+        <a class="btn ghost full" href="#/budget">Open Budget</a>`;
+    }
+    openSheet(`<h2>${title}</h2>${body}<a class="btn ghost full" href="#/audit">Check my numbers</a>`);
+  },
+};

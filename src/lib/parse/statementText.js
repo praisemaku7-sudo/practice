@@ -6,6 +6,7 @@
 
 import { matchLeadingDate, findNamedDates, iso } from '../dates.js';
 import { parseMoney, AMOUNT_TOKEN } from '../money.js';
+import { isSummaryLine, CLOSING_LINE, OPENING_LINE } from './junk.js';
 
 const OUT_HEAD = /^(paid out|money out|out|withdrawn|withdrawals?|debits?|debit amount|payments?|spent|money out \(£\))$/i;
 const IN_HEAD = /^(paid in|money in|in|deposits?|credits?|credit amount|received|money in \(£\))$/i;
@@ -112,14 +113,14 @@ export function parseStatementLines(lines, { fallbackYear = new Date().getFullYe
     if (!toks.length) continue;
     const text = lineText(toks);
 
-    if (SKIP.test(text)) {
+    if (SKIP.test(text) || isSummaryLine(text)) {
       lastWasTx = false;
       const amts = toks.filter((t) => AMOUNT_TOKEN.test(t.t));
-      if (amts.length && /(brought forward|opening|start balance)/i.test(text) && openingBalance == null) {
+      if (amts.length && OPENING_LINE.test(text) && openingBalance == null) {
         const p = parseMoney(amts[amts.length - 1].t);
         openingBalance = p.negative || p.debit ? -p.pence : p.pence;
       }
-      if (amts.length && /(carried forward|closing|end balance)/i.test(text)) {
+      if (amts.length && CLOSING_LINE.test(text)) {
         const p = parseMoney(amts[amts.length - 1].t);
         closingBalance = p.negative || p.debit ? -p.pence : p.pence;
       }

@@ -21,7 +21,7 @@ export function render() {
   const suspects = state.derived.suspects;
   return `
   <h1 class="page-title">Accounts</h1>
-  <a class="card setup-cta" href="#/setup"><div><b>Fix types &amp; balances</b><div class="sub">Set each account as debit, credit card or savings, enter today's balances, merge duplicates</div></div><span class="banner-go">›</span></a>
+  ${state.accounts.some((x) => !x.typeLocked) ? `<a class="card setup-cta" href="#/setup"><div><b>Confirm account types &amp; balances</b><div class="sub">${state.accounts.filter((x) => !x.typeLocked).length} not confirmed yet: set debit, credit card or savings once and it stays locked</div></div><span class="banner-go">›</span></a>` : ''}
   ${suspects.length ? `<a class="card banner" href="#/setup"><b>${suspects.length} account${suspects.length > 1 ? 's look' : ' looks'} like a credit card</b><span class="sub">${suspects.map((x) => esc(x.name)).join(', ')}: confirm so the app tracks what you owe.</span><span class="banner-go">Fix ›</span></a>` : ''}
   ${dups.length ? `<div class="card banner"><b>${dups.length} duplicate transaction${dups.length > 1 ? 's' : ''} found</b>
     <span class="sub">The same payment imported twice (from overlapping statements, or a PDF and CSV of the same month).</span>
@@ -30,9 +30,10 @@ export function render() {
     ${state.accounts.map((a) => `<button class="list-row tap" data-action="edit-account" data-id="${esc(a.id)}">
       <span class="bank-badge">${esc((a.bank || a.name).slice(0, 2).toUpperCase())}</span>
       <div class="grow"><div>${esc(a.name)} ${a.id === mainId ? '<small class="pill">main</small>' : ''}</div>
-      <div class="sub">${[a.bank, TYPE_LABEL[a.type] || a.type].filter(Boolean).map(esc).join(' · ')} · ${counts[a.id] || 0} transactions${a.lastImport ? ' · updated ' + prettyDate(a.lastImport) : ''}</div></div>
+      <div class="sub">${a.typeLocked ? '🔒 ' : ''}${[a.bank, TYPE_LABEL[a.type] || a.type].filter(Boolean).map(esc).join(' · ')} · ${counts[a.id] || 0} transactions${a.lastImport ? ' · updated ' + prettyDate(a.lastImport) : ''}</div></div>
       <div class="bal"><b class="${a.balance < 0 ? 'neg' : ''}">${a.balance != null ? (a.type === 'credit' ? `${fmt(Math.max(0, -a.balance))} owed` : fmt(a.balance)) : '—'}</b>${a.balanceDate ? `<small class="sub">${a.balanceDate === state.derived.today ? 'today' : 'on ' + prettyDate(a.balanceDate)}</small>` : ''}</div></button>`).join('')}
     <div class="row gap"><button class="btn primary grow" data-action="import">Import</button><button class="btn ghost grow" data-action="go" data-to="transactions">Transactions</button><a class="btn ghost grow" href="#/cards">💳 Cards</a></div>
+    <a class="link small-link" href="#/setup">Edit types, balances or merge accounts ›</a>
   </div>
 
   ${renderStatements()}
@@ -123,6 +124,7 @@ export const actions = {
           const neg = raw.startsWith('-');
           const bal = parsePrice(raw.replace(/^-/, ''));
           if (raw && bal != null) { a.balance = neg ? -bal : bal; a.balanceDate = state.derived.today; }
+          a.typeLocked = true;
           // Credit cards store what you owe as a negative balance.
           if (a.type === 'credit' && a.balance > 0) a.balance = -a.balance;
           await db.put('accounts', a);
