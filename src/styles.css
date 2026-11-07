@@ -393,3 +393,12 @@ a { color: var(--accent); }
 .seg.three button { font-size: 12px; padding: 9px 4px; }
 .bal { display: grid; justify-items: end; }
 .bal small { font-size: 11px; }
+
+/* Check my numbers */
+.audit-row { padding: 10px 0; border-top: 1px solid var(--line); display: grid; gap: 4px; }
+.audit-row:first-of-type, h3 + .audit-row { border-top: 0; }
+.audit-row .cat-dot { display: inline-grid; width: 26px; height: 26px; font-size: 13px; vertical-align: middle; margin-right: 4px; }
+.audit-row .chip { padding: 6px 10px; font-size: 12px; }
+.banner.bad { background: var(--bad-soft); border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
+.banner.bad .banner-go { color: var(--bad); }
+.small-link { display: inline-block; font-size: 13px; text-decoration: none; margin-top: 4px; }

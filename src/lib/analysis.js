@@ -2,32 +2,75 @@ import { CAT, catKind, isSpendCategory } from './categories.js';
 import { merchantKey } from './categorize.js';
 import { monthKey, addMonths, daysBetween, addDays, todayISO } from './dates.js';
 
+const OWN_TRANSFER = /\b(TOP[- ]?UP|TOPUP|TOPPED UP|TRANSFER|TFR|INTERNAL|OWN ACCOUNT|TO POT|FROM POT|POT TRANSFER|ROUND[- ]?UPS?|SPARE CHANGE|SAVINGS POT|VAULT|SAVER|MOVED (TO|FROM)|SENT FROM|DEPOSIT FROM|WITHDRAWAL TO|INSTANT ACCESS|EASY ACCESS)\b/;
+const BANKS = ['MONZO', 'STARLING', 'REVOLUT', 'CHASE', 'NATIONWIDE', 'HSBC', 'FIRST DIRECT', 'BARCLAYS', 'LLOYDS', 'HALIFAX', 'NATWEST', 'SANTANDER', 'TSB', 'KROO', 'CHIP', 'PLUM', 'MONEYBOX', 'MARCUS', 'ZOPA', 'WISE', 'VIRGIN MONEY', 'METRO BANK', 'CO-OPERATIVE', 'TIDE', 'AMEX', 'AMERICAN EXPRESS', 'BARCLAYCARD', 'CAPITAL ONE'];
+
+/** Does this description look like money moving to/from one of your own accounts? */
+export function looksLikeOwnTransfer(t, { ownBanks = [], ownNames = [] } = {}) {
+  const d = ' ' + String(t.description || '').toUpperCase().replace(/[^A-Z0-9&' -]/g, ' ') + ' ';
+  if (ownNames.some((n) => n && d.includes(' ' + n + ' '))) return true;
+  const mentionsOwnBank = ownBanks.some((b) => d.includes(' ' + b + ' ') || d.includes(' ' + b.replace(/ /g, '') + ' '));
+  if (mentionsOwnBank && (OWN_TRANSFER.test(d) || /\b(PAYMENT|FROM|TO|FPS|FASTER|BANK|BGC|FPI|FPO|SO|STO)\b/.test(d))) return true;
+  return OWN_TRANSFER.test(d) && !/\b(SALARY|WAGES|PAYROLL|HMRC|DWP|REFUND)\b/.test(d);
+}
+
+export function ownBanksOf(accounts) {
+  const names = new Set();
+  for (const a of Object.values(accounts)) {
+    const s = `${a.bank || ''} ${a.name || ''}`.toUpperCase();
+    for (const b of BANKS) if (s.includes(b)) names.add(b);
+  }
+  return [...names];
+}
+
 /**
- * Mark pairs of opposite transactions between two of your own accounts (within 4 days)
- * as transfers so moving money around never counts as spending or income.
+ * Stop money moving between your own accounts counting as spending and income.
+ *  1. Pair an exact opposite amount on another of your accounts within 7 days (closest date wins).
+ *  2. Unpaired rows that clearly describe an own-account move (your name, "top up", a bank you hold)
+ *     become transfers too.
+ *  3. Everything on a savings account is a transfer, except interest.
  * Mutates and returns the array.
  */
-export function markTransfers(txs, accountsById = {}) {
+export function markTransfers(txs, accountsById = {}, { ownNames = [] } = {}) {
   const byAbs = new Map();
   for (const t of txs) {
-    if (t.userCategory) continue;
+    if (t.userCategory || t.pairId) continue;
     const k = Math.abs(t.amount);
     if (!byAbs.has(k)) byAbs.set(k, []);
     byAbs.get(k).push(t);
   }
   for (const group of byAbs.values()) {
     if (group.length < 2) continue;
-    const outs = group.filter((t) => t.amount < 0 && !t.pairId);
-    const ins = group.filter((t) => t.amount > 0 && !t.pairId);
+    const outs = group.filter((t) => t.amount < 0).sort((a, b) => a.date.localeCompare(b.date));
+    const ins = group.filter((t) => t.amount > 0);
     for (const o of outs) {
-      const match = ins.find((i) => !i.pairId && i.accountId !== o.accountId && Math.abs(daysBetween(o.date, i.date)) <= 4);
-      if (match) {
-        o.pairId = match.id; match.pairId = o.id;
-        // Paying off a credit card from a current account: the card purchases are the real spending.
-        // Money moved into a savings account counts toward your savings rate.
-        o.category = accountsById[match.accountId]?.type === 'savings' ? 'savings' : 'transfer';
-        match.category = 'transfer';
+      let best = null, bestGap = 8;
+      for (const i of ins) {
+        if (i.pairId || i.accountId === o.accountId) continue;
+        const gap = Math.abs(daysBetween(o.date, i.date));
+        if (gap < bestGap) { best = i; bestGap = gap; }
       }
+      if (best) {
+        o.pairId = best.id; best.pairId = o.id;
+        // Into savings counts toward your savings rate; out of savings counts against it.
+        const intoSavings = accountsById[best.accountId]?.type === 'savings';
+        const outOfSavings = accountsById[o.accountId]?.type === 'savings';
+        o.category = intoSavings && !outOfSavings ? 'savings' : 'transfer';
+        best.category = outOfSavings && !intoSavings ? 'savings' : 'transfer';
+      }
+    }
+  }
+  const ownBanks = ownBanksOf(accountsById);
+  const names = ownNames.map((n) => n.toUpperCase().replace(/[^A-Z ]/g, ' ').replace(/\s+/g, ' ').trim()).filter((n) => n.length >= 3);
+  for (const t of txs) {
+    if (t.userCategory || t.pairId) continue;
+    const acc = accountsById[t.accountId];
+    if (acc?.type === 'savings') {
+      if (!/\b(INTEREST|BONUS)\b/i.test(t.description)) { t.category = 'transfer'; t.autoTransfer = true; }
+      continue;
+    }
+    if (['income', 'other', 'transfer'].includes(t.category) && looksLikeOwnTransfer(t, { ownBanks, ownNames: names })) {
+      t.category = 'transfer'; t.autoTransfer = true;
     }
   }
   return txs;
