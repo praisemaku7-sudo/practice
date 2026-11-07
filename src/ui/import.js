@@ -12,6 +12,7 @@ import { merchantKey } from '../lib/categorize.js';
 import { overlapReport, fileHash } from '../lib/coverage.js';
 import { matchIncoming } from '../lib/duplicates.js';
 import { looksLikeCreditText, isCardIssuer } from '../lib/credit.js';
+import { isSummaryLine } from '../lib/parse/junk.js';
 
 /** The live import queue, shown by the Import page. */
 export const queue = { items: [], summary: null };
@@ -28,6 +29,12 @@ function guessType(text) {
 }
 
 function applyTrackFrom(parsed) {
+  // Summary-box lines (new balance, purchase rate, minimum payment...) are never transactions.
+  const junk = parsed.transactions.filter((t) => isSummaryLine(t.description));
+  if (junk.length) {
+    parsed = { ...parsed, transactions: parsed.transactions.filter((t) => !isSummaryLine(t.description)), warnings: [`Ignored ${junk.length} statement summary line${junk.length > 1 ? 's' : ''} (balances, rates, minimum payment).`, ...(parsed.warnings || [])] };
+    if (/credit|purchase rate|minimum/i.test(junk.map((t) => t.description).join(' '))) parsed.accountType = 'credit';
+  }
   const from = state.settings.trackFrom;
   if (!from) return parsed;
   const kept = parsed.transactions.filter((t) => t.date >= from);

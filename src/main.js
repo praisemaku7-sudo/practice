@@ -1,5 +1,5 @@
 import './styles.css';
-import { state, load, recompute, relinkTransfers, saveSettings } from './state.js';
+import { state, load, recompute, relinkTransfers, saveSettings, removeSummaryLines } from './state.js';
 import { db, requestPersistence } from './lib/db.js';
 import { toTransactions } from './lib/importer.js';
 import { demoData } from './lib/demo.js';
@@ -144,6 +144,14 @@ document.addEventListener('focusout', () => { if (pendingRender) { pendingRender
   }
   requestPersistence();
   // One-off: re-run transfer detection on existing data when the rules improve.
+  if ((state.settings.junkCleanVersion || 0) < 1) {
+    const junk = await removeSummaryLines();
+    await saveSettings({ junkCleanVersion: 1 });
+    if (junk.length) {
+      recompute();
+      setTimeout(() => toast(`Removed ${junk.length} statement summary line${junk.length > 1 ? 's' : ''} (e.g. "${junk[0].description.slice(0, 24)}") that were wrongly counted as payments`), 600);
+    }
+  }
   if (state.txs.length && (state.settings.transferRulesVersion || 1) < 2) {
     await relinkTransfers();
     await saveSettings({ transferRulesVersion: 2 });

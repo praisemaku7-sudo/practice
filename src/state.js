@@ -8,6 +8,7 @@ import { categorize } from './lib/categorize.js';
 import { statementCoverage } from './lib/coverage.js';
 import { cardSummary, suspectedCreditCards } from './lib/credit.js';
 import { findStoredDuplicates } from './lib/duplicates.js';
+import { isSummaryLine } from './lib/parse/junk.js';
 
 export const DEFAULT_SETTINGS = {
   income: null,          // pence/month; null = estimate from statements
@@ -92,6 +93,16 @@ export async function relinkTransfers() {
   markTransfers(state.txs, byAcc, { ownNames: state.settings.ownNames || [] });
   const changed = state.txs.filter((t) => before.get(t.id) !== t.category + '|' + (t.pairId || '') + '|' + (t.autoTransfer ? 1 : 0));
   if (changed.length) await db.putMany('tx', changed);
+}
+
+/** Remove statement summary lines (balances, rates…) that were saved as transactions. */
+export async function removeSummaryLines() {
+  const all = await db.all('tx');
+  const junk = all.filter((t) => !t.manual && isSummaryLine(t.description));
+  for (const t of junk) await db.del('tx', t.id);
+  const ids = new Set(junk.map((t) => t.id));
+  state.txs = state.txs.filter((t) => !ids.has(t.id));
+  return junk;
 }
 
 export async function wipeAll() {
