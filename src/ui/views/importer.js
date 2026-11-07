@@ -2,7 +2,7 @@ import { state } from '../../state.js';
 import { esc } from '../dom.js';
 import { fmt } from '../../lib/money.js';
 import { prettyDate, monthLabel } from '../../lib/dates.js';
-import { queue, commitAll, clearQueue, pickFiles, busyCount } from '../import.js';
+import { queue, commitAll, clearQueue, pickFiles, busyCount, retryFailed, reimportAllDuplicates } from '../import.js';
 
 const STATUS = {
   queued: ['Waiting', ''],
@@ -26,18 +26,19 @@ function itemCard(it) {
   let body = '';
   if (it.status === 'reading' || it.status === 'ai' || it.status === 'queued') {
     body = `<div class="pbar ${it.status === 'ai' ? '' : 'indeterminate'}"><span style="width:${pct ?? 35}%"></span></div>
-      <div class="sub">${it.status === 'ai' ? `Balances didn't add up on-device, so Claude is checking it${it.progress?.total > 1 ? `: part ${it.progress.done}/${it.progress.total}, read in parallel` : ''}` : it.status === 'queued' ? 'Waiting for a free slot' : 'Reading on your phone'}</div>`;
+      <div class="sub">${it.status === 'ai' ? `Claude is reading it because ${esc(it.aiReason || 'it needs checking')}${it.progress?.total > 1 ? ` · part ${it.progress.done}/${it.progress.total}` : ''}. If your account's limit is reached it waits and retries automatically.` : it.status === 'queued' ? 'Waiting for a free slot' : 'Reading on your phone'}</div>`;
   } else if (it.status === 'error') {
-    body = `<div class="alert">${esc(it.error)}</div>`;
+    body = `<div class="alert">${esc(it.error)}</div>${/Not a PDF or CSV/.test(it.error) ? '' : `<button class="btn ghost full" data-action="imp-retry" data-id="${it.id}">Retry</button>`}`;
   } else if (it.status === 'imported') {
-    body = `<div class="sub">${it.result.added} new transaction${it.result.added === 1 ? '' : 's'} → ${esc(it.result.account)}${it.result.dupes ? ` · ${it.result.dupes} already there` : ''}</div>`;
+    body = `<div class="sub">${it.result.added} transaction${it.result.added === 1 ? '' : 's'} → ${esc(it.result.account)}${it.result.replaced ? ` · replaced ${it.result.replaced} saved before` : ''}${it.result.dupes ? ` · ${it.result.dupes} already there` : ''}</div>`;
   } else if (p) {
     const badge = p.verified
       ? `<span class="pill ok">✓ Balances check out</span>`
       : p.method === 'Claude' ? '<span class="pill">Read by Claude</span>' : txs.length ? `<span class="pill warn">Check the amounts</span>` : '';
     body = `
-      ${it.prior ? `<div class="alert">Exact same file as one imported ${new Date(it.prior.at).toLocaleDateString('en-GB')}.</div>` : ''}
-      ${!it.prior && it.overlap?.likelyDuplicate ? `<div class="alert">Already imported: ${it.overlap.matched} of ${it.overlap.total} transactions are saved${ovAcc ? ` in ${esc(ovAcc.name)}` : ''}.</div>` : ''}
+      ${it.prior ? `<div class="tip-box">Imported before on ${new Date(it.prior.at).toLocaleDateString('en-GB')} (${it.prior.count} transactions${it.prior.method ? `, read ${esc(it.prior.method)}` : ''}). Tick <b>Import</b> to read it again and <b>replace</b> what was saved.</div>` : ''}
+      ${!it.prior && it.overlap?.likelyDuplicate ? `<div class="tip-box">Already imported: ${it.overlap.matched} of ${it.overlap.total} transactions are saved${ovAcc ? ` in ${esc(ovAcc.name)}` : ''}. Tick <b>Import</b> to replace them with this read.</div>` : ''}
+      ${it.include && it.replace && txs.length ? `<div class="sub warn-text">Will replace the saved transactions for this account from ${prettyDate(dates[0])} to ${prettyDate(dates[dates.length - 1])}.</div>` : ''}
       ${!it.prior && it.overlap?.partialOverlap ? `<div class="tip-box">${it.overlap.matched} overlap an earlier statement. Only ${it.overlap.total - it.overlap.matched} new will be added.</div>` : ''}
       ${(p.warnings || []).map((w) => `<div class="sub warn-text">• ${esc(w)}</div>`).join('')}
       ${txs.length ? `<div class="imp-stats"><b>${txs.length}</b> transactions · ${prettyDate(dates[0])}–${prettyDate(dates[dates.length - 1])} · <span class="pos">${fmt(inSum, { whole: true })} in</span> · ${fmt(outSum, { whole: true })} out</div>
@@ -78,17 +79,23 @@ export function render() {
   }
   const busy = busyCount();
   const ready = items.filter((i) => i.status === 'ready' && i.include);
-  const txCount = ready.reduce((a, i) => a + i.parsed.transactions.length - (i.overlap?.matched || 0), 0);
+  const txCount = ready.reduce((a, i) => a + i.parsed.transactions.length - (i.replace ? 0 : (i.overlap?.matched || 0)), 0);
   const done = items.filter((i) => ['ready', 'imported', 'skipped', 'error'].includes(i.status)).length;
+  const failed = items.filter((i) => i.status === 'error' && !/Not a PDF or CSV/.test(i.error || ''));
+  const dupes = items.filter((i) => i.status === 'ready' && !i.include && i.parsed?.transactions.length && (i.prior || i.overlap?.likelyDuplicate));
   const missing = state.derived.coverage.missing;
+  const order = { error: 0, ready: 1, ai: 2, reading: 3, queued: 4, imported: 5, skipped: 6 };
+  const sorted = [...items].sort((a, b) => order[a.status] - order[b.status]);
   return `<h1 class="page-title">Import <small>${done}/${items.length} read</small></h1>
-  ${queue.summary ? `<div class="card verdict yes"><div class="verdict-head"><span class="verdict-icon">✓</span><div><div class="verdict-word">${queue.summary.added} transactions added</div><div>from ${queue.summary.files} file${queue.summary.files === 1 ? '' : 's'}</div></div></div>
-    ${missing.length ? `<h4>Still missing</h4>${missing.slice(0, 8).map((m) => `<div class="list-row"><span class="bank-badge warn">!</span><div class="grow"><b>${esc(m.accountName)}</b><div class="sub">${esc(monthLabel(m.month))}</div></div></div>`).join('')}` : '<p class="good-note">No statements missing ✓</p>'}
+  ${queue.summary ? `<div class="card verdict yes"><div class="verdict-head"><span class="verdict-icon">✓</span><div><div class="verdict-word">${queue.summary.added} transactions added</div><div>from ${queue.summary.files} file${queue.summary.files === 1 ? '' : 's'}${busy ? ` · ${busy} still reading` : ''}</div></div></div>
+    ${!busy ? (missing.length ? `<h4>Still missing</h4>${missing.slice(0, 8).map((m) => `<div class="list-row"><span class="bank-badge warn">!</span><div class="grow"><b>${esc(m.accountName)}</b><div class="sub">${esc(monthLabel(m.month))}</div></div></div>`).join('')}` : '<p class="good-note">No statements missing ✓</p>') : ''}
     <div class="row gap"><button class="btn ghost grow" data-action="import">Add more</button><a class="btn primary grow" href="#/home" data-action="imp-done">Done</a></div></div>` : ''}
-  ${items.map(itemCard).join('')}
-  ${!queue.summary ? `<div class="sticky-cta">
+  ${failed.length ? `<div class="card banner bad"><b>${failed.length} file${failed.length > 1 ? 's' : ''} couldn't be read</b><span class="sub">${esc(failed[0].error)}</span><button class="btn primary full" data-action="imp-retry">Retry ${failed.length > 1 ? 'all' : ''}</button></div>` : ''}
+  ${dupes.length ? `<div class="card banner"><b>${dupes.length} file${dupes.length > 1 ? 's were' : ' was'} imported before</b><span class="sub">Skipped so nothing doubles up. If those earlier imports came out wrong (before the AI key was added), re-import them: the old transactions for those dates are replaced.</span><button class="btn primary full" data-action="imp-reimport-all">Re-import ${dupes.length} &amp; replace old data</button></div>` : ''}
+  ${sorted.map(itemCard).join('')}
+  ${ready.length || busy ? `<div class="sticky-cta">
     <button class="btn ghost" data-action="import">＋ More</button>
-    <button class="btn primary grow" data-action="imp-commit" ${busy || !ready.length ? 'disabled' : ''}>${busy ? `Reading ${busy} file${busy === 1 ? '' : 's'}…` : ready.length ? `Import ${ready.length} file${ready.length === 1 ? '' : 's'} · ${txCount} new` : 'Nothing to import'}</button>
+    <button class="btn primary grow" data-action="imp-commit" ${!ready.length ? 'disabled' : ''}>${ready.length ? `Import ${ready.length} file${ready.length === 1 ? '' : 's'} · ${txCount}${busy ? ` · ${busy} still reading` : ''}` : `Reading ${busy} file${busy === 1 ? '' : 's'}…`}</button>
   </div>` : ''}`;
 }
 
@@ -108,11 +115,19 @@ export const actions = {
   'imp-commit': async (_, rerender) => { await commitAll(); rerender(); window.scrollTo(0, 0); },
   'imp-preview': (el, rerender) => { const it = find(el); it.showPreview = !it.showPreview; rerender(); },
   'imp-done': () => { clearQueue(); location.hash = '#/home'; },
+  'imp-retry': (el, rerender) => { retryFailed(el.dataset.id); rerender(); },
+  'imp-reimport-all': (_, rerender) => { reimportAllDuplicates(); rerender(); },
 };
 export const changes = {
   'imp-acc': (el, rerender) => { find(el).accountChoice = el.value; rerender(); },
   'imp-type': (el) => { find(el).newAccount.type = el.value; },
-  'imp-include': (el, rerender) => { find(el).include = el.checked; rerender(); },
+  'imp-include': (el, rerender) => {
+    const it = find(el);
+    it.include = el.checked;
+    // Ticking a file that was imported before means "read it again and replace the old data".
+    it.replace = el.checked && !!(it.prior || it.overlap?.likelyDuplicate);
+    rerender();
+  },
   'imp-flip': (el, rerender) => { find(el).flip = el.checked; rerender(); },
 };
 export const inputs = {
