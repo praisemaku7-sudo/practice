@@ -16,14 +16,28 @@ const CAT_IDS = CATEGORIES.map((c) => c.id);
 function client(apiKey) {
   if (!apiKey) throw new Error('Add your Claude API key in Settings to use AI features.');
   // The key never leaves this device except to api.anthropic.com.
-  return new Anthropic({ apiKey, dangerouslyAllowBrowser: true, maxRetries: 2 });
+  // Generous retries: the SDK waits for the API's retry-after on rate limits (429) and overloads (529).
+  return new Anthropic({ apiKey, dangerouslyAllowBrowser: true, maxRetries: 6 });
 }
 
 /**
  * One structured request. Uses server-side refusal fallbacks where the model supports them,
  * and retries once without that beta if the account/model rejects it.
  */
-async function structured({ apiKey, model = DEFAULT_MODEL, system, content, schema, maxTokens = 16000, effort }) {
+// At most 3 Claude requests in flight across ALL files, so a big batch doesn't hit the account's
+// rate limit (new API accounts have low per-minute limits).
+const MAX_IN_FLIGHT = 3;
+let inFlight = 0;
+const waiting = [];
+async function limited(fn) {
+  if (inFlight >= MAX_IN_FLIGHT) await new Promise((r) => waiting.push(r));
+  inFlight += 1;
+  try { return await fn(); } finally { inFlight -= 1; waiting.shift()?.(); }
+}
+
+function structured(args) { return limited(() => structuredNow(args)); }
+
+async function structuredNow({ apiKey, model = DEFAULT_MODEL, system, content, schema, maxTokens = 16000, effort }) {
   const c = client(apiKey);
   const base = {
     model,
@@ -53,7 +67,9 @@ async function structured({ apiKey, model = DEFAULT_MODEL, system, content, sche
 
 function friendlyError(err) {
   if (err instanceof Anthropic.AuthenticationError) return new Error('Your Claude API key was rejected. Check it in Settings.');
-  if (err instanceof Anthropic.RateLimitError) return new Error('Rate limited by the Claude API. Wait a minute and try again.');
+  if (err instanceof Anthropic.RateLimitError) return new Error('Your Claude account hit its per-minute limit. Wait a minute, then tap Retry. (Limits rise automatically as your account is used.)');
+  if (err instanceof Anthropic.APIError && err.status === 529) return new Error('Claude is busy right now. Tap Retry in a minute.');
+  if (err instanceof Anthropic.APIError && err.status === 400 && /credit balance/i.test(err.message)) return new Error('Your Claude API credit has run out. Top up at console.anthropic.com, then tap Retry.');
   if (err instanceof Anthropic.APIConnectionError) return new Error("Couldn't reach the Claude API. Are you online?");
   if (err instanceof Anthropic.APIError) return new Error(`Claude API error: ${err.message}`);
   return err;

@@ -64,6 +64,7 @@ async function readPdf(item, buf) {
     return { ...meta, transactions: [], warnings: ['This looks like a scanned PDF with no text. Add a Claude API key in Settings to read it, or import a CSV instead.'], method: 'on-device', verified: false };
   }
   item.status = 'ai';
+  item.aiReason = !res.hasText ? "it's a scanned PDF" : pdfMode === 'always' ? 'you chose to always check with Claude' : "the balances didn't add up on your phone";
   changed();
   const onProgress = (done, total) => { item.progress = { done, total }; changed(); };
   const r = res.hasText
@@ -73,7 +74,10 @@ async function readPdf(item, buf) {
   return { ...meta, ...r, bank: r.bank || meta.bank, accountRef: r.accountRef || meta.accountRef, method: 'Claude', verified: check.confident, check };
 }
 
+const isCsv = (f) => /\.(csv|txt)$/i.test(f.name) || /csv|comma-separated|text\/plain/.test(f.type);
+
 async function readFile(item) {
+  if (!isPdf(item.file) && !isCsv(item.file)) throw new Error('Not a PDF or CSV statement, so it was skipped.');
   const buf = await item.file.arrayBuffer();
   try { item.hash = await fileHash(buf); } catch { item.hash = null; }
   const prior = item.hash && state.imports.find((i) => i.fileHash === item.hash);
@@ -180,6 +184,20 @@ async function commitItem(item) {
 
   const importId = 'imp-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
   const rows = item.flip ? p.transactions.map((r) => ({ ...r, amount: -r.amount })) : p.transactions;
+  let replacedOld = 0;
+  if (item.replace && rows.length) {
+    // Re-import: throw away what was saved for this account over this statement's dates
+    // (e.g. an earlier bad read), then save the new read.
+    const ds = rows.map((r) => r.date).sort();
+    const from = ds[0], to = ds[ds.length - 1];
+    const old = state.txs.filter((t) => t.accountId === account.id && !t.manual && t.date >= from && t.date <= to);
+    for (const t of old) await db.del('tx', t.id);
+    const oldIds = new Set(old.map((t) => t.id));
+    state.txs = state.txs.filter((t) => !oldIds.has(t.id));
+    replacedOld = old.length;
+    for (const i of state.imports.filter((x) => item.hash && x.fileHash === item.hash)) { await db.del('imports', i.id); }
+    state.imports = state.imports.filter((x) => !(item.hash && x.fileHash === item.hash));
+  }
   const txs = toTransactions(rows, { accountId: account.id, importId, source: p.method, userRules: state.settings.userRules });
   const exact = dedupe(txs, new Set(state.txs.map((t) => t.id)));
   // Also skip payments already saved on this account with a slightly different date or wording.
@@ -213,7 +231,7 @@ async function commitItem(item) {
   state.imports.push(rec);
   await db.put('imports', rec);
   item.status = 'imported';
-  item.result = { added: fresh.length, dupes: dupes.length, account: account.name };
+  item.result = { added: fresh.length, dupes: dupes.length, account: account.name, replaced: replacedOld };
   return { added: fresh.length, lastDate };
 }
 
@@ -225,11 +243,26 @@ export async function commitAll() {
     added += r.added;
     if (r.lastDate > latest) latest = r.lastDate;
   }
-  for (const i of queue.items) if (i.status === 'ready' && !i.include) i.status = 'skipped';
+  // Only mark as skipped once nothing is still being read (you may import in several goes).
+  if (!busyCount()) for (const i of queue.items) if (i.status === 'ready' && !i.include) i.status = 'skipped';
   await relinkTransfers();
   recompute();
   if (latest) state.month = monthKey(latest);
-  queue.summary = { added, files: ready.length };
+  const prev = queue.summary || { added: 0, files: 0 };
+  queue.summary = { added: prev.added + added, files: prev.files + ready.length };
+  changed();
+}
+
+/** Read failed files again. */
+export function retryFailed(id) {
+  for (const i of queue.items) if (i.status === 'error' && (!id || i.id === id) && !/Not a PDF or CSV/.test(i.error || '')) { i.status = 'queued'; i.error = null; i.progress = null; }
+  changed();
+  drain();
+}
+
+/** Tick every already-imported file for re-import, replacing what was saved before. */
+export function reimportAllDuplicates() {
+  for (const i of queue.items) if (i.status === 'ready' && i.parsed?.transactions.length && (i.prior || i.overlap?.likelyDuplicate)) { i.include = true; i.replace = true; }
   changed();
 }
 
