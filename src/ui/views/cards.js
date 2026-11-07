@@ -89,6 +89,7 @@ export const actions = {
   'mark-credit': async (el, rerender) => {
     const a = state.accounts.find((x) => x.id === el.dataset.id);
     a.type = 'credit';
+    a.typeLocked = true;
     if (a.balance != null && a.balance > 0) a.balance = -a.balance; // owed is stored as negative
     await db.put('accounts', a);
     recompute(); rerender();

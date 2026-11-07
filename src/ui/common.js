@@ -2,6 +2,7 @@ import { esc } from './dom.js';
 import { monthLabel } from '../lib/dates.js';
 import { CAT } from '../lib/categories.js';
 import { fmt } from '../lib/money.js';
+import { state } from '../state.js';
 
 export function monthSwitcher(month, months) {
   const i = months.indexOf(month);
@@ -34,4 +35,14 @@ export function emptyState({ title, body, cta = true }) {
     ${cta ? `<button class="btn primary" data-action="import">Import a statement</button>
     <button class="btn ghost" data-action="load-demo">Try with sample data</button>` : ''}
   </div>`;
+}
+
+/**
+ * A banner you can close with ×. It stays hidden until its situation changes
+ * (the signature differs), e.g. a new missing statement appears.
+ */
+export function hideable(key, sig, html) {
+  if (!html) return '';
+  if ((state.settings.hiddenBanners || {})[key] === String(sig)) return '';
+  return `<div class="hideable">${html}<button class="banner-x" data-action="banner-hide" data-key="${esc(key)}" data-sig="${esc(String(sig))}" aria-label="Hide this">×</button></div>`;
 }

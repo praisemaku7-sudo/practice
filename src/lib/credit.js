@@ -19,7 +19,7 @@ export function looksLikeCreditText(text) {
 /** Accounts that look like credit cards but are filed as current/savings. */
 export function suspectedCreditCards(accounts, txs) {
   return accounts.filter((a) => {
-    if (a.type === 'credit') return false;
+    if (a.type === 'credit' || a.typeLocked) return false;
     if (ISSUERS.test(`${a.bank || ''} ${a.name || ''}`) || /\b(card|credit)\b/i.test(a.name || '')) return true;
     const mine = txs.filter((t) => t.accountId === a.id);
     if (!mine.length) return false;

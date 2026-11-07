@@ -55,6 +55,10 @@ async function route() {
 
 const globalActions = {
   'close-sheet': () => closeSheet(),
+  'banner-hide': async (el) => {
+    await saveSettings({ hiddenBanners: { ...(state.settings.hiddenBanners || {}), [el.dataset.key]: el.dataset.sig } });
+    render();
+  },
   'set-month': (el) => { if (el.dataset.month) { state.month = el.dataset.month; render(); } },
   go: (el) => {
     const q = el.dataset.cat ? `?cat=${el.dataset.cat}` : '';

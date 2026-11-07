@@ -27,7 +27,8 @@ export const DEFAULT_SETTINGS = {
   wishlist: [],          // [{id, item, price, category, added}]
   cardPayoff: null,      // pence/month extra toward credit cards
   cardMethod: 'avalanche',
-  ownNames: [],          // how your name appears on transfers between your own accounts
+  ownNames: [],
+  hiddenBanners: {},     // banner key -> signature when you closed it          // how your name appears on transfers between your own accounts
   bufferPence: 5000,     // keep at least £50 after bills
 };
 
