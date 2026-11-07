@@ -3,11 +3,12 @@
 // and writing the monthly coaching report. Every feature also works without it.
 import Anthropic from '@anthropic-ai/sdk';
 import { CATEGORIES } from './categories.js';
+import { chunkPages } from './parse/layout.js';
 
 export const MODELS = [
-  { id: 'claude-opus-5-5', label: 'Claude Opus 5.5 (best)' },
-  { id: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5 (cheaper)' },
-  { id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5 (cheapest)' },
+  { id: 'claude-opus-5-5', label: 'Claude Opus 5.5 (most accurate)' },
+  { id: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5 (faster, half the cost)' },
+  { id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5 (fastest, cheapest)' },
 ];
 export const DEFAULT_MODEL = 'claude-opus-5-5';
 const CAT_IDS = CATEGORIES.map((c) => c.id);
@@ -58,54 +59,108 @@ function friendlyError(err) {
   return err;
 }
 
-const TX_SCHEMA = {
+// Compact schema: short keys mean fewer output tokens, and output tokens are what make extraction slow.
+const CHUNK_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['bank', 'account_name', 'account_type', 'statement_start', 'statement_end', 'closing_balance', 'transactions'],
+  required: ['bank', 'account_name', 'account_type', 'account_last4', 'period_start', 'period_end', 'closing_balance', 'tx'],
   properties: {
-    bank: { type: 'string' },
-    account_name: { type: 'string' },
+    bank: { type: ['string', 'null'] },
+    account_name: { type: ['string', 'null'] },
     account_type: { type: 'string', enum: ['current', 'savings', 'credit'] },
-    statement_start: { type: ['string', 'null'], description: 'Statement period start, YYYY-MM-DD' },
-    statement_end: { type: ['string', 'null'], description: 'Statement period end, YYYY-MM-DD' },
+    account_last4: { type: ['string', 'null'], description: 'Last 4 digits of account or card number' },
+    period_start: { type: ['string', 'null'], description: 'YYYY-MM-DD' },
+    period_end: { type: ['string', 'null'], description: 'YYYY-MM-DD' },
     closing_balance: { type: ['number', 'null'] },
-    transactions: {
+    tx: {
       type: 'array',
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['date', 'description', 'amount'],
+        required: ['d', 't', 'a', 'b'],
         properties: {
-          date: { type: 'string', description: 'YYYY-MM-DD' },
-          description: { type: 'string' },
-          amount: { type: 'number', description: 'GBP. Negative = money leaving the account, positive = money arriving.' },
-          balance: { type: ['number', 'null'] },
+          d: { type: 'string', description: 'date YYYY-MM-DD' },
+          t: { type: 'string', description: 'description, as printed' },
+          a: { type: 'number', description: 'GBP; negative = money out, positive = money in' },
+          b: { type: ['number', 'null'], description: 'running balance if printed on that row' },
         },
       },
     },
   },
 };
 
-/** Read a whole bank statement PDF. Returns pence-based transactions. */
-export async function aiReadStatement({ apiKey, model, pdfBase64 }) {
-  const r = await structured({
-    apiKey, model, maxTokens: 64000,
-    system: 'You extract transactions from UK bank and credit-card statements with perfect accuracy. Include every transaction row exactly once. Skip balance brought/carried forward rows and summary totals. For credit cards, purchases are negative and payments to the card are positive.',
-    content: [
-      { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 } },
-      { type: 'text', text: 'Extract all transactions from this statement.' },
-    ],
-    schema: TX_SCHEMA,
+const STATEMENT_SYSTEM = 'You extract transactions from UK bank and credit-card statements with perfect accuracy. Include every transaction row in the excerpt exactly once, in order. Skip "balance brought/carried forward" rows and summary totals. Merge multi-line descriptions into one. For credit cards, purchases are negative and payments to the card are positive. Use the statement period to give every date a year. If a header field is not in this excerpt, use null.';
+
+/** Run async tasks with a concurrency limit. */
+async function pool(items, limit, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) { const i = next++; results[i] = await fn(items[i], i); }
   });
+  await Promise.all(workers);
+  return results;
+}
+
+function mergeChunks(results) {
+  const first = (k) => results.map((r) => r[k]).find((v) => v != null && v !== '');
   const p = (n) => (n == null ? null : Math.round(n * 100));
+  const closing = [...results].reverse().map((r) => r.closing_balance).find((v) => v != null);
+  const txs = results.flatMap((r) => r.tx)
+    .filter((t) => /^\d{4}-\d{2}-\d{2}$/.test(t.d) && t.a)
+    .map((t) => ({ date: t.d, description: t.t, amount: p(t.a), balance: p(t.b) }));
   return {
-    bank: r.bank, accountName: r.account_name, accountType: r.account_type, closingBalance: p(r.closing_balance),
-    period: { start: r.statement_start, end: r.statement_end },
-    transactions: r.transactions.filter((t) => /^\d{4}-\d{2}-\d{2}$/.test(t.date) && t.amount).map((t) => ({
-      date: t.date, description: t.description, amount: p(t.amount), balance: p(t.balance),
-    })),
+    bank: first('bank'), accountName: first('account_name'), accountType: first('account_type') || 'current',
+    accountRef: first('account_last4')?.slice(-4) || null,
+    closingBalance: p(closing ?? null),
+    period: { start: first('period_start'), end: [...results].reverse().map((r) => r.period_end).find(Boolean) || null },
+    transactions: txs,
     warnings: [],
   };
+}
+
+/**
+ * Read a statement from its extracted text, splitting pages into chunks that are read in parallel.
+ * Each chunk also gets the first lines of page 1 so it knows the bank and statement period.
+ */
+export async function aiReadStatementText({ apiKey, model, pageTexts, onProgress }) {
+  const chunks = chunkPages(pageTexts);
+  const header = pageTexts[0].split('\n').slice(0, 25).join('\n');
+  let done = 0;
+  onProgress?.(0, chunks.length);
+  const results = await pool(chunks, 4, async (c) => {
+    const r = await structured({
+      apiKey, model, effort: 'low', maxTokens: 32000,
+      system: STATEMENT_SYSTEM,
+      content: [{ type: 'text', text: `Statement header (page 1, for context only):\n${header}\n\nExtract the transactions from pages ${c.from}-${c.to} of ${pageTexts.length}:\n\n${c.text}` }],
+      schema: CHUNK_SCHEMA,
+    });
+    onProgress?.(++done, chunks.length);
+    return r;
+  });
+  return mergeChunks(results);
+}
+
+/** Scanned statement: send page images, two pages per request, in parallel. */
+export async function aiReadStatementImages({ apiKey, model, images, onProgress }) {
+  const chunks = [];
+  for (let i = 0; i < images.length; i += 2) chunks.push({ from: i + 1, imgs: images.slice(i, i + 2) });
+  let done = 0;
+  onProgress?.(0, chunks.length);
+  const results = await pool(chunks, 4, async (c) => {
+    const r = await structured({
+      apiKey, model, effort: 'low', maxTokens: 32000,
+      system: STATEMENT_SYSTEM,
+      content: [
+        ...c.imgs.map((data) => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } })),
+        { type: 'text', text: `These are pages ${c.from}-${c.from + c.imgs.length - 1} of ${images.length} of a bank statement. Extract the transactions.` },
+      ],
+      schema: CHUNK_SCHEMA,
+    });
+    onProgress?.(++done, chunks.length);
+    return r;
+  });
+  return mergeChunks(results);
 }
 
 /** Read the item and price from a product photo or screenshot. */
@@ -135,7 +190,7 @@ export async function aiReadPrice({ apiKey, model, imageBase64, mediaType }) {
 /** Monthly coaching report from aggregated numbers (no raw transaction list is sent). */
 export async function aiMonthlyReport({ apiKey, model, summary }) {
   return structured({
-    apiKey, model, effort: 'high', maxTokens: 16000,
+    apiKey, model, effort: 'medium', maxTokens: 16000,
     system: 'You are a blunt, practical UK personal-finance coach. Use the numbers given; never invent figures. Prefer specific, actionable steps with £ amounts. UK context: ISAs, Current Account Switch Service, energy/broadband/mobile switching, council tax bands, cashback, haggling at contract end.',
     content: [{ type: 'text', text: `Here is my month in numbers (GBP). Give me my monthly review and plan for next month.\n\n${JSON.stringify(summary, null, 1)}` }],
     schema: {

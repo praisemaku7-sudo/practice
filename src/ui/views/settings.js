@@ -15,9 +15,13 @@ export function render() {
     <p class="muted">Reads any bank's PDF layout, reads prices from photos, and writes your monthly review. You pay Anthropic directly for usage (usually a few pence per statement). Get a key at console.anthropic.com.</p>
     <label class="field"><span>API key</span><input id="st-key" type="password" autocomplete="off" placeholder="sk-ant-…" value="${esc(s.apiKey)}"></label>
     <label class="field select"><span>Model</span><select data-change="st-model">${MODELS.map((m) => `<option value="${m.id}" ${s.model === m.id ? 'selected' : ''}>${esc(m.label)}</option>`).join('')}</select></label>
-    <label class="toggle"><input type="checkbox" data-change="st-aipdf" ${s.useAIForPDF ? 'checked' : ''}> Read PDFs with Claude (more accurate; sends the PDF to Anthropic)</label>
+    <label class="field select"><span>PDFs</span><select data-change="st-pdfmode">
+      <option value="auto" ${s.pdfMode === 'auto' ? 'selected' : ''}>On phone first, Claude only if needed (fastest)</option>
+      <option value="always" ${s.pdfMode === 'always' ? 'selected' : ''}>Always double-check with Claude</option>
+      <option value="never" ${s.pdfMode === 'never' ? 'selected' : ''}>Never send PDFs to Claude</option></select></label>
+    <p class="sub">"Only if needed" means a statement's printed balances didn't add up on the phone, or it's a scan. Claude gets the statement's text, not the PDF file, split into parts read in parallel. For the quickest reads choose Haiku 5.5 above.</p>
     <div class="row gap"><button class="btn ghost grow" data-action="st-test">Test key</button><button class="btn primary grow" data-action="st-save-key">Save key</button></div>
-    <p class="sub">Your key is stored only on this device and sent only to api.anthropic.com. Statement PDFs go to Anthropic only when "Read PDFs with Claude" is on. Monthly reviews send totals, not transactions.</p>
+    <p class="sub">Your key is stored only on this device and sent only to api.anthropic.com. Statement text goes to Anthropic only when a PDF needs Claude (see PDFs above). Monthly reviews send totals, not transactions.</p>
   </div>
   <div class="card">
     <h3>Track from</h3>
@@ -90,7 +94,7 @@ export const actions = {
 
 export const changes = {
   'st-model': async (el) => { await saveSettings({ model: el.value }); toast('Model updated'); },
-  'st-aipdf': async (el) => { await saveSettings({ useAIForPDF: el.checked }); },
+  'st-pdfmode': async (el) => { await saveSettings({ pdfMode: el.value }); },
   'st-restore': async (el, rerender) => {
     const file = el.files?.[0];
     if (!file) return;

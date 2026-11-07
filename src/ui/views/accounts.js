@@ -33,6 +33,7 @@ export function render() {
   <div class="card">
     <h3>Regular payments (${outRec.length}) · ${fmt(outRec.reduce((a, r) => a + r.amount, 0), { whole: true })}/mo</h3>
     ${outRec.map((r) => `<div class="list-row">${catChip(r.category)}<div class="grow">${esc(r.name)}<div class="sub">${esc(r.type)} · ${esc(accName(r.accountId))} · next ${prettyDate(r.nextDue)}${r.priceChange > 0 ? ` · <span class="neg">up ${fmt(r.priceChange)}</span>` : ''}</div></div><b>${fmt(r.amount)}</b></div>`).join('') || '<p class="muted">Payments that repeat monthly show up here once two months of statements are imported.</p>'}
+    ${outRec.length ? '<a class="btn ghost full" href="#/bills">Calendar &amp; cancel list</a>' : ''}
   </div>
 
   <div class="card">

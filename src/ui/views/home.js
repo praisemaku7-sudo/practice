@@ -7,6 +7,7 @@ import { catName } from '../../lib/categories.js';
 import { monthKey, addMonths, monthLabel, prettyDate, nextDayOfMonth, daysBetween } from '../../lib/dates.js';
 import { donut, trendBars, progressBar } from '../charts.js';
 import { monthSwitcher, catChip, delta, emptyState } from '../common.js';
+import { checkinStatus } from './checkin.js';
 
 export function render() {
   const { derived, month } = state;
@@ -52,8 +53,14 @@ export function render() {
       <span class="sub">${monthMissing.length ? `${esc(monthLabel(month))} is incomplete: no statement from ${monthMissing.map((m) => esc(m.accountName)).join(', ')}. Totals will be too low.` : missing.slice(0, 3).map((m) => `${esc(m.accountName)} ${esc(monthLabel(m.month, { short: true }))}`).join(' · ')}</span>
       <span class="banner-go">Review ›</span></a>` : '';
 
+  const ci = checkinStatus();
+  const ciCard = !ci.complete && months.includes(ci.month) ? `<a class="card checkin-card" href="#/checkin">
+      <div><b>${esc(monthLabel(ci.month))} check-in</b><div class="sub">${ci.done}/4 done · import, tidy up, review, plan</div></div>
+      <div class="steps-bar mini">${ci.steps.map((x) => `<span class="${x ? 'on' : ''}"></span>`).join('')}</div><span class="banner-go">›</span></a>` : '';
+
   return `
   ${monthSwitcher(month, months)}
+  ${ciCard}
   ${banner}
   <div class="card hero">
     <div class="hero-row">
@@ -87,6 +94,7 @@ export function render() {
     ${upcoming.slice(0, 8).map((r) => `<div class="list-row">${catChip(r.category)}<div class="grow">${esc(r.name)}<div class="sub">${esc(r.type)} · ${prettyDate(r.nextDue)}</div></div><b>${fmt(r.amount)}</b></div>`).join('')}
     <div class="list-row total"><span class="grow">Total</span><b>${fmt(upcomingTotal)}</b></div>
     ${balance != null ? `<p class="sub">Current-account balance ${fmt(balance)} → ${fmt(balance - upcomingTotal)} after these.</p>` : ''}
+    <a class="btn ghost full" href="#/bills">Bills calendar &amp; subscriptions</a>
   </div>` : ''}
   ${trendData.length > 1 ? `<div class="card"><h3>Last ${trendData.length} months</h3>${trendBars(trendData)}
     <div class="legend"><span><i class="sw in"></i>Income</span><span><i class="sw out"></i>Spent</span></div>
