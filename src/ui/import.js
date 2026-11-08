@@ -535,7 +535,7 @@ export async function applyPayslip(item) {
   const pid = slip.owner || state.settings.people[0].id;
   const scoped = { ...(state.settings.scoped || {}) };
   scoped[pid] = { ...(scoped[pid] || {}), income: slip.monthlyNet };
-  const payslips = { ...(state.settings.payslips || {}), [pid]: { net: slip.net, monthlyNet: slip.monthlyNet, frequency: slip.frequency, payDate: slip.payDate, employer: slip.employer, file: item.name, at: Date.now() } };
+  const payslips = { ...(state.settings.payslips || {}), [pid]: { net: slip.net, gross: slip.gross || null, monthlyNet: slip.monthlyNet, frequency: slip.frequency, payDate: slip.payDate, employer: slip.employer, file: item.name, at: Date.now() } };
   const patch = { scoped, payslips };
   if (state.settings.people.length === 1) patch.income = slip.monthlyNet;
   await saveSettings(patch);

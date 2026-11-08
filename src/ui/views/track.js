@@ -9,7 +9,7 @@ import { monthOutlook, budgetAlerts, history, outlook } from '../../lib/forecast
 import { suggestBudget, isTemporary, planStage, targetFor, realityCheck, debtOrder } from '../../lib/plan.js';
 import { creditChecks } from '../../lib/creditreport.js';
 import { creditReports, togglePlanItem, applyStage } from '../../lib/ontrack-store.js';
-import { saveSettings, recompute } from '../../state.js';
+import { saveSettings, recompute, incomeFor } from '../../state.js';
 import { checkinStatus, targetMonth } from './checkin.js';
 import { catChip } from '../common.js';
 
@@ -47,7 +47,7 @@ export function render() {
   const over = alerts.filter((a) => a.status === 'over'), heading = alerts.filter((a) => a.status === 'heading');
   const housingNow = budget.lines.find((l) => l.category === 'housing')?.hist || 0;
   const mort = s.mortgage?.principal || (s.mortgage?.price && s.mortgage?.deposit != null) ? { ...s.mortgage, principal: s.mortgage.principal ?? s.mortgage.price - s.mortgage.deposit } : null;
-  const ahead = outlook({ txs: state.txs, today, budget, months: 6, mortgage: mort, housingNow });
+  const ahead = outlook({ txs: state.txs, today, budget, months: 6, mortgage: mort, housingNow, incomeFor });
   const past = history({ txs: state.txs, today, n: 6 });
   const [word, wcls] = statusWord[mo.status];
   const plan = s.plan;
@@ -55,7 +55,9 @@ export function render() {
   // Back-on-track plan: from the spreadsheet if you imported one, else from your spending.
   let planHtml;
   if (plan) {
-    const income = plan.income.reduce((a, x) => a + x.monthly, 0) || budget.income;
+    // Your real income (payslips, maternity pay, Child Benefit), not the spreadsheet's figure.
+    const income = budget.income || plan.income.reduce((a, x) => a + x.monthly, 0);
+    const sheetIncome = plan.income.reduce((a, x) => a + x.monthly, 0);
     const stage = planStage(plan, monthKey(today));
     const staged = plan.budget.some((l) => l.stages);
     const nowTotal = plan.budget.reduce((a, l) => a + (l.now || 0), 0), sugTotal = plan.budget.reduce((a, l) => a + (targetFor(l, stage) || 0), 0);
@@ -79,7 +81,7 @@ export function render() {
       ${tempRelief ? `<div class="alert"><b>${fmt(tempRelief, { whole: true })}/month of this is temporary relief</b> (payment holidays, lowered or paused payments). When it ends you'd be at <b>${fmt(income - sugTotal - tempRelief, { whole: true, sign: true })}</b> a month: plan for that date now.</div>` : ''}
       ${unreal.length ? `<div class="tip-box"><b>Reality check</b>${unreal.map((u) => `<div class="sub">• ${esc(u.label)}: you actually spend ${fmt(u.actual, { whole: true })}/month; ${fmt(u.target, { whole: true })} is a ${u.cut}% cut in one go. Step it down over 2–3 months instead.</div>`).join('')}</div>` : ''}
       ${staged ? `<p class="sub">Stepped plan: month ${stage + 1} targets now${(plan.appliedStage || 0) !== stage ? '.' : ' (in your budgets).'}</p>${(plan.appliedStage || 0) !== stage ? `<button class="btn primary full" data-action="tr-stage" data-stage="${stage}">Use month ${stage + 1} targets as my budgets</button>` : ''}` : ''}
-      <p class="sub">From your spreadsheet (imported ${new Date(plan.importedAt).toLocaleDateString('en-GB')}). Import it again any time to update.</p>
+      <p class="sub">Income ${fmt(income, { whole: true })}/month from <a href="#/income">your Income page</a>${sheetIncome && Math.abs(sheetIncome - income) >= 100 ? ` (the spreadsheet said ${fmt(sheetIncome, { whole: true })})` : ''}. Budget lines from your spreadsheet (imported ${new Date(plan.importedAt).toLocaleDateString('en-GB')}).</p>
     </div>
     ${plan.steps.length ? `<div class="card"><h3>Action plan <small class="muted">${stepsDone}/${steps.length}</small></h3>
       ${plan.steps.map((st, i) => `<div class="plan-step"><b>Step ${i + 1}: ${esc(st.title)}</b>${st.items.map((it, j) => `<label class="check-row"><input type="checkbox" data-change="tr-step" data-i="${i}" data-j="${j}" ${it.done ? 'checked' : ''}><span class="${it.done ? 'done-text' : ''}">${esc(it.text)}</span></label>`).join('')}</div>`).join('')}
@@ -161,11 +163,11 @@ export function render() {
 
   <div class="card">
     <h3>Will we have enough?</h3>
-    <p class="sub">At your average spending (${fmt(ahead.avgSpend, { whole: true })}/month) and income (${fmt(ahead.income, { whole: true })}/month)${mort ? ', with the mortgage from Future planning' : ''}:</p>
+    <p class="sub">At your average spending (${fmt(ahead.avgSpend, { whole: true })}/month) and your income month by month (<a href="#/income">Income</a>)${mort ? ', with the mortgage from Future planning' : ''}:</p>
     ${trendChart(past, ahead.months)}
     <div class="plan-table">
-      <div class="pt-row head"><span>Month</span><span>Out</span><span>Left</span><span>Running</span></div>
-      ${ahead.months.map((m) => `<div class="pt-row ${m.mortgage ? 'start' : ''}"><span>${esc(monthLabel(m.month, { short: true }))}${m.mortgage ? ' 🏠' : ''}</span><span>${fmt(m.spend, { whole: true })}</span><span class="${m.left < 0 ? 'neg' : ''}">${fmt(m.left, { whole: true, sign: true })}</span><span class="${m.running < 0 ? 'neg' : ''}">${fmt(m.running, { whole: true, sign: true })}</span></div>`).join('')}
+      <div class="pt-row head"><span>Month</span><span>In</span><span>Left</span><span>Running</span></div>
+      ${ahead.months.map((m) => `<div class="pt-row ${m.mortgage ? 'start' : ''}"><span>${esc(monthLabel(m.month, { short: true }))}${m.mortgage ? ' 🏠' : ''}</span><span>${fmt(m.income, { whole: true })}</span><span class="${m.left < 0 ? 'neg' : ''}">${fmt(m.left, { whole: true, sign: true })}</span><span class="${m.running < 0 ? 'neg' : ''}">${fmt(m.running, { whole: true, sign: true })}</span></div>`).join('')}
     </div>
     <p class="sub ${ahead.shortMonths ? 'warn-text' : ''}">${ahead.shortMonths ? `Short in ${ahead.shortMonths} of the next 6 months at this rate. The plan below shows where to close the gap.` : 'Enough every month at this rate.'}</p>
   </div>

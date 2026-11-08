@@ -675,3 +675,20 @@ input, select, textarea, .field.slim input, .field.slim select, .filters select,
 .score-badge { font-family: var(--num); font-weight: 800; font-size: 22px; padding: 2px 12px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
 .routine.ok .grow { color: var(--muted); }
 .row-go { color: var(--muted); font-size: 18px; flex: none; }
+
+/* Income */
+.income-link { text-decoration: none; color: var(--ink); position: relative; padding-right: 64px; }
+.income-link .income-person { display: block; padding: 8px 12px; }
+.income-card { display: grid; gap: 8px; }
+.inc-now { font-family: var(--num); font-weight: 800; font-size: 24px; white-space: nowrap; }
+.inc-now small { font-size: 13px; color: var(--muted); font-weight: 600; }
+.inc-row { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 14px; background: var(--track); }
+.inc-row.active { background: var(--accent-soft); }
+.inc-row.muted { opacity: .7; }
+.inc-amt { display: grid; justify-items: end; gap: 4px; flex: none; }
+.inc-amt b { font-family: var(--num); white-space: nowrap; }
+.card .inc-row + .inc-row { margin-top: 6px; }
+.inc-tl { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 4px; align-items: end; height: 110px; margin: 8px 0 10px; }
+.inc-tl-col { display: grid; grid-template-rows: 1fr auto; height: 100%; align-items: end; justify-items: center; gap: 4px; }
+.inc-tl-col span { width: 100%; border-radius: 6px 6px 3px 3px; background: linear-gradient(180deg, var(--accent-2), var(--accent)); }
+.inc-tl-col small { font-size: 10px; color: var(--muted); }

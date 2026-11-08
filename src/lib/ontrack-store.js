@@ -37,6 +37,14 @@ export async function usePlan(plan, { budgets = true } = {}) {
     n = Object.keys(b).length;
     if (n) patch.budgets = { ...(state.settings.budgets || {}), ...b };
   }
+  // Benefits from the plan's income table become household income (pay comes from payslips).
+  const extras = [...(state.settings.otherIncome || [])];
+  for (const x of plan.income) {
+    if (!/benefit|allowance|credit|rental|other income/i.test(x.source) || /maternity|salary|wage|pay\b/i.test(x.source) || !x.monthly) continue;
+    const label = x.source.replace(/\s*\(.*\)\s*$/, '').trim();
+    if (!extras.some((e) => e.label.toLowerCase() === label.toLowerCase())) extras.push({ label, amount: x.monthly, freq: 'month', from: null, until: null, owner: null });
+  }
+  if (extras.length !== (state.settings.otherIncome || []).length) patch.otherIncome = extras;
   await saveSettings(patch);
   // Cards: "Aqua (NewDay) card" ↔ "Aqua Card ••4411", "Amex Gold (Sarah)" ↔ "American Express Preferred Rewards Gold".
   const cards = (state.allAccounts || state.accounts).filter((a) => a.type === 'credit');

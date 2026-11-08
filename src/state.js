@@ -10,6 +10,7 @@ import { cardSummary, suspectedCreditCards } from './lib/credit.js';
 import { findStoredDuplicates } from './lib/duplicates.js';
 import { isSummaryLine } from './lib/parse/junk.js';
 import { goalsMonthly } from './lib/goals.js';
+import { householdFor, otherFor } from './lib/income.js';
 
 export const DEFAULT_SETTINGS = {
   income: null,          // pence/month; null = estimate from statements
@@ -139,7 +140,8 @@ export async function load() {
 /** A temporary income (e.g. maternity pay) that's active this month, if any. */
 export function activeTempIncome(personId, today = todayISO()) {
   const t = state.settings.tempIncome?.[personId];
-  return t && t.monthly && (!t.until || monthKey(today) <= t.until) ? t : null;
+  const m = monthKey(today);
+  return t && t.monthly && (!t.from || m >= t.from) && (!t.until || m <= t.until) ? t : null;
 }
 
 /** A person's monthly income right now: temporary income while it lasts, else their usual income. */
@@ -166,17 +168,22 @@ function effectiveSettings() {
   const s = state.settings;
   if (s.scope === 'all') {
     // Household income = everyone's income together (payslip / SA302 / maternity), once each person has one.
+    // Household extras (Child Benefit…) always add on top.
+    const extra = otherFor(s, monthKey(todayISO()), 'all').reduce((a, x) => a + x.monthly, 0);
     if (s.income == null && s.people.length > 1) {
       const incomes = s.people.map((p) => personIncome(p.id));
       // Anyone without a set income: use the average of what actually arrived in their accounts.
-      if (incomes.some((v) => v != null)) return { ...s, income: s.people.reduce((a, p, i) => a + (incomes[i] ?? estimatedIncome(p.id)), 0) };
+      if (incomes.some((v) => v != null)) return { ...s, income: s.people.reduce((a, p, i) => a + (incomes[i] ?? estimatedIncome(p.id)), 0) + extra };
     }
-    if (s.income == null && s.people.length === 1 && activeTempIncome(s.people[0].id)) return { ...s, income: personIncome(s.people[0].id) };
+    if (s.income == null && s.people.length === 1 && personIncome(s.people[0].id) != null) return { ...s, income: personIncome(s.people[0].id) + extra };
+    if (s.income != null && extra) return { ...s, income: s.income + extra };
     return s;
   }
   const mine = { ...s, income: null, savingsTarget: null, budgets: {}, cardPayoff: null, payday: null, ...(s.scoped?.[s.scope] || {}) };
   const temp = activeTempIncome(s.scope);
-  return temp ? { ...mine, income: temp.monthly } : mine;
+  const extra = otherFor(s, monthKey(todayISO()), s.scope).reduce((a, x) => a + x.monthly, 0);
+  const base = temp ? temp.monthly : mine.income;
+  return { ...mine, income: base == null ? (extra || null) : base + extra };
 }
 
 export function recompute() {
@@ -284,4 +291,11 @@ export async function applyMerchantCategory(merchant, category, { direction = nu
   await saveSettings({ userRules: { ...state.settings.userRules, [merchant]: category } });
   recompute();
   return targets.length;
+}
+
+/** Total take-home in any month (with maternity ending, Child Benefit starting…), for the current view. */
+export function incomeFor(month) {
+  const s = state.settings;
+  if (s.scope === 'all' && s.income != null) return s.income + otherFor(s, month, 'all').reduce((a, x) => a + x.monthly, 0);
+  return householdFor(s, month, { scope: s.scope === 'joint' ? 'all' : s.scope, estimate: estimatedIncome }).total;
 }

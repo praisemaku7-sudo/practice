@@ -12,18 +12,10 @@ function incomeBreakdown() {
   const s = state.settings;
   const people = s.scope === 'all' ? s.people : s.people.filter((p) => p.id === s.scope);
   if (s.scope === 'joint' || (!people.length)) return '';
-  return `<div class="income-box">${people.map((p) => {
-    const usual = s.scoped?.[p.id]?.income;
-    const temp = s.tempIncome?.[p.id];
-    const active = activeTempIncome(p.id);
-    const src = s.sa302s?.[p.id]?.length ? `SA302 ${s.sa302s[p.id][s.sa302s[p.id].length - 1].taxYear || ''}` : s.payslips?.[p.id] ? 'payslip' : usual != null ? 'typed' : 'not set';
-    return `<div class="income-person">
-      ${people.length > 1 || s.people.length > 1 ? `<b>${esc(p.name)}</b> · now <b>${personIncome(p.id) != null ? fmt(personIncome(p.id), { whole: true }) : `~${fmt(estimatedIncome(p.id), { whole: true })}`}</b>/mo${personIncome(p.id) == null ? ' <small class="pill">estimated from statements</small>' : ''}` : ''}
-      <div class="sub">Usual ${usual != null ? fmt(usual, { whole: true }) : '—'} <small class="pill">${esc(src)}</small>${temp ? ` · ${active ? '<b>' : ''}${esc(temp.label)} ${fmt(temp.monthly, { whole: true })}/mo${temp.until ? ` until ${esc(monthLabel(temp.until))}` : ''}${active ? '</b> (in use)' : ' (ended)'}` : ''}</div>
-      <div class="chip-grid"><button class="chip" data-action="edit-person-income" data-id="${esc(p.id)}">✎ Usual income</button><button class="chip" data-action="edit-temp-income" data-id="${esc(p.id)}">${temp ? '✎' : '＋'} Temporary income (e.g. maternity)</button></div>
-    </div>`;
-  }).join('')}</div>`;
+  // A short summary; everything about income lives on the Income page.
+  return `<a class="income-box income-link" href="#/income">${people.map((p) => `<div class="income-person"><b>${esc(p.name.split(' ')[0])}</b> <span class="muted">${personIncome(p.id) != null ? fmt(personIncome(p.id), { whole: true }) : `~${fmt(estimatedIncome(p.id), { whole: true })}`}/mo${activeTempIncome(p.id) ? ` · ${esc(activeTempIncome(p.id).label)}` : s.payslips?.[p.id] ? ' · payslip' : ''}</span></div>`).join('')}${(s.otherIncome || []).length ? `<div class="income-person"><b>+ household</b> <span class="muted">${esc(s.otherIncome.map((x) => x.label).join(', '))}</span></div>` : ''}<span class="banner-go">Income ›</span></a>`;
 }
+
 
 function incomeSource() {
   const s = state.settings;
@@ -105,38 +97,6 @@ function moneySheet({ title, help, value, allowClear = true, onSave }) {
 }
 
 export const actions = {
-  'edit-person-income': (el, rerender) => {
-    const pid = el.dataset.id;
-    moneySheet({
-      title: `${personName(pid)}'s usual monthly take-home`, help: 'After tax. Payslips and SA302s set this automatically when imported.',
-      value: state.settings.scoped?.[pid]?.income ?? null,
-      onSave: async (v) => { const scoped = { ...(state.settings.scoped || {}) }; scoped[pid] = { ...(scoped[pid] || {}), income: v }; await saveSettings({ scoped }); rerender(); },
-    });
-  },
-  'edit-temp-income': (el, rerender) => {
-    const pid = el.dataset.id;
-    const t = state.settings.tempIncome?.[pid] || { label: 'Maternity pay', monthly: null, until: null };
-    openSheet(`<h2>Temporary income · ${esc(personName(pid))}</h2>
-      <p class="muted">Maternity or paternity pay, sick pay, a contract ending… While it lasts it replaces their usual income in every budget and check. When it ends, usual income comes back automatically.</p>
-      <div class="chip-grid"><button class="chip" data-preset="Maternity pay">🍼 Maternity pay</button><button class="chip" data-preset="Paternity pay">👶 Paternity pay</button><button class="chip" data-preset="Sick pay">🤒 Sick pay</button></div>
-      <label class="field"><span>What</span><input id="ti-label" value="${esc(t.label)}"></label>
-      <label class="field"><span>£ a month</span><input id="ti-amt" inputmode="decimal" value="${t.monthly ? (t.monthly / 100).toFixed(0) : ''}" placeholder="800"></label>
-      <label class="field"><span>Until</span><input id="ti-until" type="month" value="${esc(t.until || '')}"></label>
-      <p class="sub">Maternity Allowance for the self-employed lasts up to 39 weeks; Statutory Maternity Pay also up to 39 weeks.</p>
-      <div class="row gap">${state.settings.tempIncome?.[pid] ? '<button class="btn danger grow" id="ti-del">Remove</button>' : ''}<button class="btn primary grow" id="ti-save">Save</button></div>`, {
-      onMount(p) {
-        p.querySelectorAll('[data-preset]').forEach((b) => { b.onclick = () => { p.querySelector('#ti-label').value = b.dataset.preset; }; });
-        p.querySelector('#ti-save').onclick = async () => {
-          const monthly = parsePrice(p.querySelector('#ti-amt').value);
-          if (!monthly) return toast('Enter the monthly amount', { error: true });
-          await saveSettings({ tempIncome: { ...(state.settings.tempIncome || {}), [pid]: { label: p.querySelector('#ti-label').value.trim() || 'Temporary income', monthly, until: p.querySelector('#ti-until').value || null } } });
-          closeSheet(); rerender(); toast('Saved: budgets now use it');
-        };
-        const del = p.querySelector('#ti-del');
-        if (del) del.onclick = async () => { const ti = { ...(state.settings.tempIncome || {}) }; delete ti[pid]; await saveSettings({ tempIncome: ti }); closeSheet(); rerender(); };
-      },
-    });
-  },
   'edit-income': (_, rerender) => moneySheet({
     title: 'Monthly take-home pay', help: 'After tax. Leave on automatic to use the average of your statements.',
     value: state.eff.income ?? state.derived.budget.income,
