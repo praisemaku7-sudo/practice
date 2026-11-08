@@ -23,3 +23,16 @@ test('adds the tax parts when there is no single total, and ignores non-SA302s',
   assert.equal(r.taxDue, 466540);
   assert.equal(isSA302('Current account statement. Balance brought forward'), false);
 });
+
+test('tax calculation without the word SA302, amounts underneath or without pence', async () => {
+  const { parseSA302 } = await import('../src/lib/sa302.js');
+  const t = `HM Revenue & Customs
+Tax calculation for the year 6 April 2024 to 5 April 2025
+Total income received
+£36,000
+Total Income Tax and Class 2 and 4 NIC due     £6,091.80`;
+  const r = parseSA302(t, 'SA302 2025.pdf');
+  assert.equal(r.totalIncome, 3600000);
+  assert.equal(r.taxDue, 609180);
+  assert.equal(r.taxYear, '2024-25');
+});

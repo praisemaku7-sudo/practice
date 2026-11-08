@@ -26,7 +26,7 @@ import { isSummaryLine } from '../lib/parse/junk.js';
 import { classifyDocument } from '../lib/parse/doctype.js';
 import { parsePayslip } from '../lib/payslip.js';
 import { parseSA302, isSA302 } from '../lib/sa302.js';
-import { extractDetails, suggestAccountName } from '../lib/parse/details.js';
+import { extractDetails, suggestAccountName, canonicalBank } from '../lib/parse/details.js';
 import { personForName } from '../state.js';
 import { saveSettings } from '../state.js';
 
@@ -77,7 +77,7 @@ async function readPdf(item, buf) {
   const meta = { headText: text.slice(0, 3000), details, bank, accountType: isCardIssuer(bank) && !/current account/i.test(text) ? 'credit' : guessType(text), accountRef: details.last4 || detectAccountRef(text) };
   const { apiKey, model, pdfMode } = state.settings;
   // Tax calculations and payslips are read on the phone; they never need Claude.
-  if (res.hasText && (isSA302(text) || classifyDocument(text, { transactions: [] }).kind === 'payslip')) {
+  if (res.hasText && (isSA302(text, item.name) || /payslip|pay slip/i.test(item.name) || classifyDocument(text, { transactions: [] }).kind === 'payslip')) {
     return { ...meta, transactions: [], warnings: [], method: 'on-device', verified: false };
   }
   const canAI = apiKey && pdfMode !== 'never';
@@ -99,8 +99,13 @@ async function readPdf(item, buf) {
   const r = await cachedAI(item.hash, async () => (res.hasText
     ? (await ai()).aiReadStatementText({ apiKey, model, pageTexts, onProgress })
     : (await ai()).aiReadStatementImages({ apiKey, model, images: await renderPageImages(buf, { password }), onProgress })));
-  const check = reconcile({ transactions: r.transactions, closingBalance: r.closingBalance });
-  return { ...meta, ...r, bank: r.bank || meta.bank, accountRef: r.accountRef || meta.accountRef, method: 'Claude', verified: check.confident, check };
+  // Check Claude's read against the statement's own opening/closing balances (cards report what's owed).
+  const card = (meta.accountType || r.accountType) === 'credit';
+  const asBal = (v) => (v == null ? null : card ? -Math.abs(v) : v);
+  const check = reconcile({ transactions: r.transactions, openingBalance: asBal(r.openingBalance), closingBalance: asBal(r.closingBalance) });
+  const mergedDetails = { ...meta.details, holder: meta.details?.holder || r.holder || null };
+  return { ...meta, ...r, details: mergedDetails, bank: meta.bank || r.bank, accountType: meta.accountType === 'credit' || r.accountType === 'credit' ? 'credit' : (r.accountType || meta.accountType),
+    accountRef: meta.accountRef || r.accountRef, method: 'Claude', verified: check.confident, check };
 }
 
 const isCsv = (f) => /\.(csv|txt)$/i.test(f.name) || /csv|comma-separated|text\/plain/.test(f.type);
@@ -138,8 +143,12 @@ async function readFile(item) {
   return readPdf(item, buf);
 }
 
+const looksLikePerson = (name, holder) => !!name && (/^(mr|mrs|ms|miss|dr|mx)\b/i.test(name.trim())
+  || (holder && holder.split(/\s+/).slice(-1)[0].length > 2 && name.toLowerCase().includes(holder.split(/\s+/).slice(-1)[0].toLowerCase())));
+
 export function defaultName(p) {
-  const suggested = p.details && suggestAccountName({ ...p.details, last4: p.details.last4 || p.accountRef }, p.accountType);
+  if (looksLikePerson(p.accountName, p.details?.holder)) p = { ...p, accountName: null };
+  const suggested = (p.details || p.bank) && suggestAccountName({ ...(p.details || {}), bank: p.details?.bank || p.bank, last4: p.details?.last4 || p.accountRef }, p.accountType);
   if (suggested) return suggested;
   const base = p.accountName || [p.bank, p.accountType === 'credit' ? 'Card' : p.accountType === 'savings' ? 'Savings' : 'Current'].filter(Boolean).join(' ') || 'Current';
   // Two cards from the same bank need different names: add the last 4 digits.
@@ -201,6 +210,10 @@ async function processItem(item) {
   const t0 = performance.now();
   try {
     const parsed = applyTrackFrom(await readFile(item));
+    parsed.bank = canonicalBank(parsed.bank);
+    if (parsed.details) parsed.details = { ...parsed.details, bank: canonicalBank(parsed.details.bank) };
+    // Card companies only issue credit cards.
+    if (isCardIssuer(parsed.bank || '') && parsed.accountType !== 'savings') parsed.accountType = 'credit';
     item.parsed = parsed;
     // Not a statement (payslip, receipt, invoice, bill...)? Say so and don't import it by default.
     item.doc = parsed.documentType && parsed.isStatement === false
@@ -212,8 +225,8 @@ async function processItem(item) {
     // Where does it go? Card/account number and bank first. An account that merely holds the same
     // payments is only used if its bank fits: otherwise an earlier misfiled import would repeat forever.
     const ovAccRaw = item.overlap.matchedAccountId && state.accounts.find((a) => a.id === item.overlap.matchedAccountId);
-    const bankOf = (a) => (a.details?.bank || a.bank || '').toLowerCase();
-    const pBank = (parsed.bank || '').toLowerCase();
+    const bankOf = (a) => (canonicalBank(a.details?.bank || a.bank) || '').toLowerCase();
+    const pBank = (canonicalBank(parsed.bank) || '').toLowerCase();
     const typeFits = (a) => !parsed.accountType || a.type === parsed.accountType;
     const ovAcc = ovAccRaw && (!pBank || !bankOf(ovAccRaw) || bankOf(ovAccRaw) === pBank) && refOk(ovAccRaw, parsed) && typeFits(ovAccRaw) ? ovAccRaw : null;
     item.misfiledIn = ovAccRaw && !ovAcc ? ovAccRaw : null;
@@ -230,12 +243,21 @@ async function processItem(item) {
     // A balance-only screenshot is still worth importing: it updates the account's balance.
     if (parsed.screenshot && !parsed.transactions.length && parsed.closingBalance != null) item.include = true;
     // An HMRC SA302 tax calculation (self-employed income): offer it as that person's usual income.
-    const sa = parsed.headText && parseSA302(parsed.headText);
+    const sa = parsed.headText != null && parseSA302(parsed.headText, item.name);
     if (sa) { item.sa302 = { ...sa, owner: guessOwner(item, parsed) }; item.include = false; item.doc = { isStatement: false, kind: 'sa302' }; }
+    else if (isSA302(parsed.headText || '', item.name)) {
+      // Recognised as an SA302 but the figures couldn't be read: let you type them.
+      item.sa302Manual = { owner: guessOwner(item, parsed), taxYear: (item.name.match(/20\d\d/) || [])[0] || '' };
+      item.include = false; item.doc = { isStatement: false, kind: 'sa302' };
+    }
     // A payslip: offer to use its take-home pay as that person's monthly income.
     if (!item.sa302 && (item.doc.kind === 'payslip' || (!parsed.transactions.length && parsed.headText))) {
       const slip = parsePayslip(parsed.headText);
       if (slip) { item.payslip = { ...slip, owner: guessOwner(item, parsed) }; item.include = false; }
+      else if (item.doc.kind === 'payslip' || /payslip|pay slip/i.test(item.name)) {
+        item.payslipManual = { owner: guessOwner(item, parsed) };
+        item.include = false;
+      }
     }
     item.status = 'ready';
   } catch (e) {
@@ -300,8 +322,10 @@ export async function commitItem(item) {
     // Keep what the statement says about the account (only the last 4 digits of the number).
     const d = p.details;
     account.details = { ...(account.details || {}), ...Object.fromEntries(Object.entries({ bank: d.bank, bankFromSort: d.bankFromSort, sortCode: d.sortCode, last4: d.last4 || p.accountRef, holder: d.holder, postcode: d.postcode, product: d.product }).filter(([, v]) => v)) };
-    if (d.bank && !account.bank) account.bank = d.bank;
-    const suggested = suggestAccountName({ ...account.details }, account.type);
+    const sameBank = !account.bank || canonicalBank(account.bank) === canonicalBank(d.bank || p.bank);
+    if ((d.bank || p.bank) && sameBank) account.bank = canonicalBank(d.bank || p.bank);
+    if (isCardIssuer(account.bank || '') && !account.typeLocked) account.type = 'credit';
+    const suggested = sameBank ? suggestAccountName({ ...account.details, bank: account.bank }, account.type) : null;
     // Names the app made up itself are corrected; names you typed are kept (Fix accounts suggests instead).
     // Generic names like "Nationwide Card" or "American Express Card ••0476" were made up by the app, so they're corrected too.
     const generic = /^[A-Za-z&' -]+ (Card|Current|Savings)( ••\d{4})?$/.test(account.name) || /^Current( ••\d{4})?$/.test(account.name);
@@ -358,9 +382,17 @@ export async function commitItem(item) {
   const closing = p.closingBalance ?? [...rows].reverse().find((r) => r.balance != null)?.balance ?? null;
   // A screenshot shows the balance right now; a statement shows it on its last day.
   const balDate = p.screenshot ? state.derived.today : lastDate;
+  // Only save a balance that's proven (it agrees with the statement's own opening balance and
+  // transactions, or you took a screenshot of it). Otherwise keep the old one and flag it.
+  const trusted = p.verified || p.screenshot;
   if (closing != null && balDate && (!account.balanceDate || balDate >= account.balanceDate)) {
-    account.balance = account.type === 'credit' ? -Math.abs(closing) : closing;
-    account.balanceDate = balDate;
+    if (trusted) {
+      account.balance = account.type === 'credit' ? -Math.abs(closing) : closing;
+      account.balanceDate = balDate;
+      delete account.balanceUnverified;
+    } else {
+      account.balanceUnverified = { amount: account.type === 'credit' ? -Math.abs(closing) : closing, date: balDate, file: item.name };
+    }
   }
   account.lastImport = state.derived.today;
   let periodStart = dates[0], periodEnd = lastDate;

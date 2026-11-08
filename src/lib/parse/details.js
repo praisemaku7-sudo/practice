@@ -15,6 +15,19 @@ const SORT_PREFIX2 = {
   '55': 'NatWest', '56': 'NatWest', '15': 'RBS', '16': 'RBS', '83': 'RBS', '08': 'Co-operative Bank', '05': 'Virgin Money', '82': 'Virgin Money', '18': 'Coutts',
 };
 
+/** One name per bank: "Nationwide Building Society", "NATIONWIDE" → "Nationwide"; "Amex" → "American Express". */
+export function canonicalBank(name) {
+  if (!name) return null;
+  const n = String(name).toLowerCase().replace(/[®™.,()]/g, ' ').replace(/\s+/g, ' ').trim();
+  const known = [['american express', /\b(american express|amex)\b/], ['Barclaycard', /barclaycard/], ['First Direct', /first ?direct/], ['Bank of Scotland', /bank of scotland/],
+    ['RBS', /\b(rbs|royal bank of scotland)\b/], ['Co-operative Bank', /co-?op(erative)? bank/], ['Metro Bank', /metro bank/], ['Virgin Money', /virgin money|clydesdale|yorkshire bank/],
+    ['Capital One', /capital one/], ['Tesco Bank', /tesco bank/], ['Aqua', /\baqua\b/]];
+  for (const [label, re] of known) if (re.test(n)) return label === 'american express' ? 'American Express' : label;
+  const stripped = n.replace(/\b(building society|bank|plc|uk|ltd|limited|the|group|card services|cards?|europe|financial services)\b/g, ' ').replace(/\s+/g, ' ').trim();
+  const hit = BANKS.find((b) => b.toLowerCase() === stripped);
+  return hit ? (CANON[hit] || hit) : stripped.replace(/\b([a-z])/g, (c) => c.toUpperCase()) || null;
+}
+
 export function bankFromSortCode(sortCode) {
   const d = String(sortCode || '').replace(/\D/g, '');
   if (d.length !== 6) return null;

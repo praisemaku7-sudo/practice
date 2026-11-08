@@ -29,6 +29,17 @@ function itemCard(it) {
       <div class="sub">${it.status === 'ai' ? `Claude is reading it because ${esc(it.aiReason || 'it needs checking')}${it.progress?.total > 1 ? ` · part ${it.progress.done}/${it.progress.total}` : ''}. If your account's limit is reached it waits and retries automatically.` : it.status === 'queued' ? 'Waiting for a free slot' : 'Reading on your phone'}</div>`;
   } else if (it.status === 'error') {
     body = `<div class="alert">${esc(it.error)}</div>${/Not a (PDF or CSV|statement)/.test(it.error) ? '' : `<button class="btn ghost full" data-action="imp-retry" data-id="${it.id}">Retry</button>`}`;
+  } else if (it.status === 'ready' && (it.payslipManual || it.sa302Manual)) {
+    const kind = it.payslipManual ? 'payslip' : 'sa302';
+    const owner = (it.payslipManual || it.sa302Manual).owner;
+    body = `<div class="tip-box"><b>${kind === 'payslip' ? '💷 Payslip' : '🧾 SA302'}</b> recognised, but its figures couldn't be read automatically. Type them here:</div>
+      ${kind === 'payslip'
+        ? `<label class="field slim"><span>Take-home (net) £</span><input inputmode="decimal" id="man-net-${it.id}" placeholder="e.g. 2603.40"></label>
+           <label class="field select slim"><span>Paid</span><select id="man-freq-${it.id}"><option value="monthly">Monthly</option><option value="four-weekly">Every 4 weeks</option><option value="fortnightly">Fortnightly</option><option value="weekly">Weekly</option></select></label>`
+        : `<label class="field slim"><span>Total income £</span><input inputmode="decimal" id="man-inc-${it.id}" placeholder="from the SA302"></label>
+           <label class="field slim"><span>Total tax &amp; NI £</span><input inputmode="decimal" id="man-tax-${it.id}" placeholder="from the SA302"></label>`}
+      ${state.settings.people.length > 1 ? `<label class="field select slim"><span>Whose</span><select id="man-owner-${it.id}">${state.settings.people.map((pp) => `<option value="${pp.id}" ${owner === pp.id ? 'selected' : ''}>${esc(pp.name)}</option>`).join('')}</select></label>` : ''}
+      <button class="btn primary full" data-action="imp-manual-income" data-id="${it.id}" data-kind="${kind}">Use as usual income</button>`;
   } else if (it.status === 'imported' && it.result?.sa302) {
     body = `<div class="sub">✓ ${esc(it.sa302.taxYear || 'SA302')} saved for ${esc(personName(it.sa302.owner))}: usual income ${fmt(it.sa302.monthlyNet)}/month.</div>`;
   } else if (it.sa302 && it.status === 'ready') {
@@ -143,6 +154,26 @@ export const actions = {
   'imp-clean': async (_, rerender) => { const n = await removeEmptyAccounts(); rerender(); toast(`Removed ${n} empty account${n === 1 ? '' : 's'}`); },
   'imp-payslip': async (el, rerender) => { await applyPayslip(find(el)); rerender(); },
   'imp-sa302': async (el, rerender) => { await applySA302(find(el)); rerender(); },
+  'imp-manual-income': async (el, rerender) => {
+    const it = find(el);
+    const val = (id) => parseFloat((document.getElementById(id)?.value || '').replace(/[£,\s]/g, ''));
+    const owner = document.getElementById(`man-owner-${it.id}`)?.value || state.settings.people[0].id;
+    if (el.dataset.kind === 'payslip') {
+      const net = Math.round(val(`man-net-${it.id}`) * 100);
+      if (!net) return toast('Type the take-home amount', { error: true });
+      const freq = document.getElementById(`man-freq-${it.id}`).value;
+      const { toMonthly } = await import('../../lib/payslip.js');
+      it.payslip = { net, gross: null, frequency: freq, monthlyNet: toMonthly(net, freq), payDate: null, employer: null, owner };
+      await applyPayslip(it);
+    } else {
+      const inc = Math.round(val(`man-inc-${it.id}`) * 100), tax = Math.round((val(`man-tax-${it.id}`) || 0) * 100);
+      if (!inc) return toast('Type the total income', { error: true });
+      const net = Math.max(0, inc - tax);
+      it.sa302 = { taxYear: it.sa302Manual.taxYear || null, totalIncome: inc, taxDue: tax, net, monthlyNet: Math.round(net / 12), owner };
+      await applySA302(it);
+    }
+    rerender();
+  },
   'imp-reimport-all': (_, rerender) => { reimportAllDuplicates(); rerender(); },
 };
 export const changes = {

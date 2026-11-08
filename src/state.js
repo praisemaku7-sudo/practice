@@ -248,6 +248,17 @@ export async function removeSummaryLines() {
   return junk;
 }
 
+/**
+ * Start fresh: delete accounts, transactions and the import log, but keep people, income,
+ * goals, budgets, rules, settings and the cache of Claude's reads (so re-importing is free and quick).
+ */
+export async function startFresh() {
+  await Promise.all(['tx', 'accounts', 'imports'].map((s) => db.clear(s)));
+  const keep = { ...state.settings, bankSync: { ...(state.settings.bankSync || {}), links: {}, lastSync: {} }, consolidationDone: {}, coverageDismissed: {}, hiddenBanners: {}, mainAccountId: null };
+  await db.kvSet('settings', keep);
+  await load();
+}
+
 export async function wipeAll() {
   await Promise.all(['tx', 'accounts', 'imports', 'checks', 'kv'].map((s) => db.clear(s)));
   Object.assign(state, { txs: [], accounts: [], imports: [], checks: [], settings: { ...DEFAULT_SETTINGS } });

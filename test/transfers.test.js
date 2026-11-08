@@ -51,3 +51,14 @@ test('a repayment onto a credit card is not income', () => {
   assert.equal(s.income, 0);
   assert.equal(s.spend, 6000);
 });
+
+test('paying a tracked credit card from a current account is not spending', () => {
+  const accs = { cur: { id: 'cur', type: 'current', bank: 'Nationwide' }, aqua: { id: 'aqua', type: 'credit', bank: 'Aqua' } };
+  const txs = toTransactions([{ date: '2026-10-28', description: 'AQUA CARD PAYMENT', amount: -10000 }, { date: '2026-10-02', description: 'TESCO STORES', amount: -4500 }], { accountId: 'cur', importId: 'c' });
+  markTransfers(txs, accs);
+  assert.equal(summarizeMonth(txs, '2026-10').spend, 4500);
+  // Without a tracked Aqua card, the payment stays a bill (the card's purchases aren't counted anywhere).
+  const solo = toTransactions([{ date: '2026-10-28', description: 'AQUA CARD PAYMENT', amount: -10000 }], { accountId: 'cur', importId: 'c' });
+  markTransfers(solo, { cur: accs.cur });
+  assert.equal(summarizeMonth(solo, '2026-10').spend, 10000);
+});
