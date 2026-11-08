@@ -1,7 +1,10 @@
 // Collapsible sections: any card that starts with a heading can be folded away by tapping the
 // heading. Your choice is remembered per section; very long sections start folded.
 const KEY = 'pl-sections';
-const LONG = 620; // px: taller than about one and a half screens of content starts folded
+const LONG = 620;
+// Sections already shown open while the app is open: they never fold themselves later (e.g. when
+// results appear after you tap a button inside them). Only your own taps fold them.
+const shownOpen = new Set(); // px: taller than about one and a half screens of content starts folded
 
 function load() {
   try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch { return {}; }
@@ -38,7 +41,10 @@ export function enhanceSections(main, view) {
     head.setAttribute('role', 'button');
     head.tabIndex = 0;
     // Remembered choice, else fold sections that are very long (never the first one on the page).
-    const folded = id in state ? state[id] : i > 0 && card.offsetHeight > LONG;
+    const folded = id in state ? state[id] : !shownOpen.has(id) && i > 0 && card.offsetHeight > LONG
+      // Sections you type into (API key, amounts, names) never fold themselves.
+      && !card.querySelector('input:not([type=checkbox]):not([type=radio]):not([type=file]), textarea');
+    if (!folded) shownOpen.add(id);
     card.classList.toggle('collapsed', folded);
     head.setAttribute('aria-expanded', String(!folded));
   });
