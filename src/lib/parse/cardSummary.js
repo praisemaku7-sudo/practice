@@ -45,6 +45,11 @@ export function applyCardSummary({ transactions, period }, box) {
   const txs = transactions.map((t) => ({ ...t }));
   const sum = () => txs.reduce((a, t) => a + t.amount, 0);
   const credits = () => txs.filter((t) => t.amount > 0).reduce((a, t) => a + t.amount, 0);
+  // Some cards print purchases as plain amounts and payments with a minus (Barclaycard):
+  // read the other way round, the figures add up, so turn them all round.
+  const gap = (list) => Math.abs(-box.previous + list.reduce((a, t) => a + t.amount, 0) + box.closing);
+  const flipped = txs.map((t) => ({ ...t, amount: -t.amount }));
+  if (txs.length && gap(flipped) < gap(txs)) txs.splice(0, txs.length, ...flipped);
   // A payment printed without "CR" (read as spending): flip the one that closes the gap.
   if (box.credits) {
     const diff = box.credits - credits();

@@ -27,9 +27,10 @@ function amountAfter(text, labelRe, toks) {
   return amts.length ? amts[amts.length - 1].t : null;
 }
 
+const DESC_HEAD = /^(payment type( and details)?|payment details|transaction (details|description|type)|description|details|narrative|particulars|merchant)$/i;
 const OUT_HEAD = /^(paid out|money out|out|withdrawn|withdrawals?|debits?|debit amount|payments?|spent|money out \(£\))$/i;
 const IN_HEAD = /^(paid in|money in|in|deposits?|credits?|credit amount|received|money in \(£\))$/i;
-const BAL_HEAD = /^(balance|running balance|balance \(£\))$/i;
+const BAL_HEAD = /^(balance|running balance|balance \(£\)|£ ?balance)$/i;
 const AMT_HEAD = /^(amount|amount \(£\)|amount £|amount gbp|value|£|gbp)$/i;
 const SKIP = /\b(balance (brought|carried) forward|brought forward|carried forward|opening balance|closing balance|start balance|end balance|total (paid|money|payments|debits|credits|in|out)|totals?$|page \d+|statement (date|period|number)|sort code|account number|iban|bic|continued)\b/i;
 const INCOME_HINT = /\b(SALARY|WAGES|PAYROLL|REFUND|HMRC|DWP|INTEREST (PAID|EARNED)|CREDIT|RECEIVED|FROM|DEPOSIT|PAYMENT RECEIVED|THANK YOU)\b/i;
@@ -60,23 +61,25 @@ function detectColumns(lines) {
     const toks = tokenize(line.items);
     const text = lineText(toks).toLowerCase();
     if (!/date/.test(text) || !/(balance|paid|money|amount|debit|credit|withdraw|deposit|out|in)/.test(text)) continue;
-    // Merge adjacent tokens into phrases ("paid", "out" -> "paid out").
-    const phrases = [];
-    for (const t of toks) {
-      const last = phrases[phrases.length - 1];
-      if (last && t.x - (last.x + last.w) < 8) { last.t += ' ' + t.t; last.w = t.x + t.w - last.x; }
-      else phrases.push({ ...t });
-    }
+    // Find header phrases by trying the longest run of words that names a column, so headings
+    // printed close together ("Type Money In (£) Money Out (£)") are still told apart.
+    const norm = (str) => str.toLowerCase().replace(/[:]/g, '').replace(/\(?\s*(£|gbp)\s*\)?/g, ' ').replace(/\s+/g, ' ').trim();
     const cols = {};
-    for (const p of phrases) {
-      const label = p.t.replace(/[:]/g, '').trim();
-      const right = p.x + p.w;
-      if (OUT_HEAD.test(label)) cols.out = right;
-      else if (IN_HEAD.test(label)) cols.in = right;
-      else if (BAL_HEAD.test(label)) cols.bal = right;
-      else if (AMT_HEAD.test(label)) cols.amt = right;
+    for (let i = 0; i < toks.length; i++) {
+      for (let len = Math.min(4, toks.length - i); len >= 1; len--) {
+        const run = toks.slice(i, i + len);
+        const label = norm(run.map((t) => t.t).join(' '));
+        if (!label) continue;
+        const right = run[run.length - 1].x + run[run.length - 1].w;
+        const role = DESC_HEAD.test(label) ? 'desc' : OUT_HEAD.test(label) ? 'out' : IN_HEAD.test(label) ? 'in' : BAL_HEAD.test(label) ? 'bal' : AMT_HEAD.test(label) ? 'amt' : null;
+        if (role === 'desc') { i += len - 1; break; }
+        if (role && cols[role] == null) { cols[role] = right; i += len - 1; break; }
+      }
     }
-    if (cols.out != null || cols.in != null || cols.amt != null) return cols;
+    // A real header row has no amounts in it and names at least two columns (or an Amount column).
+    if (toks.some((t) => AMOUNT_TOKEN.test(t.t))) continue;
+    const roles = Object.keys(cols).length;
+    if ((cols.out != null || cols.in != null || cols.amt != null) && (roles >= 2 || cols.amt != null)) return cols;
   }
   return null;
 }
