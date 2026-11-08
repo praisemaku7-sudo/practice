@@ -329,13 +329,27 @@ export function addFiles(files) {
   drain();
 }
 
+// Kept in the page (not just in memory) while the picker is open: iOS can throw away a detached
+// input before you've chosen, and then the files never arrive.
+let picker = null;
 export function pickFiles() {
   pdfLib(); // start loading the PDF engine while the picker is open
+  picker?.remove();
   const input = document.createElement('input');
   input.type = 'file';
   input.multiple = true;
-  input.accept = '.pdf,.csv,.txt,.tsv,.ofx,.qfx,.qif,application/pdf,text/csv,text/plain,text/comma-separated-values,image/*';
-  input.onchange = () => addFiles([...input.files]);
+  // iPhones and iPads only understand common file types here; unusual ones (.ofx, .qif) can grey
+  // out every file or stop the picker opening. Any file can be chosen there and is checked on import.
+  const ios = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (!ios) input.accept = '.pdf,.csv,.txt,.tsv,.ofx,.qfx,.qif,application/pdf,text/csv,text/plain,text/comma-separated-values,image/*';
+  input.style.cssText = 'position:fixed;left:-9999px;width:1px;height:1px;opacity:0';
+  input.addEventListener('change', () => {
+    const files = [...(input.files || [])];
+    input.remove(); if (picker === input) picker = null;
+    if (files.length) addFiles(files);
+  });
+  document.body.appendChild(input);
+  picker = input;
   input.click();
 }
 
