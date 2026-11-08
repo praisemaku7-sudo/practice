@@ -1,4 +1,4 @@
-import { state, saveSettings, recompute, relinkTransfers } from '../../state.js';
+import { state, saveSettings, recompute, relinkTransfers, ownerOf, personName } from '../../state.js';
 import { db } from '../../lib/db.js';
 import { esc, openSheet, closeSheet, confirmSheet, toast } from '../dom.js';
 import { fmt, parsePrice } from '../../lib/money.js';
@@ -28,9 +28,9 @@ export function render() {
     <div class="row gap"><button class="btn ghost grow" data-action="dup-review">Review</button><button class="btn primary grow" data-action="dup-remove-all">Remove ${dups.length}</button></div></div>` : ''}
   <div class="card">
     ${state.accounts.map((a) => `<button class="list-row tap" data-action="edit-account" data-id="${esc(a.id)}">
-      <span class="bank-badge">${esc((a.bank || a.name).slice(0, 2).toUpperCase())}</span>
+      <span class="bank-badge" style="${state.settings.people.length > 1 ? `box-shadow: inset 0 -3px 0 ${state.settings.people.find((p) => p.id === ownerOf(a))?.color || 'var(--muted)'}` : ''}">${a.type === 'credit' ? '💳' : esc((a.bank || a.name).slice(0, 2).toUpperCase())}</span>
       <div class="grow"><div>${esc(a.name)} ${a.id === mainId ? '<small class="pill">main</small>' : ''}</div>
-      <div class="sub">${a.typeLocked ? '🔒 ' : ''}${[a.bank, TYPE_LABEL[a.type] || a.type].filter(Boolean).map(esc).join(' · ')} · ${counts[a.id] || 0} transactions${a.lastImport ? ' · updated ' + prettyDate(a.lastImport) : ''}</div></div>
+      <div class="sub">${state.settings.people.length > 1 ? `<b>${esc(personName(ownerOf(a)))}</b> · ` : ''}${a.typeLocked ? '🔒 ' : ''}${[a.bank, TYPE_LABEL[a.type] || a.type].filter(Boolean).map(esc).join(' · ')} · ${counts[a.id] || 0} transactions${a.lastImport ? ' · updated ' + prettyDate(a.lastImport) : ''}</div></div>
       <div class="bal"><b class="${a.balance < 0 ? 'neg' : ''}">${a.balance != null ? (a.type === 'credit' ? `${fmt(Math.max(0, -a.balance))} owed` : fmt(a.balance)) : '—'}</b>${a.balanceDate ? `<small class="sub">${a.balanceDate === state.derived.today ? 'today' : 'on ' + prettyDate(a.balanceDate)}</small>` : ''}</div></button>`).join('')}
     <div class="row gap"><button class="btn primary grow" data-action="import">Import</button><button class="btn ghost grow" data-action="go" data-to="transactions">Transactions</button><a class="btn ghost grow" href="#/cards">💳 Cards</a></div>
     <a class="link small-link" href="#/setup">Edit types, balances or merge accounts ›</a>
@@ -71,7 +71,7 @@ function renderStatements() {
   return `<div class="card" id="statements">
     <h3>Statements ${missingCount ? `<small class="pill warn">${missingCount} missing</small>` : '<small class="pill ok">all in ✓</small>'}</h3>
     <p class="muted">Tracking from <b>${state.settings.trackFrom ? esc(monthLabel(state.settings.trackFrom.slice(0, 7))) : 'the start of your history'}</b> (<a href="#/settings">change</a>). Each box is a month. ✓ imported · ! missing · – no statement expected (tap ! to mark it). Same file twice is caught automatically.</p>
-    ${rows.map((c) => `<div class="cov-row"><div class="cov-name ellipsis">${esc(c.account.name)}</div><div class="cov-months">
+    ${rows.map((c) => `<div class="cov-row"><div class="cov-name ellipsis">${c.account.type === 'credit' ? '💳 ' : ''}${esc(c.account.name)}${state.settings.people.length > 1 ? `<small class="muted"> ${esc(personName(ownerOf(c.account)).split(' ')[0])}</small>` : ''}</div><div class="cov-months">
       ${c.months.map((m) => {
         const key = `${c.account.id}|${m}`;
         const has = c.covered.has(m);

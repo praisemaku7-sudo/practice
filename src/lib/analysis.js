@@ -9,6 +9,7 @@ const BANKS = ['MONZO', 'STARLING', 'REVOLUT', 'CHASE', 'NATIONWIDE', 'HSBC', 'F
 /** Does this description look like money moving to/from one of your own accounts? */
 export function looksLikeOwnTransfer(t, { ownBanks = [], ownNames = [] } = {}) {
   const d = ' ' + String(t.description || '').toUpperCase().replace(/[^A-Z0-9&' -]/g, ' ') + ' ';
+  if (/\b(SALARY|WAGES|PAYROLL|HMRC|DWP|PENSION)\b/.test(d)) return false;
   if (ownNames.some((n) => n && d.includes(' ' + n + ' '))) return true;
   const mentionsOwnBank = ownBanks.some((b) => d.includes(' ' + b + ' ') || d.includes(' ' + b.replace(/ /g, '') + ' '));
   if (mentionsOwnBank && (OWN_TRANSFER.test(d) || /\b(PAYMENT|FROM|TO|FPS|FASTER|BANK|BGC|FPI|FPO|SO|STO)\b/.test(d))) return true;
@@ -66,6 +67,8 @@ export function markTransfers(txs, accountsById = {}, { ownNames = [] } = {}) {
   for (const t of txs) {
     if (t.userCategory || t.pairId) continue;
     const acc = accountsById[t.accountId];
+    // Money paid onto a credit card is a repayment, never income (refunds keep their shop category).
+    if (acc?.type === 'credit' && t.amount > 0 && t.category === 'income') { t.category = 'transfer'; t.autoTransfer = true; continue; }
     if (acc?.type === 'savings') {
       if (!/\b(INTEREST|BONUS)\b/i.test(t.description)) { t.category = 'transfer'; t.autoTransfer = true; }
       continue;

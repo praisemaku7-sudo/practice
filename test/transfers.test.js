@@ -43,3 +43,11 @@ test('things you categorised yourself are never overridden', () => {
   markTransfers(txs, accounts);
   assert.equal(txs[0].category, 'gifts');
 });
+
+test('a repayment onto a credit card is not income', () => {
+  const txs = toTransactions([{ date: '2026-10-20', description: 'PAYMENT RECEIVED - THANK YOU', amount: 10000 }, { date: '2026-10-03', description: 'ASOS', amount: -6000 }], { accountId: 'card', importId: 'c' });
+  markTransfers(txs, { card: { id: 'card', type: 'credit', bank: 'Barclaycard' } });
+  const s = summarizeMonth(txs, '2026-10');
+  assert.equal(s.income, 0);
+  assert.equal(s.spend, 6000);
+});

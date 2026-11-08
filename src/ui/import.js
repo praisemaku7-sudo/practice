@@ -1,6 +1,6 @@
 // Import engine: reads every selected file at the same time, on-device first,
 // and only calls Claude when the on-device read can't be verified against the balances.
-import { state, recompute, relinkTransfers } from '../state.js';
+import { state, recompute, relinkTransfers, ownerOf } from '../state.js';
 import { db } from '../lib/db.js';
 import { parseCSVStatement } from '../lib/parse/csv.js';
 import { parseStatementLines } from '../lib/parse/statementText.js';
@@ -56,7 +56,7 @@ async function readPdf(item, buf) {
   const pageTexts = res.hasText ? linesToPageTexts(res.lines) : [];
   const text = pageTexts.join('\n');
   const bank = guessBank(text);
-  const meta = { bank, accountType: isCardIssuer(bank) && !/current account/i.test(text) ? 'credit' : guessType(text), accountRef: detectAccountRef(text) };
+  const meta = { headText: text.slice(0, 3000), bank, accountType: isCardIssuer(bank) && !/current account/i.test(text) ? 'credit' : guessType(text), accountRef: detectAccountRef(text) };
   const { apiKey, model, pdfMode } = state.settings;
   const canAI = apiKey && pdfMode !== 'never';
 
@@ -96,23 +96,45 @@ async function readFile(item) {
     const bank = guessBank(head);
     const cardRows = r.transactions.filter((t) => /PAYMENT RECEIVED|THANK YOU|INTEREST CHARGED|MINIMUM PAYMENT/i.test(t.description)).length;
     const type = isCardIssuer(head) || (cardRows && isCardIssuer(bank)) ? 'credit' : guessType(head);
-    return { ...r, bank, accountType: type, accountRef: detectAccountRef(head), method: 'CSV', verified: reconcile(r).confident };
+    return { ...r, headText: head, bank, accountType: type, accountRef: detectAccountRef(head), method: 'CSV', verified: reconcile(r).confident };
   }
   return readPdf(item, buf);
 }
 
 export function defaultName(p) {
-  return p.accountName || [p.bank, p.accountType === 'credit' ? 'Card' : p.accountType === 'savings' ? 'Savings' : 'Current'].filter(Boolean).join(' ') || 'Current';
+  const base = p.accountName || [p.bank, p.accountType === 'credit' ? 'Card' : p.accountType === 'savings' ? 'Savings' : 'Current'].filter(Boolean).join(' ') || 'Current';
+  // Two cards from the same bank need different names: add the last 4 digits.
+  return p.accountRef && !base.includes(p.accountRef) ? `${base} ••${p.accountRef}` : base;
 }
+
+/** Can this statement belong to this account? Never if both have different account numbers. */
+const refOk = (a, p) => !p.accountRef || !a.ref || a.ref === p.accountRef;
 
 function matchAccount(p) {
   const bank = (p.bank || '').toLowerCase();
   const type = p.accountType || 'current';
   const name = defaultName(p).toLowerCase();
-  return (p.accountRef && state.accounts.find((a) => a.ref === p.accountRef))
-    || state.accounts.find((a) => bank && (a.bank || '').toLowerCase() === bank && a.type === type)
-    || state.accounts.find((a) => a.name.toLowerCase() === name && a.type === type)
-    || null;
+  if (p.accountRef) {
+    const exact = state.accounts.find((a) => a.ref === p.accountRef);
+    if (exact) return exact;
+  }
+  // Same bank + type only when it's unambiguous (one candidate, no conflicting account number):
+  // otherwise a second card from the same bank would be filed inside the first.
+  const sameBank = state.accounts.filter((a) => bank && (a.bank || '').toLowerCase() === bank && a.type === type && refOk(a, p));
+  if (sameBank.length === 1 && (!p.accountRef || !sameBank[0].ref)) return sameBank[0];
+  return state.accounts.find((a) => a.name.toLowerCase() === name && a.type === type && refOk(a, p)) || null;
+}
+
+/** Whose statement is it? Looks for a household member's name in the file name or statement header. */
+function guessOwner(item, p) {
+  const hay = ` ${item.name} ${p.headText || ''} `.toUpperCase().replace(/[^A-Z]+/g, ' ');
+  const people = state.settings.people.filter((x) => x.name && x.name !== 'Me');
+  const words = (n) => n.toUpperCase().replace(/[^A-Z ]/g, ' ').split(/\s+/).filter((w) => w.length >= 3);
+  // Only words unique to one person count (a shared surname says nothing about whose it is).
+  const all = people.flatMap((x) => words(x.name));
+  const unique = (w) => all.filter((v) => v === w).length === 1;
+  const scored = people.map((x) => ({ id: x.id, score: words(x.name).filter((w) => unique(w) && hay.includes(` ${w} `)).length })).filter((x) => x.score > 0);
+  return scored.length === 1 ? scored[0].id : state.settings.people[0]?.id;
 }
 
 async function processItem(item) {
@@ -128,7 +150,7 @@ async function processItem(item) {
     const ovAcc = item.overlap.matchedAccountId && state.accounts.find((a) => a.id === item.overlap.matchedAccountId);
     const match = ovAcc || matchAccount(parsed);
     item.accountChoice = match ? match.id : '__new';
-    item.newAccount = { name: defaultName(parsed), bank: parsed.bank || '', type: parsed.accountType || 'current' };
+    item.newAccount = { name: defaultName(parsed), bank: parsed.bank || '', type: parsed.accountType || 'current', owner: guessOwner(item, parsed) };
     item.include = parsed.transactions.length > 0 && !item.prior && !item.overlap.likelyDuplicate;
     item.status = 'ready';
   } catch (e) {
@@ -180,10 +202,10 @@ async function commitItem(item) {
   if (item.accountChoice === '__new') {
     const n = item.newAccount;
     // Several months of a brand-new account in one batch all land in the same account.
-    account = state.accounts.find((a) => a.name.toLowerCase() === n.name.toLowerCase() && a.type === n.type)
-      || (p.accountRef && state.accounts.find((a) => a.ref === p.accountRef));
+    account = (p.accountRef && state.accounts.find((a) => a.ref === p.accountRef))
+      || state.accounts.find((a) => a.name.toLowerCase() === n.name.toLowerCase() && a.type === n.type && refOk(a, p));
     if (!account) {
-      account = { id: 'acc-' + (crypto.randomUUID?.() || Date.now().toString(36)), name: n.name || 'Account', bank: n.bank, type: n.type, balance: null, balanceDate: null };
+      account = { id: 'acc-' + (crypto.randomUUID?.() || Date.now().toString(36)), name: n.name || 'Account', bank: n.bank, type: n.type, owner: n.owner, balance: null, balanceDate: null };
       state.accounts.push(account);
     }
   } else account = state.accounts.find((a) => a.id === item.accountChoice);

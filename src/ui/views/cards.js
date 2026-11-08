@@ -20,7 +20,7 @@ export function render() {
     <p class="muted">Import your credit card statements, or mark an existing account as a credit card in Accounts → tap the account → Type.</p>
     <a class="btn primary" href="#/setup">Set account types</a></div>`;
   }
-  const monthly = s.cardPayoff ?? 0;
+  const monthly = state.eff.cardPayoff ?? 0;
   const plan = payoffPlan(sum.cards, monthly, { method: s.cardMethod, startMonth: monthKey(state.derived.today) });
   const progress = sum.totalAtStart ? Math.max(0, sum.totalAtStart - sum.totalOwed) : null;
   const clean = sum.monthSpend === 0;
