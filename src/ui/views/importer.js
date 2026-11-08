@@ -2,7 +2,7 @@ import { state, personName, ownerOf } from '../../state.js';
 import { esc } from '../dom.js';
 import { fmt } from '../../lib/money.js';
 import { prettyDate, monthLabel } from '../../lib/dates.js';
-import { queue, commitAll, clearQueue, pickFiles, busyCount, retryFailed, reimportAllDuplicates, applyPayslip } from '../import.js';
+import { queue, commitAll, clearQueue, pickFiles, busyCount, retryFailed, reimportAllDuplicates, applyPayslip, applySA302 } from '../import.js';
 
 const STATUS = {
   queued: ['Waiting', ''],
@@ -29,6 +29,15 @@ function itemCard(it) {
       <div class="sub">${it.status === 'ai' ? `Claude is reading it because ${esc(it.aiReason || 'it needs checking')}${it.progress?.total > 1 ? ` · part ${it.progress.done}/${it.progress.total}` : ''}. If your account's limit is reached it waits and retries automatically.` : it.status === 'queued' ? 'Waiting for a free slot' : 'Reading on your phone'}</div>`;
   } else if (it.status === 'error') {
     body = `<div class="alert">${esc(it.error)}</div>${/Not a (PDF or CSV|statement)/.test(it.error) ? '' : `<button class="btn ghost full" data-action="imp-retry" data-id="${it.id}">Retry</button>`}`;
+  } else if (it.status === 'imported' && it.result?.sa302) {
+    body = `<div class="sub">✓ ${esc(it.sa302.taxYear || 'SA302')} saved for ${esc(personName(it.sa302.owner))}: usual income ${fmt(it.sa302.monthlyNet)}/month.</div>`;
+  } else if (it.sa302 && it.status === 'ready') {
+    const sa = it.sa302;
+    body = `<div class="tip-box"><b>🧾 SA302 tax calculation</b>${sa.taxYear ? ` · ${esc(sa.taxYear)}` : ''}<br>
+      Income ${fmt(sa.totalIncome)} − tax &amp; NI ${fmt(sa.taxDue)} = <b>${fmt(sa.net)}</b>/year → <b>${fmt(sa.monthlyNet)}/month</b> take-home</div>
+      ${state.settings.people.length > 1 ? `<label class="field select slim"><span>Whose</span><select data-change="imp-sa-owner" data-id="${it.id}">${state.settings.people.map((pp) => `<option value="${pp.id}" ${sa.owner === pp.id ? 'selected' : ''}>${esc(pp.name)}</option>`).join('')}</select></label>` : ''}
+      <button class="btn primary full" data-action="imp-sa302" data-id="${it.id}">Use as usual income</button>
+      <p class="sub">With two SA302s, the newest tax year is used. Maternity pay or other temporary income can be added in Budget.</p>`;
   } else if (it.status === 'imported' && it.result?.payslip) {
     body = `<div class="sub">✓ Take-home pay of ${fmt(it.payslip.monthlyNet)}/month saved as ${esc(personName(it.payslip.owner))}'s income.</div>`;
   } else if (it.payslip && it.status === 'ready') {
@@ -130,12 +139,14 @@ export const actions = {
   'imp-done': () => { clearQueue(); location.hash = '#/home'; },
   'imp-retry': (el, rerender) => { retryFailed(el.dataset.id); rerender(); },
   'imp-payslip': async (el, rerender) => { await applyPayslip(find(el)); rerender(); },
+  'imp-sa302': async (el, rerender) => { await applySA302(find(el)); rerender(); },
   'imp-reimport-all': (_, rerender) => { reimportAllDuplicates(); rerender(); },
 };
 export const changes = {
   'imp-acc': (el, rerender) => { find(el).accountChoice = el.value; rerender(); },
   'imp-type': (el) => { find(el).newAccount.type = el.value; },
   'imp-slip-owner': (el) => { find(el).payslip.owner = el.value; },
+  'imp-sa-owner': (el) => { find(el).sa302.owner = el.value; },
   'imp-owner': (el) => { find(el).newAccount.owner = el.value; },
   'imp-include': (el, rerender) => {
     const it = find(el);

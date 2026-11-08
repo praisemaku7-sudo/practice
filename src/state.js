@@ -34,6 +34,7 @@ export const DEFAULT_SETTINGS = {
   hiddenBanners: {},
   people: [{ id: 'p1', name: 'Me', color: '#3d8fd1' }], // household members
   scope: 'all',          // whose money you're looking at: 'all' (household), a person id, or 'joint'
+  tempIncome: {},        // { [personId]: { label, monthly, until: 'YYYY-MM' } }, e.g. maternity pay
   scoped: {},            // per-person budget settings: { [personId]: { income, savingsTarget, budgets, cardPayoff, payday } }     // banner key -> signature when you closed it          // how your name appears on transfers between your own accounts
   bufferPence: 5000,     // keep at least £50 after bills
 };
@@ -77,6 +78,7 @@ function applyView(allTxs, allAccounts) {
   const known = new Set(allAccounts.map((a) => a.id));
   state.hiddenCount = from ? allTxs.filter((t) => t.date < from).length : 0;
   state.allAccounts = allAccounts;
+  state.allTxs = allTxs;
   state.accounts = accounts;
   const byId = Object.fromEntries(allAccounts.map((a) => [a.id, a]));
   // A person's view includes their purchases on a shared card (by cardholder), and excludes
@@ -110,18 +112,47 @@ export async function load() {
   if (months.length && !months.includes(state.month)) state.month = months[months.length - 1];
 }
 
+/** A temporary income (e.g. maternity pay) that's active this month, if any. */
+export function activeTempIncome(personId, today = todayISO()) {
+  const t = state.settings.tempIncome?.[personId];
+  return t && t.monthly && (!t.until || monthKey(today) <= t.until) ? t : null;
+}
+
+/** A person's monthly income right now: temporary income while it lasts, else their usual income. */
+export function personIncome(personId) {
+  const temp = activeTempIncome(personId);
+  if (temp) return temp.monthly;
+  return state.settings.scoped?.[personId]?.income ?? null;
+}
+
+/** Average monthly income seen in one person's accounts over their last 3 complete months. */
+export function estimatedIncome(personId) {
+  const all = state.allTxs || [];
+  const byId = Object.fromEntries((state.allAccounts || []).map((a) => [a.id, a]));
+  const mine = all.filter((t) => byId[t.accountId] && txOwner(t, byId) === personId && (!state.settings.trackFrom || t.date >= state.settings.trackFrom));
+  const cur = monthKey(todayISO());
+  const months = [...new Set(mine.map((t) => monthKey(t.date)))].filter((m) => m < cur).sort().slice(-3);
+  if (!months.length) return 0;
+  const total = mine.filter((t) => months.includes(monthKey(t.date)) && t.category === 'income').reduce((a, t) => a + t.amount, 0);
+  return Math.round(total / months.length);
+}
+
 /** Settings in force for the current view: each person has their own income, goals and budgets. */
 function effectiveSettings() {
   const s = state.settings;
   if (s.scope === 'all') {
-    // Household income = everyone's payslip income together, once each person has one.
+    // Household income = everyone's income together (payslip / SA302 / maternity), once each person has one.
     if (s.income == null && s.people.length > 1) {
-      const incomes = s.people.map((p) => s.scoped?.[p.id]?.income);
-      if (incomes.every((v) => v != null)) return { ...s, income: incomes.reduce((a, v) => a + v, 0) };
+      const incomes = s.people.map((p) => personIncome(p.id));
+      // Anyone without a set income: use the average of what actually arrived in their accounts.
+      if (incomes.some((v) => v != null)) return { ...s, income: s.people.reduce((a, p, i) => a + (incomes[i] ?? estimatedIncome(p.id)), 0) };
     }
+    if (s.income == null && s.people.length === 1 && activeTempIncome(s.people[0].id)) return { ...s, income: personIncome(s.people[0].id) };
     return s;
   }
-  return { ...s, income: null, savingsTarget: null, budgets: {}, cardPayoff: null, payday: null, ...(s.scoped?.[s.scope] || {}) };
+  const mine = { ...s, income: null, savingsTarget: null, budgets: {}, cardPayoff: null, payday: null, ...(s.scoped?.[s.scope] || {}) };
+  const temp = activeTempIncome(s.scope);
+  return temp ? { ...mine, income: temp.monthly } : mine;
 }
 
 export function recompute() {

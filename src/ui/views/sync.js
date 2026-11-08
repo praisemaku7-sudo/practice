@@ -6,6 +6,7 @@ import { esc, toast, busy, openSheet, closeSheet } from '../dom.js';
 import { prettyDate } from '../../lib/dates.js';
 import { client, syncFrom } from '../../lib/banksync.js';
 import { commitItem } from '../import.js';
+import { logPurchase } from './add.js';
 
 const DEPLOY_URL = 'https://deploy.workers.cloudflare.com/?url=https://github.com/praisemaku7-sudo/practice/tree/main/server';
 let flash = '';
@@ -45,7 +46,7 @@ export function render() {
   ${flash ? `<div class="card tip-box">${esc(flash)}</div>` : ''}
   <div class="card muted-card"><p class="muted">Your banks send new transactions here automatically through UK Open Banking. You approve read-only access in each bank's app, and nobody sees your password. One-time setup takes about 20 minutes. Until then, <a href="#/settings">Auto-log Apple Pay</a> and screenshot imports keep you up to date.</p></div>
 
-  ${step(1, 'Free Enable Banking account', ready, `
+  ${step(1, 'Free Enable Banking account (for bank sync)', ready && c.bankReady, `
     <p class="muted">The regulated provider that talks to your banks. Its free "restricted" mode covers your own accounts.</p>
     <ol class="tips"><li>Sign up at <b>enablebanking.com</b> → Control Panel → <b>Applications</b> → create one (Production).</li>
     <li>Download the <b>private key</b> (.pem) and copy the <b>application ID</b>.</li>
@@ -58,6 +59,7 @@ export function render() {
     <li><b>APP_TOKEN</b>: this password (copy it now):</li></ul>
     <div class="row gap"><input class="url-box grow" id="bs-newtoken" readonly value="${esc(token)}"><button class="btn ghost" data-action="bs-copy-token">Copy</button></div>
     <a class="btn primary full" href="${DEPLOY_URL}" target="_blank" rel="noopener">Deploy to Cloudflare</a>
+    <p class="sub">Only want <b>Apple Pay logging</b> for now? Do steps 2–3 and type <code>later</code> for EB_APP_ID and EB_PRIVATE_KEY. Add the real ones when you set up Enable Banking.</p>
     <p class="sub">Afterwards, in Enable Banking set the app's <b>redirect URL</b> to your server address + <code>/callback</code>.</p>`)}
 
   ${step(3, 'Connect the app to your server', ready, `
@@ -118,8 +120,23 @@ export async function syncAll({ quiet = false } = {}) {
   return added;
 }
 
-/** On app open: sync quietly if it's been more than 6 hours. */
+/** Collect Apple Pay purchases your Shortcut sent to the server since the app was last opened. */
+export async function pullApplePay() {
+  const c = cfg();
+  if (!c.url || !c.token) return 0;
+  const api = client(c);
+  const inbox = await api.inbox();
+  if (!Array.isArray(inbox) || !inbox.length) return 0;
+  let n = 0;
+  for (const e of inbox) if (await logPurchase({ amount: e.amount, merchant: e.merchant || 'Apple Pay', card: e.card, date: (e.at || '').slice(0, 10) || undefined, id: e.id })) n += 1;
+  await api.ack(inbox.map((e) => e.id));
+  recompute();
+  return n;
+}
+
+/** On app open: collect Apple Pay purchases, then sync banks quietly if it's been more than 6 hours. */
 export async function autoSync() {
+  try { const ap = await pullApplePay(); if (ap) toast(`${ap} Apple Pay purchase${ap === 1 ? '' : 's'} added`); } catch { /* server not set up yet */ }
   const c = cfg();
   if (!c.url || !c.token || !Object.values(c.links || {}).some(Boolean)) return;
   if (c.lastRun && Date.now() - c.lastRun < 6 * 3600000) return;
@@ -136,7 +153,11 @@ export const actions = {
     const token = document.getElementById('bs-token').value.trim();
     if (!url) return toast('Paste your server address', { error: true });
     const done = busy('Checking your sync server…');
-    try { await client({ url, token }).health(); await saveCfg({ url, token }); done(); toast('Connected to your sync server ✓'); }
+    try {
+      const h = await client({ url, token }).health();
+      await saveCfg({ url, token, bankReady: !!h.bankSync, applePayReady: !!h.applePay });
+      done(); toast(`Connected ✓ · Apple Pay logging ${h.applePay ? 'ready' : 'needs storage (see guide)'} · bank sync ${h.bankSync ? 'ready' : 'needs Enable Banking keys'}`);
+    }
     catch (e) { done(); toast(e.message, { error: true }); }
     rerender();
   },

@@ -5,3 +5,8 @@ compatibility_date = "2025-06-01"
 [vars]
 # Your app's address (no path). Only it may call this server or be redirected back to.
 ALLOWED_ORIGIN = "https://praisemaku7-sudo.github.io"
+
+# Storage for the Apple Pay inbox. Recent versions of Cloudflare's deploy flow create this
+# automatically. If yours asks for an id, run: npx wrangler kv namespace create STORE
+[[kv_namespaces]]
+binding = "STORE"
