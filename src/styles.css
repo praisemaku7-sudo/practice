@@ -513,3 +513,15 @@ body.is-locked #main, body.is-locked .tabbar, body.is-locked .topbar { visibilit
 .details-line { font-size: 12px; color: var(--muted); background: var(--track); border-radius: 10px; padding: 6px 9px; }
 .income-box { display: grid; gap: 10px; margin: 8px 0; } .income-person { background: var(--track); border-radius: 14px; padding: 10px 12px; display: grid; gap: 6px; }
 .prompt-box { width: 100%; font-size: 13px; line-height: 1.4; resize: none; font-family: inherit; }
+
+/* Readable accent text on tinted backgrounds (WCAG AA) */
+:root { --accent-text: #08734d; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --accent-text: #5eead4; } }
+:root[data-theme="dark"] { --accent-text: #5eead4; }
+.tabbar a.active, .link, a.link, .small-link, .good-note, .pos { color: var(--accent-text); }
+
+/* Startup skeleton */
+.skeleton { display: grid; gap: 12px; padding-top: 8px; }
+.skeleton div { border-radius: var(--radius); background: linear-gradient(90deg, var(--track) 25%, color-mix(in srgb, var(--track) 60%, var(--card)) 50%, var(--track) 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .skeleton div { animation: none; } }

@@ -182,14 +182,15 @@ document.addEventListener('focusout', () => { if (pendingRender) { pendingRender
       setTimeout(() => toast(`Removed ${junk.length} statement summary line${junk.length > 1 ? 's' : ''} (e.g. "${junk[0].description.slice(0, 24)}") that were wrongly counted as payments`), 600);
     }
   }
-  if (state.txs.length && (state.settings.transferRulesVersion || 1) < 2) {
+  if (state.txs.length && (state.settings.transferRulesVersion || 1) < 3) {
+    // Re-check transfers with the improved rules (names, aliases, savings, card repayments).
     await relinkTransfers();
-    await saveSettings({ transferRulesVersion: 2 });
+    await saveSettings({ transferRulesVersion: 3 });
   }
   await route();
   sync.autoSync().then(() => render());
   // Warm up the PDF engine in the background so the first import starts instantly.
-  (window.requestIdleCallback || ((f) => setTimeout(f, 1500)))(() => import('./lib/parse/pdf.js'));
+  setTimeout(() => (window.requestIdleCallback || ((f) => f()))(() => import('./lib/parse/pdf.js')), 4000);
   if ('serviceWorker' in navigator && import.meta.env.PROD) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   }

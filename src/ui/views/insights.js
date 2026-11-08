@@ -6,7 +6,7 @@ import { buildInsights } from '../../lib/insights.js';
 import { compareMonths } from '../../lib/analysis.js';
 import { catName } from '../../lib/categories.js';
 import { monthLabel } from '../../lib/dates.js';
-import { aiMonthlyReport } from '../../lib/ai.js';
+const aiMonthlyReport = async (...a) => (await import('../../lib/ai.js')).aiMonthlyReport(...a);
 import { monthSwitcher, emptyState, hideable } from '../common.js';
 
 const reports = {}; // month -> report (cache of kv)

@@ -84,8 +84,22 @@ export function monthsPresent(txs) {
   return [...new Set(txs.map((t) => monthKey(t.date)))].sort();
 }
 
+// Month summaries are asked for many times per screen; cache them until the data changes.
+let summaryCache = new WeakMap();
+export function clearAnalysisCache() { summaryCache = new WeakMap(); }
+
 /** Summary for one month. All values pence; spending values positive. */
 export function summarizeMonth(txs, key) {
+  let byKey = summaryCache.get(txs);
+  if (!byKey) { byKey = new Map(); summaryCache.set(txs, byKey); }
+  const tag = `${key}|${txs.length}`;
+  if (byKey.has(tag)) return byKey.get(tag);
+  const result = summarizeMonthUncached(txs, key);
+  byKey.set(tag, result);
+  return result;
+}
+
+function summarizeMonthUncached(txs, key) {
   const m = txs.filter((t) => monthKey(t.date) === key);
   const byCat = {};
   const byMerchant = {};
