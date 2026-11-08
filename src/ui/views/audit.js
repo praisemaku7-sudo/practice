@@ -1,6 +1,6 @@
 // "Check my numbers": shows exactly which transactions make up a month's In and Spent,
 // and lets you fix the big ones in one tap (own transfers, refunds, exclusions).
-import { state, saveSettings, recompute, relinkTransfers, accountName } from '../../state.js';
+import { state, saveSettings, recompute, relinkTransfers, accountName, load } from '../../state.js';
 import { db } from '../../lib/db.js';
 import { esc, toast } from '../dom.js';
 import { fmt } from '../../lib/money.js';
@@ -97,6 +97,15 @@ export function render() {
 
 export const actions = {
   // Accept the latest statement's balance when the app couldn't prove it.
+  'chk-exclude': async (el, rerender) => {
+    const a = state.allAccounts.find((x) => x.id === el.dataset.id);
+    if (!a) return;
+    a.excluded = true;
+    await db.put('accounts', a);
+    await load(); recompute();
+    toast(`${a.name} is no longer counted. Change it in Accounts → Not counted.`);
+    rerender();
+  },
   'chk-use': async (el, rerender) => {
     const a = state.allAccounts.find((x) => x.id === el.dataset.id);
     const u = a?.balanceUnverified;

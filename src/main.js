@@ -2,6 +2,7 @@ import './styles.css';
 import { state, load, recompute, relinkTransfers, saveSettings, removeSummaryLines, setScope, scopeLabel, ownerOf } from './state.js';
 import { db, requestPersistence } from './lib/db.js';
 import { toTransactions } from './lib/importer.js';
+import { categorize } from './lib/categorize.js';
 import { demoData } from './lib/demo.js';
 import { monthKey } from './lib/dates.js';
 import { $, closeSheet, toast, confirmSheet, openSheet, esc } from './ui/dom.js';
@@ -25,9 +26,10 @@ import * as goals from './ui/views/goals.js';
 import { initLock, lockActions } from './ui/lock.js';
 import * as sync from './ui/views/sync.js';
 import * as add from './ui/views/add.js';
+import * as plan from './ui/views/plan.js';
 
-const VIEWS = { home, budget, afford, insights, accounts, transactions, settings, history, import: importer, checkin, bills, cards, setup, audit, due, goals, sync, add };
-const TITLES = { home: 'Overview', budget: 'Budget', afford: 'Afford?', insights: 'Insights', accounts: 'Accounts', transactions: 'Transactions', settings: 'Settings', history: 'Monthly record', import: 'Import', checkin: 'Monthly check-in', bills: 'Bills & subscriptions', cards: 'Credit cards', setup: 'Fix accounts', audit: 'Check my numbers', due: 'Due soon', goals: 'Savings goals', sync: 'Bank sync', add: 'Quick add' };
+const VIEWS = { home, budget, afford, insights, accounts, transactions, settings, history, import: importer, checkin, bills, cards, setup, audit, due, goals, sync, add, plan };
+const TITLES = { home: 'Overview', budget: 'Budget', afford: 'Afford?', insights: 'Insights', accounts: 'Accounts', transactions: 'Transactions', settings: 'Settings', history: 'Monthly record', import: 'Import', checkin: 'Monthly check-in', bills: 'Bills & subscriptions', cards: 'Credit cards', setup: 'Fix accounts', audit: 'Check my numbers', due: 'Due soon', goals: 'Savings goals', sync: 'Bank sync', add: 'Quick add', plan: 'Future planning' };
 let current = 'home';
 
 function parseHash() {
@@ -52,7 +54,7 @@ async function render() {
   main.dataset.view = current;
   document.title = `${TITLES[current]} · Pocket Ledger`;
   // Which tab is highlighted for pages that aren't tabs themselves.
-  const PARENT = { transactions: 'home', history: 'home', checkin: 'home', bills: 'home', import: 'home', cards: 'home', audit: 'home', due: 'home', goals: 'home', setup: 'accounts', sync: 'accounts' };
+  const PARENT = { transactions: 'home', history: 'home', checkin: 'home', bills: 'home', import: 'home', cards: 'home', audit: 'home', due: 'home', goals: 'home', setup: 'accounts', sync: 'accounts', plan: 'budget' };
   document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.view === (PARENT[current] || current)));
 }
 
@@ -182,10 +184,19 @@ document.addEventListener('focusout', () => { if (pendingRender) { pendingRender
       setTimeout(() => toast(`Removed ${junk.length} statement summary line${junk.length > 1 ? 's' : ''} (e.g. "${junk[0].description.slice(0, 24)}") that were wrongly counted as payments`), 600);
     }
   }
-  if (state.txs.length && (state.settings.transferRulesVersion || 1) < 4) {
-    // Re-check transfers with the improved rules (names, aliases, savings, card repayments).
+  if (state.txs.length && (state.settings.transferRulesVersion || 1) < 5) {
+    // Re-sort anything still "Other" with the improved rules (e.g. rent to letting agents), then
+    // re-check transfers (names, aliases, savings, card repayments). Your own choices are kept.
+    const all = await db.all('tx');
+    const fixed = [];
+    for (const t of all) {
+      if (t.category !== 'other' || t.userCategory) continue;
+      const c = categorize(t.description, t.amount, state.settings.userRules);
+      if (c !== 'other') { t.category = c; fixed.push(t); }
+    }
+    if (fixed.length) await db.putMany('tx', fixed);
     await relinkTransfers();
-    await saveSettings({ transferRulesVersion: 4 });
+    await saveSettings({ transferRulesVersion: 5 });
   }
   await route();
   sync.autoSync().then(() => render());

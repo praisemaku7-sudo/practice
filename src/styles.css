@@ -525,3 +525,60 @@ body.is-locked #main, body.is-locked .tabbar, body.is-locked .topbar { visibilit
 .skeleton div { border-radius: var(--radius); background: linear-gradient(90deg, var(--track) 25%, color-mix(in srgb, var(--track) 60%, var(--card)) 50%, var(--track) 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite; }
 @keyframes shimmer { to { background-position: -200% 0; } }
 @media (prefers-reduced-motion: reduce) { .skeleton div { animation: none; } }
+
+/* Statement checks */
+.checks { margin: 8px 0; padding: 10px 12px; border-radius: 12px; background: var(--track); font-size: 13px; }
+.checks summary { cursor: pointer; font-weight: 600; list-style: none; }
+.checks summary::-webkit-details-marker { display: none; }
+.checks.ok { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.checks.fail { background: color-mix(in srgb, #e5484d 12%, transparent); }
+.check-line { padding: 4px 0 0 2px; color: var(--muted); }
+.check-line.ok { color: var(--ink); }
+.check-line.bad { color: #d93d42; font-weight: 600; }
+.log-row > summary { list-style: none; cursor: pointer; }
+.log-row > summary::-webkit-details-marker { display: none; }
+.log-row .checks { margin: 0 0 8px; }
+.vbadge { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 13px; flex: none; background: var(--track); color: var(--muted); }
+.vbadge.ok { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+.vbadge.fail { background: color-mix(in srgb, #e5484d 18%, transparent); color: #d93d42; }
+
+/* Future planning tables */
+.plan-table { display: grid; gap: 2px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.pt-row { display: grid; grid-template-columns: 1.1fr 1fr 1fr 1.1fr; gap: 6px; padding: 7px 4px; border-bottom: 1px solid var(--line); }
+.pt-row span:not(:first-child) { text-align: right; }
+.pt-row.head { color: var(--muted); font-size: 12px; font-weight: 600; }
+.pt-row.start { background: var(--accent-soft); border-radius: 8px; }
+
+/* ───────────── Light & fresh refresh (matches the new icon) ───────────── */
+:root {
+  --bg: #f5f8f6; --card: #ffffff; --ink: #0d1512; --muted: #66716c; --line: #e6ece9; --track: #eef3f0;
+  --accent: #0c9a68; --accent-2: #2cc9a0; --accent-soft: #e2f6ee;
+  --shadow: 0 1px 2px rgb(13 40 28 / 5%), 0 10px 30px rgb(13 40 28 / 6%);
+  --radius: 24px;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) body { background: linear-gradient(180deg, #eaf8f1 0, var(--bg) 340px) no-repeat, var(--bg); }
+}
+:root[data-theme="light"] body { background: linear-gradient(180deg, #eaf8f1 0, var(--bg) 340px) no-repeat, var(--bg); }
+.brand { gap: 10px; font-size: 18px; letter-spacing: -0.02em; }
+.brand .logo { width: 34px; height: 34px; border-radius: 10px; background: none; box-shadow: 0 2px 8px rgb(5 150 105 / 18%), inset 0 0 0 1px rgb(5 150 105 / 8%); display: block; }
+.brand-name { font-weight: 750; }
+.page-title { font-weight: 800; }
+.card { box-shadow: var(--shadow); }
+.hero { background: radial-gradient(130% 150% at 0% 0%, #e3f8ee 0%, var(--card) 58%); }
+.bank-badge { border-radius: 14px; background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.icon-btn { border-radius: 14px; background: var(--card); box-shadow: var(--shadow); }
+.scope-btn { border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 650; }
+.btn.ghost { background: var(--track); border-color: transparent; }
+.pill { border-radius: 999px; }
+.tabbar a.active { color: var(--accent); background: var(--accent-soft); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .hero { background: radial-gradient(130% 150% at 0% 0%, #0f2a20 0%, var(--card) 58%); }
+  :root:not([data-theme="light"]) .icon-btn { background: var(--track); box-shadow: none; }
+}
+:root[data-theme="dark"] .hero { background: radial-gradient(130% 150% at 0% 0%, #0f2a20 0%, var(--card) 58%); }
+:root[data-theme="dark"] .icon-btn { background: var(--track); box-shadow: none; }
+.plan-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+.plan-grid .field, #main [id^="pl-"] { min-width: 0; }
+.plan-grid .field, .card .field.slim:has(> input[id^="pl-"]) { display: grid; gap: 4px; }
+.plan-grid .field input, .plan-grid .field select, .field input[id^="pl-"] { width: 100%; min-width: 0; }

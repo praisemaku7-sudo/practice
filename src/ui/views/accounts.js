@@ -7,7 +7,7 @@ import { prettyDate, monthLabel } from '../../lib/dates.js';
 import { canonicalBank } from '../../lib/parse/details.js';
 import { catChip, emptyState } from '../common.js';
 
-const TYPE_LABEL = { current: 'Current / debit', savings: 'Savings', credit: 'Credit card' };
+const TYPE_LABEL = { current: 'Current / debit', savings: 'Savings', credit: 'Credit card', investment: 'Investment / pension (not counted)' };
 
 export function render() {
   if (!state.accounts.length) return emptyState({ title: 'No accounts yet', body: 'Each statement you import creates or updates an account here.' });
@@ -40,6 +40,7 @@ export function render() {
       <div class="grow"><div>${esc(a.name)} ${a.id === mainId ? '<small class="pill">main</small>' : ''}</div>
       <div class="sub">${state.settings.people.length > 1 ? `<b>${esc(personName(ownerOf(a)))}</b> · ` : ''}${a.typeLocked ? '🔒 ' : ''}${[a.bank, TYPE_LABEL[a.type] || a.type].filter(Boolean).map(esc).join(' · ')} · ${counts[a.id] || 0} transactions${a.lastImport ? ' · updated ' + prettyDate(a.lastImport) : ''}</div></div>
       <div class="bal"><b class="${a.balance < 0 ? 'neg' : ''}">${a.balance != null ? (a.type === 'credit' ? `${fmt(Math.max(0, -a.balance))} owed` : fmt(a.balance)) : a.balanceUnverified ? `<span class="muted">${fmt(Math.abs(a.balanceUnverified.amount))}?</span>` : '—'}</b>${a.balanceUnverified && a.balance == null ? '<small class="sub warn-text">unverified</small>' : ''}${a.balanceDate ? `<small class="sub">${a.balanceDate === state.derived.today ? 'today' : 'on ' + prettyDate(a.balanceDate)}</small>` : ''}</div></button>`).join('')}
+    ${(state.excludedAccounts || []).length ? `<h4 class="muted">Not counted</h4>${state.excludedAccounts.map((a) => `<button class="list-row tap muted" data-action="edit-account" data-id="${esc(a.id)}"><span class="bank-badge">⏸</span><div class="grow"><div>${esc(a.name)}</div><div class="sub">${esc([a.bank, TYPE_LABEL[a.type] || a.type].filter(Boolean).join(' · '))} · left out of all totals · tap to change</div></div><div class="bal"><b>${a.balance != null ? fmt(Math.abs(a.balance)) : '—'}</b></div></button>`).join('')}` : ''}
     <div class="row gap"><button class="btn primary grow" data-action="import">Import</button><button class="btn ghost grow" data-action="go" data-to="transactions">Transactions</button><a class="btn ghost grow" href="#/cards">💳 Cards</a></div>
     <a class="link small-link" href="#/setup">Edit types, balances or merge accounts ›</a>
     <a class="link small-link" href="#/sync">🔗 Live bank sync ›</a>
@@ -94,8 +95,9 @@ function renderStatements() {
       }).join('')}</div></div>`).join('')}
     ${missingCount ? `<div class="list-gap"></div>${coverage.missing.map((m) => `<div class="list-row"><span class="bank-badge warn">!</span><div class="grow"><b>${esc(m.accountName)}</b> · ${esc(monthLabel(m.month))}<div class="sub">${m.reason === 'latest' ? 'Latest statement should be ready in the bank app' : m.reason === 'start' ? 'Needed from your tracking start month' : 'Gap between imported statements'}</div></div><div class="cov-btns"><button class="link" data-action="cov-toggle" data-key="${esc(m.accountId + '|' + m.month)}">No statement</button>${m.reason === 'start' && m.month === c0(m.accountId) ? `<button class="link" data-action="acc-started" data-id="${esc(m.accountId)}">Opened later</button>` : ''}</div></div>`).join('')}
       <button class="btn primary full" data-action="import">Import missing statements</button>` : ''}
-    <h4>Import log</h4>
-    ${[...state.imports].sort((a, b) => b.at - a.at).slice(0, 10).map((i) => `<div class="list-row"><div class="grow"><div class="ellipsis">${esc(i.fileName)}</div><div class="sub">${esc(accName(i.accountId))}${i.periodStart ? ` · ${prettyDate(i.periodStart)}–${prettyDate(i.periodEnd)}` : ''} · ${new Date(i.at).toLocaleDateString('en-GB')}</div></div><span class="sub">${i.count} new${i.dupes ? ` · ${i.dupes} dup` : ''}</span></div>`).join('') || '<p class="sub">No imports yet.</p>'}
+    <h4>Import log: how each statement checked out</h4>
+    ${[...state.imports].sort((a, b) => b.at - a.at).slice(0, 15).map((i) => `<details class="log-row"><summary class="list-row"><span class="vbadge ${i.validation?.level || 'old'}">${{ ok: '✓', partial: '~', fail: '!', unchecked: '–' }[i.validation?.level] || '·'}</span><div class="grow"><div class="ellipsis">${esc(i.fileName)}</div><div class="sub">${esc(accName(i.accountId))}${i.periodStart ? ` · ${prettyDate(i.periodStart)}–${prettyDate(i.periodEnd)}` : ''} · ${new Date(i.at).toLocaleDateString('en-GB')}</div></div><span class="sub">${i.count} new${i.dupes ? ` · ${i.dupes} dup` : ''}</span></summary><div class="checks">${i.validation ? `<b>${esc(i.validation.summary)}</b>${i.validation.checks.map((c) => `<div class="check-line ${c.ok === true ? 'ok' : c.ok === false ? 'bad' : ''}">${c.ok === true ? '✓' : c.ok === false ? '✗' : '–'} ${esc(c.text.replace(/ ?✓/g, ''))}</div>`).join('')}` : '<span class="sub">Imported before checks were recorded. Re-import to check it.</span>'}</div></details>`).join('') || '<p class="sub">No imports yet.</p>'}
+    <p class="sub">✓ the statement's own figures agree · ~ partly checked · ! didn't add up · – nothing printed to check against. Tap a file to see each check.</p>
   </div>`;
 }
 
@@ -115,13 +117,14 @@ function renderPlan(plan) {
 
 export const actions = {
   'edit-account': (el, rerender) => {
-    const a = state.accounts.find((x) => x.id === el.dataset.id);
+    const a = (state.allAccounts || state.accounts).find((x) => x.id === el.dataset.id);
     if (!a) return;
     openSheet(`<h2>Edit account</h2>
       <label class="field"><span>Name</span><input id="ea-name" value="${esc(a.name)}"></label>
       <label class="field"><span>Bank</span><input id="ea-bank" value="${esc(a.bank || '')}"></label>
       <label class="field select"><span>Type</span><select id="ea-type">${Object.entries(TYPE_LABEL).map(([k, v]) => `<option value="${k}" ${a.type === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
       <label class="field"><span>${a.type === 'credit' ? 'Owed £' : 'Balance £'}</span><input id="ea-bal" inputmode="decimal" value="${a.balance != null ? (Math.abs(a.balance) / 100).toFixed(2) : ''}" placeholder="unknown"></label>
+      <label class="check-row"><input type="checkbox" id="ea-count" ${a.excluded ? '' : 'checked'}> <span><b>Count this account</b><br><small class="sub">Untick for money that isn't part of your day-to-day finances: investments, a pot held for someone else, a deposit fund. It stays here but is left out of every total.</small></span></label>
       <p class="sub">Credit card? Set Type to Credit card and enter what you owe. Debit cards belong to your current account.</p>
       <div class="row gap"><button class="btn danger grow" id="ea-del">Delete</button><button class="btn primary grow" id="ea-save">Save</button></div>`, {
       onMount(p) {
@@ -134,6 +137,7 @@ export const actions = {
           const bal = parsePrice(raw.replace(/^-/, ''));
           if (raw && bal != null) { a.balance = neg ? -bal : bal; a.balanceDate = state.derived.today; }
           a.typeLocked = true;
+          a.excluded = !p.querySelector('#ea-count').checked || a.type === 'investment';
           // Credit cards store what you owe as a negative balance.
           if (a.type === 'credit' && a.balance > 0) a.balance = -a.balance;
           await db.put('accounts', a);

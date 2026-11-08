@@ -92,7 +92,11 @@ export function txOwner(t, accountsById) {
 function applyView(allTxs, allAccounts) {
   const scope = state.settings.scope;
   const from = state.settings.trackFrom;
-  const accounts = scope === 'all' ? allAccounts : allAccounts.filter((a) => ownerOf(a) === scope);
+  // Accounts you've chosen not to count (investments, someone else's pot) are kept but left out of every number.
+  const inScope = scope === 'all' ? allAccounts : allAccounts.filter((a) => ownerOf(a) === scope);
+  const accounts = inScope.filter((a) => !a.excluded && a.type !== 'investment');
+  state.excludedAccounts = inScope.filter((a) => a.excluded || a.type === 'investment');
+  const excludedIds = new Set(allAccounts.filter((a) => a.excluded || a.type === 'investment').map((a) => a.id));
   const ids = new Set(accounts.map((a) => a.id));
   const known = new Set(allAccounts.map((a) => a.id));
   state.hiddenCount = from ? allTxs.filter((t) => t.date < from).length : 0;
@@ -104,6 +108,7 @@ function applyView(allTxs, allAccounts) {
   // other cardholders' purchases on their own card.
   state.txs = allTxs.filter((t) => {
     if (from && t.date < from) return false;
+    if (excludedIds.has(t.accountId)) return false;
     if (scope === 'all') return true;
     if (!known.has(t.accountId)) return scope === state.settings.people[0]?.id;
     return txOwner(t, byId) === scope;
