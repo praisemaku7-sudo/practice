@@ -32,7 +32,7 @@ export function render() {
   for (const r of live) { const d = Math.min(r.day, dim); (byDay[d] ||= []).push(r); }
   const today = +state.derived.today.slice(8);
   const cells = [];
-  for (let i = 0; i < firstDow; i++) cells.push('<span class="cal-cell empty"></span>');
+  for (let i = 0; i < firstDow; i++) cells.push('<span class="cal-cell cal-blank" aria-hidden="true"></span>');
   for (let d = 1; d <= dim; d++) {
     const items = byDay[d] || [];
     const sum = items.reduce((a, r) => a + r.amount, 0);
