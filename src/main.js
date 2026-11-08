@@ -30,9 +30,10 @@ import * as add from './ui/views/add.js';
 import * as plan from './ui/views/plan.js';
 import * as categories from './ui/views/categories.js';
 import * as track from './ui/views/track.js';
+import * as income from './ui/views/income.js';
 
-const VIEWS = { home, budget, afford, insights, accounts, transactions, settings, history, import: importer, checkin, bills, cards, setup, audit, due, goals, sync, add, plan, categories, track };
-const TITLES = { home: 'Overview', budget: 'Budget', afford: 'Afford?', insights: 'Insights', accounts: 'Accounts', transactions: 'Transactions', settings: 'Settings', history: 'Monthly record', import: 'Import', checkin: 'Monthly check-in', bills: 'Bills & subscriptions', cards: 'Credit cards', setup: 'Fix accounts', audit: 'Check my numbers', due: 'Due soon', goals: 'Savings goals', sync: 'Bank sync', add: 'Quick add', plan: 'Future planning', categories: 'Categories', track: 'On track' };
+const VIEWS = { home, budget, afford, insights, accounts, transactions, settings, history, import: importer, checkin, bills, cards, setup, audit, due, goals, sync, add, plan, categories, track, income };
+const TITLES = { home: 'Overview', budget: 'Budget', afford: 'Afford?', insights: 'Insights', accounts: 'Accounts', transactions: 'Transactions', settings: 'Settings', history: 'Monthly record', import: 'Import', checkin: 'Monthly check-in', bills: 'Bills & subscriptions', cards: 'Credit cards', setup: 'Fix accounts', audit: 'Check my numbers', due: 'Due soon', goals: 'Savings goals', sync: 'Bank sync', add: 'Quick add', plan: 'Future planning', categories: 'Categories', track: 'On track', income: 'Income' };
 let current = 'home';
 
 function parseHash() {
@@ -58,7 +59,7 @@ async function render() {
   main.dataset.view = current;
   document.title = `${TITLES[current]} · Pocket Ledger`;
   // Which tab is highlighted for pages that aren't tabs themselves.
-  const PARENT = { transactions: 'home', history: 'home', checkin: 'home', bills: 'home', import: 'home', cards: 'home', audit: 'home', due: 'home', goals: 'home', setup: 'accounts', sync: 'accounts', plan: 'track', categories: 'insights', budget: 'track' };
+  const PARENT = { transactions: 'home', history: 'home', checkin: 'home', bills: 'home', import: 'home', cards: 'home', audit: 'home', due: 'home', goals: 'home', setup: 'accounts', sync: 'accounts', plan: 'track', categories: 'insights', budget: 'track', income: 'track' };
   document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.view === (PARENT[current] || current)));
 }
 
@@ -69,7 +70,7 @@ async function route() {
   await VIEWS[view].applyParams?.(params);
   closeSheet();
   // Importing and fixing accounts always work on the whole household, so nothing is hidden.
-  if (['import', 'setup'].includes(view) && state.settings.scope !== 'all') {
+  if (['import', 'setup', 'income'].includes(view) && state.settings.scope !== 'all') {
     await setScope('all');
     toast('Showing the whole household while you import or fix accounts');
   }
