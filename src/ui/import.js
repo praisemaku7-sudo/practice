@@ -27,7 +27,7 @@ import { printedTotals, validateStatement } from '../lib/validate.js';
 import { isSummaryLine } from '../lib/parse/junk.js';
 import { classifyDocument, isInvestmentDocument } from '../lib/parse/doctype.js';
 import { isCreditReport, parseCreditReport } from '../lib/creditreport.js';
-import { parsePayslip } from '../lib/payslip.js';
+import { typicalPay, parsePayslip } from '../lib/payslip.js';
 import { parseSA302, isSA302 } from '../lib/sa302.js';
 import { extractDetails, suggestAccountName, canonicalBank } from '../lib/parse/details.js';
 import { personForName } from '../state.js';
@@ -533,11 +533,20 @@ export function reimportAllDuplicates() {
 export async function applyPayslip(item) {
   const slip = item.payslip;
   const pid = slip.owner || state.settings.people[0].id;
+  // Keep every payslip (one per pay date) and use the typical recent take-home, so a one-off
+  // month (a correction, back pay, a part month) or the order you import them in doesn't skew it.
+  const history = { ...(state.settings.payslipHistory || {}) };
+  const entry = { payDate: slip.payDate, net: slip.net, gross: slip.gross || null, monthlyNet: slip.monthlyNet, frequency: slip.frequency, employer: slip.employer, file: item.name };
+  const list = [...(history[pid] || []).filter((x) => !(x.payDate && x.payDate === entry.payDate)), entry]
+    .sort((a, b) => String(b.payDate).localeCompare(String(a.payDate))).slice(0, 12);
+  history[pid] = list;
+  const typ = typicalPay(list);
   const scoped = { ...(state.settings.scoped || {}) };
-  scoped[pid] = { ...(scoped[pid] || {}), income: slip.monthlyNet };
-  const payslips = { ...(state.settings.payslips || {}), [pid]: { net: slip.net, gross: slip.gross || null, monthlyNet: slip.monthlyNet, frequency: slip.frequency, payDate: slip.payDate, employer: slip.employer, file: item.name, at: Date.now() } };
-  const patch = { scoped, payslips };
-  if (state.settings.people.length === 1) patch.income = slip.monthlyNet;
+  scoped[pid] = { ...(scoped[pid] || {}), income: typ.monthly };
+  const latest = typ.latest || entry;
+  const payslips = { ...(state.settings.payslips || {}), [pid]: { ...latest, monthlyNet: typ.monthly, count: list.length, usedDates: typ.used.map((x) => x.payDate), oneOffs: typ.oneOffs.map((x) => x.payDate), at: Date.now() } };
+  const patch = { scoped, payslips, payslipHistory: history };
+  if (state.settings.people.length === 1) patch.income = typ.monthly;
   await saveSettings(patch);
   item.status = 'imported';
   item.result = { added: 0, dupes: 0, account: 'income', payslip: true };

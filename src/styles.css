@@ -692,3 +692,9 @@ input, select, textarea, .field.slim input, .field.slim select, .filters select,
 .inc-tl-col { display: grid; grid-template-rows: 1fr auto; height: 100%; align-items: end; justify-items: center; gap: 4px; }
 .inc-tl-col span { width: 100%; border-radius: 6px 6px 3px 3px; background: linear-gradient(180deg, var(--accent-2), var(--accent)); }
 .inc-tl-col small { font-size: 10px; color: var(--muted); }
+.slip-hist summary { cursor: pointer; list-style: none; padding: 2px 0; }
+.slip-hist summary::-webkit-details-marker { display: none; }
+.slip-hist summary::after { content: ' ›'; }
+.slip-row { display: grid; grid-template-columns: 1fr auto auto auto; gap: 8px; align-items: center; padding: 7px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.slip-row b { font-family: var(--num); }
+.slip-row.oneoff b, .slip-row.oneoff span { color: var(--muted); }
