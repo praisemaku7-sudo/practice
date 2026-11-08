@@ -1,4 +1,4 @@
-import { state } from '../../state.js';
+import { state, personName, ownerOf } from '../../state.js';
 import { esc } from '../dom.js';
 import { fmt } from '../../lib/money.js';
 import { prettyDate, monthLabel } from '../../lib/dates.js';
@@ -44,13 +44,14 @@ function itemCard(it) {
       ${txs.length ? `<div class="imp-stats"><b>${txs.length}</b> transactions · ${prettyDate(dates[0])}–${prettyDate(dates[dates.length - 1])} · <span class="pos">${fmt(inSum, { whole: true })} in</span> · ${fmt(outSum, { whole: true })} out</div>
       <div class="row gap wrap-sm">
         <label class="field select slim grow"><select data-change="imp-acc" data-id="${it.id}">
-          ${state.accounts.map((a) => `<option value="${esc(a.id)}" ${it.accountChoice === a.id ? 'selected' : ''}>${esc(a.name)}${a.bank ? ` · ${esc(a.bank)}` : ''}</option>`).join('')}
+          ${state.accounts.map((a) => `<option value="${esc(a.id)}" ${it.accountChoice === a.id ? 'selected' : ''}>${esc(a.name)}${a.type === 'credit' ? ' 💳' : ''}${state.settings.people.length > 1 ? ` · ${esc(personName(ownerOf(a)))}` : ''}</option>`).join('')}
           <option value="__new" ${it.accountChoice === '__new' ? 'selected' : ''}>+ New: ${esc(it.newAccount.name)}</option></select></label>
       </div>
       ${it.accountChoice === '__new' ? `<div class="row gap wrap-sm">
         <label class="field slim grow"><input value="${esc(it.newAccount.name)}" placeholder="Account name" data-input="imp-name" data-id="${it.id}"></label>
         <label class="field select slim"><select data-change="imp-type" data-id="${it.id}">
-          ${['current', 'credit', 'savings'].map((t) => `<option value="${t}" ${it.newAccount.type === t ? 'selected' : ''}>${{ current: 'Current', credit: 'Credit card', savings: 'Savings' }[t]}</option>`).join('')}</select></label></div>` : ''}
+          ${['current', 'credit', 'savings'].map((t) => `<option value="${t}" ${it.newAccount.type === t ? 'selected' : ''}>${{ current: 'Current', credit: 'Credit card', savings: 'Savings' }[t]}</option>`).join('')}</select></label>
+        ${state.settings.people.length > 1 ? `<label class="field select slim"><select data-change="imp-owner" data-id="${it.id}">${[...state.settings.people.map((pp) => [pp.id, pp.name]), ['joint', 'Joint']].map(([id, n]) => `<option value="${id}" ${it.newAccount.owner === id ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label>` : ''}</div>` : ''}
       <div class="row between imp-actions">
         <label class="toggle"><input type="checkbox" data-change="imp-include" data-id="${it.id}" ${it.include ? 'checked' : ''}> Import</label>
         <label class="toggle"><input type="checkbox" data-change="imp-flip" data-id="${it.id}" ${it.flip ? 'checked' : ''}> In/out swapped</label>
@@ -121,6 +122,7 @@ export const actions = {
 export const changes = {
   'imp-acc': (el, rerender) => { find(el).accountChoice = el.value; rerender(); },
   'imp-type': (el) => { find(el).newAccount.type = el.value; },
+  'imp-owner': (el) => { find(el).newAccount.owner = el.value; },
   'imp-include': (el, rerender) => {
     const it = find(el);
     it.include = el.checked;

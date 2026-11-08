@@ -1,4 +1,4 @@
-import { state, saveSettings, wipeAll, load, relinkTransfers, recompute } from '../../state.js';
+import { state, saveSettings, wipeAll, load, relinkTransfers, recompute, PERSON_COLORS, ownerOf } from '../../state.js';
 import { db } from '../../lib/db.js';
 import { esc, toast, confirmSheet, busy } from '../dom.js';
 import { fmt, parsePrice } from '../../lib/money.js';
@@ -10,6 +10,18 @@ export function render() {
   return `
   <h1 class="page-title">Settings</h1>
   ${standalone ? '' : `<div class="card tip-box"><b>Install on your iPhone:</b> in Safari tap <b>Share</b> → <b>Add to Home Screen</b>. It opens full screen like an app, works offline, and keeps your data on the phone.</div>`}
+  <div class="card" id="people">
+    <h3>Household</h3>
+    <p class="muted">Add everyone whose statements you import. Give each account an owner (or Joint) in Accounts → Edit types. The switcher at the top then shows the household together or one person at a time.</p>
+    ${state.settings.people.map((p, i) => `<div class="person-row">
+      <span class="person-dot" style="--pc:${p.color}"></span>
+      <input class="name-input" value="${esc(p.name)}" data-input="pp-name" data-id="${esc(p.id)}" aria-label="Name">
+      <span class="sub">${(state.allAccounts || []).filter((a) => ownerOf(a) === p.id).length} accounts</span>
+      ${i > 0 ? `<button class="icon-btn small" data-action="pp-remove" data-id="${esc(p.id)}" aria-label="Remove">×</button>` : ''}</div>`).join('')}
+    <div class="row gap"><label class="field slim grow"><input id="pp-new" placeholder="Add a person, e.g. your wife's name" autocomplete="off"></label><button class="btn primary" data-action="pp-add">Add</button></div>
+    <p class="sub">Tip: use full names as they appear on statements (e.g. "Praise Maku"). Statements with that name are assigned to that person automatically, and transfers between you are recognised.</p>
+    <a class="btn ghost full" href="#/setup">Assign accounts to people</a>
+  </div>
   <div class="card">
     <h3>Claude AI</h3>
     <p class="muted">Reads any bank's PDF layout, reads prices from photos, and writes your monthly review. You pay Anthropic directly for usage (usually a few pence per statement). Get a key at console.anthropic.com.</p>
@@ -54,6 +66,22 @@ async function setTrackFrom(value, rerender) {
 }
 
 export const actions = {
+  'pp-add': async (_, rerender) => {
+    const name = document.getElementById('pp-new').value.trim();
+    if (!name) return toast('Type a name', { error: true });
+    const people = state.settings.people;
+    const id = 'p' + (Math.max(0, ...people.map((p) => parseInt(p.id.slice(1), 10) || 0)) + 1);
+    await saveSettings({ people: [...people, { id, name, color: PERSON_COLORS[people.length % PERSON_COLORS.length] }] });
+    rerender(); toast(`${name} added. Now assign their accounts.`);
+  },
+  'pp-remove': async (el, rerender) => {
+    const p = state.settings.people.find((x) => x.id === el.dataset.id);
+    if (!(await confirmSheet({ title: `Remove ${p.name}?`, body: `Their accounts move to ${state.settings.people[0].name}. No transactions are deleted.`, ok: 'Remove' }))) return;
+    const { db: database } = await import('../../lib/db.js');
+    for (const a of (state.allAccounts || []).filter((x) => x.owner === p.id)) { a.owner = state.settings.people[0].id; await database.put('accounts', a); }
+    await saveSettings({ people: state.settings.people.filter((x) => x.id !== p.id), scope: state.settings.scope === p.id ? 'all' : state.settings.scope });
+    await load(); rerender();
+  },
   'st-from-save': async (_, rerender) => {
     const v = document.getElementById('st-from').value; // YYYY-MM
     if (!/^\d{4}-\d{2}$/.test(v)) return toast('Pick a month', { error: true });
@@ -89,6 +117,14 @@ export const actions = {
   'st-wipe': async (_, rerender) => {
     if (!(await confirmSheet({ title: 'Delete everything?', body: 'All transactions, accounts, budgets and your API key will be removed from this phone. Export a backup first if you might want it.', ok: 'Delete all', danger: true }))) return;
     await wipeAll(); rerender(); toast('All data deleted');
+  },
+};
+
+export const inputs = {
+  'pp-name': async (el) => {
+    const name = el.value.trim();
+    if (!name) return;
+    await saveSettings({ people: state.settings.people.map((p) => (p.id === el.dataset.id ? { ...p, name } : p)) });
   },
 };
 

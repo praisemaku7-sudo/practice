@@ -39,7 +39,7 @@ export function render() {
     <div class="row between"><span class="label">Credit card payoff</span>
       <a class="link" href="#/cards">${budget.cardPayoff ? fmt(budget.cardPayoff, { whole: true }) + '/mo' : 'Set up'} ›</a></div>
     <div class="row between"><span class="label">Payday</span>
-      <button class="link" data-action="edit-payday">${payday ? `${payday}${['th', 'st', 'nd', 'rd'][payday % 10 > 3 || [11, 12, 13].includes(payday) ? 0 : payday % 10]} of the month` : 'Not set'} ${state.settings.payday == null && detectedPayday ? '<small class="pill">detected</small>' : ''} ✎</button></div>
+      <button class="link" data-action="edit-payday">${payday ? `${payday}${['th', 'st', 'nd', 'rd'][payday % 10 > 3 || [11, 12, 13].includes(payday) ? 0 : payday % 10]} of the month` : 'Not set'} ${state.eff.payday == null && detectedPayday ? '<small class="pill">detected</small>' : ''} ✎</button></div>
     <div class="stack-bar">${seg(fixed, 'fixed')}${seg(ess, 'essential')}${seg(budget.personalAllowance, 'personal')}${seg(budget.savingsTarget, 'savings')}${seg(budget.cardPayoff || 0, 'payoff')}</div>
     <div class="legend wrap">
       <span><i class="sw fixed"></i>Bills ${fmt(fixed, { whole: true })}</span>
@@ -53,7 +53,7 @@ export function render() {
     <p class="sub">Built from ${budget.months.length ? budget.months.map((m) => monthLabel(m, { short: true })).join(', ') : 'this month only'}. Fun money is what's left after bills, essentials and savings, split the way you usually spend it.</p>
   </div>
   ${groups}
-  ${Object.keys(state.settings.budgets).length ? '<button class="btn ghost full" data-action="reset-budgets">Reset all custom budgets</button>' : ''}`;
+  ${Object.keys(state.eff.budgets || {}).length ? '<button class="btn ghost full" data-action="reset-budgets">Reset all custom budgets</button>' : ''}`;
 }
 
 function moneySheet({ title, help, value, allowClear = true, onSave }) {
@@ -77,7 +77,7 @@ function moneySheet({ title, help, value, allowClear = true, onSave }) {
 export const actions = {
   'edit-income': (_, rerender) => moneySheet({
     title: 'Monthly take-home pay', help: 'After tax. Leave on automatic to use the average of your statements.',
-    value: state.settings.income ?? state.derived.budget.income,
+    value: state.eff.income ?? state.derived.budget.income,
     onSave: async (v) => { await saveSettings({ income: v }); rerender(); },
   }),
   'edit-savings': (_, rerender) => moneySheet({
@@ -107,7 +107,7 @@ export const actions = {
       help: line ? `You usually spend ${fmt(line.hist, { whole: true })} a month here.` : '',
       value: line?.budget ?? 0,
       onSave: async (v) => {
-        const budgets = { ...state.settings.budgets };
+        const budgets = { ...(state.eff.budgets || {}) };
         if (v == null) delete budgets[cat]; else budgets[cat] = v;
         await saveSettings({ budgets }); rerender();
       },

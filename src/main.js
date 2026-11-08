@@ -1,10 +1,10 @@
 import './styles.css';
-import { state, load, recompute, relinkTransfers, saveSettings, removeSummaryLines } from './state.js';
+import { state, load, recompute, relinkTransfers, saveSettings, removeSummaryLines, setScope, scopeLabel, ownerOf } from './state.js';
 import { db, requestPersistence } from './lib/db.js';
 import { toTransactions } from './lib/importer.js';
 import { demoData } from './lib/demo.js';
 import { monthKey } from './lib/dates.js';
-import { $, closeSheet, toast, confirmSheet } from './ui/dom.js';
+import { $, closeSheet, toast, confirmSheet, openSheet, esc } from './ui/dom.js';
 import { pickFiles, addFiles, onQueueChange } from './ui/import.js';
 import * as home from './ui/views/home.js';
 import * as budget from './ui/views/budget.js';
@@ -36,6 +36,14 @@ async function render() {
   if (view.preload) await view.preload();
   const main = $('#main');
   main.innerHTML = view.render();
+  const sb = $('#scope-btn');
+  if (sb) {
+    const multi = state.settings.people.length > 1 || state.allAccounts?.some((a) => a.owner === 'joint');
+    sb.hidden = !multi;
+    const p = state.settings.people.find((x) => x.id === state.settings.scope);
+    sb.textContent = state.settings.scope === 'all' ? '🏠 Household' : state.settings.scope === 'joint' ? '👥 Joint' : `● ${p?.name || ''}`;
+    sb.style.setProperty('--pc', p?.color || 'var(--accent)');
+  }
   main.dataset.view = current;
   document.title = `${TITLES[current]} · Pocket Ledger`;
   document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.view === current || (['transactions', 'history', 'checkin', 'bills', 'import', 'cards', 'audit'].includes(current) && a.dataset.view === 'home') || (current === 'setup' && a.dataset.view === 'accounts')));
@@ -47,6 +55,11 @@ async function route() {
   current = view;
   VIEWS[view].applyParams?.(params);
   closeSheet();
+  // Importing and fixing accounts always work on the whole household, so nothing is hidden.
+  if (['import', 'setup'].includes(view) && state.settings.scope !== 'all') {
+    await setScope('all');
+    toast('Showing the whole household while you import or fix accounts');
+  }
   const main = $('#main');
   if (changed) { main.classList.add('enter'); setTimeout(() => main.classList.remove('enter'), 300); }
   await render();
@@ -55,6 +68,15 @@ async function route() {
 
 const globalActions = {
   'close-sheet': () => closeSheet(),
+  'scope-pick': () => {
+    const opts = [['all', '🏠 Household', 'Everyone together'], ...state.settings.people.map((p) => [p.id, `● ${p.name}`, 'Only their accounts']),
+      ...(state.allAccounts?.some((a) => a.owner === 'joint') ? [['joint', '👥 Joint', 'Joint accounts only']] : [])];
+    openSheet(`<h2>Whose money?</h2><p class="muted">Every screen (overview, budget, insights, cards, bills, history) follows this.</p>
+      ${opts.map(([id, label, sub]) => `<button class="list-row tap scope-opt ${state.settings.scope === id ? 'sel' : ''}" data-action="scope-set" data-scope="${esc(id)}"><div class="grow"><b>${esc(label)}</b><div class="sub">${esc(sub)} · ${(state.allAccounts || []).filter((a) => id === 'all' || ownerOf(a) === id).length} accounts</div></div>${state.settings.scope === id ? '✓' : ''}</button>`).join('')}
+      <a class="btn ghost full" href="#/settings" data-action="close-sheet-go" data-to="settings">Add or rename people</a>`);
+  },
+  'scope-set': async (el) => { closeSheet(); await setScope(el.dataset.scope); render(); toast(`Showing ${scopeLabel()}`); },
+  'close-sheet-go': (el) => { closeSheet(); location.hash = '#/' + el.dataset.to; },
   'banner-hide': async (el) => {
     await saveSettings({ hiddenBanners: { ...(state.settings.hiddenBanners || {}), [el.dataset.key]: el.dataset.sig } });
     render();

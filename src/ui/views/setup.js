@@ -1,6 +1,6 @@
 // One screen to fix every account: type (debit/current, credit card, savings),
 // today's balance or amount owed, and merging duplicates of the same account.
-import { state, recompute, relinkTransfers, saveSettings } from '../../state.js';
+import { state, recompute, relinkTransfers, saveSettings, ownerOf } from '../../state.js';
 import { db } from '../../lib/db.js';
 import { esc, toast, confirmSheet } from '../dom.js';
 import { fmt, parsePrice } from '../../lib/money.js';
@@ -11,8 +11,15 @@ const TYPES = [['current', 'Current / debit card'], ['credit', 'Credit card'], [
 const draft = {}; // accountId -> { type, balance (string), name, mergeInto }
 
 function d(a) {
-  if (!draft[a.id]) draft[a.id] = { type: a.type, name: a.name, balance: '', mergeInto: '' };
+  if (!draft[a.id]) draft[a.id] = { type: a.type, name: a.name, balance: '', mergeInto: '', owner: ownerOf(a) };
   return draft[a.id];
+}
+
+function ownerSelect(a, x) {
+  const people = state.settings.people;
+  if (people.length < 2) return '';
+  return `<label class="field select slim"><span>Whose account</span><select data-change="su-owner" data-id="${esc(a.id)}">
+    ${[...people.map((p) => [p.id, p.name]), ['joint', 'Joint']].map(([id, n]) => `<option value="${esc(id)}" ${x.owner === id ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label>`;
 }
 
 export function render() {
@@ -40,6 +47,7 @@ export function render() {
         <div class="sub">${esc(TYPES.find(([k]) => k === a.type)?.[1] || a.type)} · ${shown == null ? 'no balance' : `${fmt(shown)}${a.type === 'credit' ? ' owed' : ''}`}${a.balanceDate ? ` on ${prettyDate(a.balanceDate)}` : ''}</div>
         <label class="field slim"><span>${a.type === 'credit' ? 'Owed today £' : 'Balance today £'}</span>
           <input inputmode="decimal" placeholder="update from the bank app" value="${esc(x.balance)}" data-input="su-bal" data-id="${esc(a.id)}"></label>
+        ${ownerSelect(a, x)}
       </div>`;
     }
     return `<div class="card acct-fix ${x.mergeInto ? 'merging' : ''}">
@@ -49,6 +57,7 @@ export function render() {
       <div class="seg three">${TYPES.map(([k, l]) => `<button class="${x.type === k ? 'on' : ''}" data-action="su-type" data-id="${esc(a.id)}" data-type="${k}">${l}</button>`).join('')}</div>
       <label class="field slim"><span>${x.type === 'credit' ? 'Owed today £' : 'Balance today £'}</span>
         <input inputmode="decimal" placeholder="${shown == null ? 'from the bank app' : (shown / 100).toFixed(2)}" value="${esc(x.balance)}" data-input="su-bal" data-id="${esc(a.id)}"></label>
+      ${ownerSelect(a, x)}
       <label class="field select slim"><span>Same account as</span><select data-change="su-merge" data-id="${esc(a.id)}">
         <option value="">— no, it's separate —</option>
         ${state.accounts.filter((o) => o.id !== a.id).map((o) => `<option value="${esc(o.id)}" ${x.mergeInto === o.id ? 'selected' : ''}>${esc(o.name)}</option>`).join('')}</select></label>
@@ -90,6 +99,7 @@ export const actions = {
       a.name = x.name.trim() || a.name;
       const wasCredit = a.type === 'credit';
       a.type = x.type;
+      a.owner = x.owner || a.owner;
       a.typeLocked = true; // confirmed: no more "looks like a card" prompts, stays until you tap Edit
       const v = x.balance.trim() ? parsePrice(x.balance.replace(/^-/, '')) : null;
       if (v != null) {
@@ -118,6 +128,7 @@ export const actions = {
   },
 };
 export const changes = {
+  'su-owner': (el) => { const a = state.accounts.find((x) => x.id === el.dataset.id); d(a).owner = el.value; },
   'su-merge': (el, rerender) => { const a = state.accounts.find((x) => x.id === el.dataset.id); d(a).mergeInto = el.value; rerender(); },
 };
 export const inputs = {
