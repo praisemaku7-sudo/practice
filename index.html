@@ -15,6 +15,7 @@
   <link rel="icon" href="./icons/icon.svg?v=4" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png?v=4">
   <title>Pocket Ledger</title>
+  <script>try{var t=localStorage.getItem('pl-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
 </head>
 <body>
   <header class="topbar">
@@ -23,7 +24,7 @@
     <div class="top-actions">
       <button class="scope-btn" id="scope-btn" data-action="scope-pick" aria-label="Whose money to show">🏠 Household</button>
       <button class="icon-btn" data-action="import" aria-label="Import statement">＋</button>
-      <a class="icon-btn" href="#/settings" aria-label="Settings">⚙︎</a>
+      <button class="icon-btn menu-btn" id="menu-btn" data-action="menu-toggle" aria-label="All pages and options" aria-expanded="false" aria-controls="menu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
     </div>
   </header>
   <main id="main" class="main"><div class="skeleton" aria-label="Loading"><div style="height:56px;width:60%;margin:8px auto"></div><div style="height:190px"></div><div style="height:120px"></div><div style="height:260px"></div></div></main>
@@ -34,6 +35,7 @@
     <a href="#/insights" data-view="insights"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0 0 12 3z"/></svg>Insights</a>
     <a href="#/accounts" data-view="accounts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10l9-6 9 6M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20h18"/></svg>Accounts</a>
   </nav>
+  <div id="menu" class="menu"></div>
   <div id="sheet" class="sheet"></div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script type="module" src="./src/main.js"></script>
