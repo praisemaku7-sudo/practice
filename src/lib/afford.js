@@ -12,7 +12,7 @@ import { fmt } from './money.js';
  *  4. bills   – your current-account balance still covers every bill due before payday
  * Returns { verdict: 'yes'|'tight'|'no', headline, checks[], advice[] }.
  */
-export function canIAfford({ price, category = 'shopping', txs, budget, recurring = [], balance = null, payday = null, today = todayISO(), bufferPence = 5000, cardsOwed = 0 }) {
+export function canIAfford({ price, category = 'shopping', txs, budget, recurring = [], balance = null, payday = null, today = todayISO(), bufferPence = 5000, cardsOwed = 0, goals = [] }) {
   const key = monthKey(today);
   const prog = budgetProgress(txs, budget, key);
   const kind = catKind(category);
@@ -54,7 +54,7 @@ export function canIAfford({ price, category = 'shopping', txs, budget, recurrin
   });
   const goal = budget.savingsTarget + (budget.cardPayoff || 0);
   checks.push({
-    id: 'savings', label: budget.cardPayoff ? 'Savings & card payoff protected' : 'Savings goal protected', pass: savingsAfter >= goal,
+    id: 'savings', label: budget.goalsMonthly ? `Savings & goals protected${budget.cardPayoff ? ' (and card payoff)' : ''}` : budget.cardPayoff ? 'Savings & card payoff protected' : 'Savings goal protected', pass: savingsAfter >= goal,
     detail: `You'd have about ${fmt(Math.max(0, savingsAfter), { whole: true })} left for it this month (goal ${fmt(budget.savingsTarget, { whole: true })} savings${budget.cardPayoff ? ` + ${fmt(budget.cardPayoff, { whole: true })} to cards` : ''})`,
   });
   if (balance != null) {
@@ -98,6 +98,12 @@ export function canIAfford({ price, category = 'shopping', txs, budget, recurrin
       const days = Math.round((price / budget.cardPayoff) * 30);
       if (days >= 3) advice.push(`You still owe ${fmt(cardsOwed, { whole: true })} on cards. Putting this money toward them instead would make you debt-free about ${days} days sooner.`);
     }
+  }
+  // How much later would your goals be reached if this money went to them instead?
+  const nextGoal = goals.filter((g) => g.monthly > 0).sort((a, b) => (a.by || '9999').localeCompare(b.by || '9999'))[0];
+  if (nextGoal && price >= 2000) {
+    const weeks = Math.round((price / nextGoal.monthly) * 4.345);
+    if (weeks >= 1) advice.push(`Putting this towards "${nextGoal.name}" instead would get you there about ${weeks} week${weeks === 1 ? '' : 's'} sooner.`);
   }
   if (price >= 10000 && verdict === 'yes') advice.push('Big purchase: check it’s still wanted after a 48-hour wait.');
   return { verdict, headline, checks, advice, funLeft, projectedSavings: savingsAfter };

@@ -489,3 +489,24 @@ body { padding-bottom: calc(var(--tab-h) + env(safe-area-inset-bottom) + 34px); 
 .fun { background: radial-gradient(120% 140% at 100% 0%, color-mix(in srgb, var(--accent-2) 20%, var(--card)) 0%, var(--card) 60%); }
 .month-switch span { font-family: var(--num); }
 .status, .pill { font-family: var(--num); }
+.url-box { border: 0; border-radius: 12px; background: var(--track); padding: 11px 12px; font-size: 13px; color: var(--ink); min-width: 0; }
+.goal { display: grid; gap: 6px; width: 100%; text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.goals-mini { display: grid; gap: 4px; text-decoration: none; color: var(--ink); }
+.goal-line { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; margin-top: 4px; }
+.icon-chip { font-size: 20px; padding: 6px 10px; }
+.icon-chip.sel { border-color: var(--accent); background: var(--accent-soft); }
+
+/* App lock */
+body.is-locked #main, body.is-locked .tabbar, body.is-locked .topbar { visibility: hidden; }
+#lock { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 24px; background: var(--bg); }
+.lock-box { width: 100%; max-width: 320px; display: grid; justify-items: center; gap: 12px; text-align: center; }
+.big-logo { width: 64px; height: 64px; font-size: 32px; border-radius: 18px; display: grid; place-items: center; color: var(--accent-ink); }
+.pin-dots { display: flex; gap: 12px; }
+.pin-dots span { width: 13px; height: 13px; border-radius: 50%; border: 2px solid var(--muted); }
+.pin-dots span.on { background: var(--ink); border-color: var(--ink); }
+.lock-msg { min-height: 18px; color: var(--bad); font-size: 13px; }
+.pin-pad { display: grid; grid-template-columns: repeat(3, 72px); gap: 12px; }
+.pin-pad button { height: 72px; border-radius: 50%; border: 0; background: var(--track); font-size: 26px; font-family: var(--num); color: var(--ink); cursor: pointer; }
+.pin-pad button:disabled { visibility: hidden; }
+.pin-pad button:active { background: var(--line); }
+.sync-row { padding: 10px 0; border-top: 1px solid var(--line); display: grid; gap: 4px; } .sync-row:first-of-type { border-top: 0; }

@@ -14,6 +14,8 @@ import { matchIncoming } from '../lib/duplicates.js';
 import { looksLikeCreditText, isCardIssuer } from '../lib/credit.js';
 import { isSummaryLine } from '../lib/parse/junk.js';
 import { classifyDocument } from '../lib/parse/doctype.js';
+import { parsePayslip } from '../lib/payslip.js';
+import { saveSettings } from '../state.js';
 
 /** The live import queue, shown by the Import page. */
 export const queue = { items: [], summary: null };
@@ -157,6 +159,11 @@ async function processItem(item) {
     item.accountChoice = match ? match.id : '__new';
     item.newAccount = { name: defaultName(parsed), bank: parsed.bank || '', type: parsed.accountType || 'current', owner: guessOwner(item, parsed) };
     item.include = parsed.transactions.length > 0 && !item.prior && !item.overlap.likelyDuplicate && item.doc.isStatement;
+    // A payslip: offer to use its take-home pay as that person's monthly income.
+    if (item.doc.kind === 'payslip' || (!parsed.transactions.length && parsed.headText)) {
+      const slip = parsePayslip(parsed.headText);
+      if (slip) { item.payslip = { ...slip, owner: guessOwner(item, parsed) }; item.include = false; }
+    }
     item.status = 'ready';
   } catch (e) {
     console.error(e);
@@ -201,7 +208,7 @@ export function pickFiles() {
   input.click();
 }
 
-async function commitItem(item) {
+export async function commitItem(item) {
   const p = item.parsed;
   let account;
   if (item.accountChoice === '__new') {
@@ -297,6 +304,21 @@ export function retryFailed(id) {
 /** Tick every already-imported file for re-import, replacing what was saved before. */
 export function reimportAllDuplicates() {
   for (const i of queue.items) if (i.status === 'ready' && i.parsed?.transactions.length && (i.prior || i.overlap?.likelyDuplicate)) { i.include = true; i.replace = true; }
+  changed();
+}
+
+/** Use a payslip's take-home pay as a person's monthly income (household income = everyone's together). */
+export async function applyPayslip(item) {
+  const slip = item.payslip;
+  const pid = slip.owner || state.settings.people[0].id;
+  const scoped = { ...(state.settings.scoped || {}) };
+  scoped[pid] = { ...(scoped[pid] || {}), income: slip.monthlyNet };
+  const payslips = { ...(state.settings.payslips || {}), [pid]: { net: slip.net, monthlyNet: slip.monthlyNet, frequency: slip.frequency, payDate: slip.payDate, employer: slip.employer, file: item.name, at: Date.now() } };
+  const patch = { scoped, payslips };
+  if (state.settings.people.length === 1) patch.income = slip.monthlyNet;
+  await saveSettings(patch);
+  item.status = 'imported';
+  item.result = { added: 0, dupes: 0, account: 'income', payslip: true };
   changed();
 }
 

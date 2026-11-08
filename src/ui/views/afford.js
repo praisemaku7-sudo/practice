@@ -3,6 +3,7 @@ import { db } from '../../lib/db.js';
 import { esc, toast, imageForUpload, busy } from '../dom.js';
 import { fmt, parsePrice } from '../../lib/money.js';
 import { canIAfford } from '../../lib/afford.js';
+import { goalPlan, goalInScope } from '../../lib/goals.js';
 import { categorize, merchantKey } from '../../lib/categorize.js';
 import { CATEGORIES, catName } from '../../lib/categories.js';
 import { aiReadPrice } from '../../lib/ai.js';
@@ -74,13 +75,18 @@ function wishlistCard() {
   const { budget, recurring, balance, payday, today } = state.derived;
   return `<div class="card"><h3>Wishlist</h3><p class="sub">Re-checked against your budget every time you open this page.</p>
     ${list.map((w) => {
-      const v = canIAfford({ price: w.price, category: w.category, txs: state.txs, budget, recurring, balance, payday, today, bufferPence: state.settings.bufferPence, cardsOwed: state.derived.cards.totalOwed });
+      const v = canIAfford({ price: w.price, category: w.category, txs: state.txs, budget, recurring, balance, payday, today, bufferPence: state.settings.bufferPence, cardsOwed: state.derived.cards.totalOwed, goals: goalsForAfford() });
       return `<div class="list-row"><span class="verdict-dot ${v.verdict}"></span>
         <div class="grow"><div class="ellipsis">${esc(w.item || catName(w.category))}</div>
         <div class="sub">${v.verdict === 'yes' ? '<b class="pos">Affordable now</b>' : v.verdict === 'tight' ? 'Affordable if you move budget' : 'Not yet'} · added ${prettyDate(w.added)}</div></div>
         <b>${fmt(w.price)}</b>
         <button class="icon-btn small" data-action="wish-remove" data-id="${esc(w.id)}" aria-label="Remove">×</button></div>`;
     }).join('')}</div>`;
+}
+
+function goalsForAfford() {
+  const byId = Object.fromEntries((state.allAccounts || state.accounts).map((a) => [a.id, a]));
+  return (state.settings.goals || []).filter((g) => goalInScope(g, state.settings.scope)).map((g) => ({ ...g, monthly: goalPlan(g, state.derived.today, byId).monthly }));
 }
 
 function readForm() {
@@ -93,8 +99,10 @@ function runCheck() {
   const price = parsePrice(form.price);
   if (!price) { toast('Enter a price', { error: true }); return false; }
   const { budget, recurring, balance, payday, today } = state.derived;
-  const category = form.category || categorize(form.item, -1);
-  const res = canIAfford({ price, category, txs: state.txs, budget, recurring, balance, payday, today, bufferPence: state.settings.bufferPence, cardsOwed: state.derived.cards.totalOwed });
+  // Same rule as the category box shows: unknown items count as Shopping.
+  const guess = form.category || categorize(form.item, -1);
+  const category = guess === 'other' || guess === 'income' ? 'shopping' : guess;
+  const res = canIAfford({ price, category, txs: state.txs, budget, recurring, balance, payday, today, bufferPence: state.settings.bufferPence, cardsOwed: state.derived.cards.totalOwed, goals: goalsForAfford() });
   form.result = { ...res, price, category };
   const rec = { id: crypto.randomUUID?.() || String(Date.now()), at: Date.now(), date: todayISO(), item: form.item, price, category, verdict: res.verdict };
   form.result.checkId = rec.id;

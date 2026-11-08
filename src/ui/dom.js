@@ -71,3 +71,17 @@ export async function imageForUpload(file, maxDim = 1568) {
   const dataUrl = c.toDataURL('image/jpeg', 0.85);
   return { base64: dataUrl.split(',')[1], mediaType: 'image/jpeg', preview: dataUrl };
 }
+
+/** Hand a generated file to the iPhone share sheet (or download it on a computer). */
+export async function shareFile(name, content, type) {
+  const file = new File([content], name, { type });
+  if (navigator.canShare?.({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: name }); return true; } catch (e) { if (e?.name === 'AbortError') return false; }
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(file);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  return true;
+}

@@ -1,0 +1,12 @@
+name = "pocket-ledger-sync"
+main = "worker.js"
+compatibility_date = "2025-06-01"
+
+[vars]
+# Your app's address (no path), so only it can call this server from a browser.
+ALLOWED_ORIGIN = "https://praisemaku7-sudo.github.io"
+
+# Create with: npx wrangler kv namespace create STORE  — then paste the id here.
+[[kv_namespaces]]
+binding = "STORE"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"

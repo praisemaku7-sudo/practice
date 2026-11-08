@@ -7,6 +7,13 @@ import { monthKey, monthLabel } from '../../lib/dates.js';
 import { progressBar } from '../charts.js';
 import { catChip, emptyState } from '../common.js';
 
+function incomeSource() {
+  const s = state.settings;
+  const slips = s.payslips || {};
+  if (s.scope !== 'all') return slips[s.scope] ? `<small class="pill ok">from payslip</small>` : '';
+  return s.people.some((p) => slips[p.id]) ? `<small class="pill ok">from payslips</small>` : '';
+}
+
 const KIND_LABEL = { fixed: 'Bills & commitments', essential: 'Essentials', personal: 'Fun money (you choose)' };
 
 export function render() {
@@ -33,9 +40,11 @@ export function render() {
   <h1 class="page-title">Budget <small>${esc(monthLabel(key))}</small></h1>
   <div class="card">
     <div class="row between"><span class="label">Monthly income</span>
-      <button class="link" data-action="edit-income">${fmt(budget.income, { whole: true })} ${budget.incomeIsEstimate ? '<small class="pill">estimated</small>' : ''} ✎</button></div>
+      <button class="link" data-action="edit-income">${fmt(budget.income, { whole: true })} ${budget.incomeIsEstimate ? '<small class="pill">estimated</small>' : incomeSource()} ✎</button></div>
     <div class="row between"><span class="label">Savings goal</span>
       <button class="link" data-action="edit-savings">${fmt(budget.savingsTarget, { whole: true })} <small class="muted">(${budget.income ? Math.round((budget.savingsTarget / budget.income) * 100) : 0}%)</small> ✎</button></div>
+    <div class="row between"><span class="label">Savings goals</span>
+      <a class="link" href="#/goals">${budget.goalsMonthly ? fmt(budget.goalsMonthly, { whole: true }) + '/mo' : 'Add a goal'} ›</a></div>
     <div class="row between"><span class="label">Credit card payoff</span>
       <a class="link" href="#/cards">${budget.cardPayoff ? fmt(budget.cardPayoff, { whole: true }) + '/mo' : 'Set up'} ›</a></div>
     <div class="row between"><span class="label">Payday</span>

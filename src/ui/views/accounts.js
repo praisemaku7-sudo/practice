@@ -34,6 +34,7 @@ export function render() {
       <div class="bal"><b class="${a.balance < 0 ? 'neg' : ''}">${a.balance != null ? (a.type === 'credit' ? `${fmt(Math.max(0, -a.balance))} owed` : fmt(a.balance)) : '—'}</b>${a.balanceDate ? `<small class="sub">${a.balanceDate === state.derived.today ? 'today' : 'on ' + prettyDate(a.balanceDate)}</small>` : ''}</div></button>`).join('')}
     <div class="row gap"><button class="btn primary grow" data-action="import">Import</button><button class="btn ghost grow" data-action="go" data-to="transactions">Transactions</button><a class="btn ghost grow" href="#/cards">💳 Cards</a></div>
     <a class="link small-link" href="#/setup">Edit types, balances or merge accounts ›</a>
+    <a class="link small-link" href="#/sync">🔗 Live bank sync ›</a>
   </div>
 
   ${renderStatements()}

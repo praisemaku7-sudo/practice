@@ -3,6 +3,10 @@ import { db } from '../../lib/db.js';
 import { esc, toast, confirmSheet, busy } from '../dom.js';
 import { fmt, parsePrice } from '../../lib/money.js';
 import { MODELS, testKey } from '../../lib/ai.js';
+import { lockSettingsCard } from '../lock.js';
+
+let lockCard = '';
+export async function preload() { lockCard = await lockSettingsCard(); }
 
 export function render() {
   const s = state.settings;
@@ -10,6 +14,7 @@ export function render() {
   return `
   <h1 class="page-title">Settings</h1>
   ${standalone ? '' : `<div class="card tip-box"><b>Install on your iPhone:</b> in Safari tap <b>Share</b> → <b>Add to Home Screen</b>. It opens full screen like an app, works offline, and keeps your data on the phone.</div>`}
+  ${lockCard}
   <div class="card" id="people">
     <h3>Household</h3>
     <p class="muted">Add everyone whose statements you import. Give each account an owner (or Joint) in Accounts → Edit types. The switcher at the top then shows the household together or one person at a time.</p>
@@ -44,6 +49,14 @@ export function render() {
     ${state.hiddenCount ? `<p class="sub">${state.hiddenCount} older transactions are hidden, not deleted. Set an earlier month to bring them back.</p>` : ''}
   </div>
   <div class="card">
+    <h3>Bill reminders</h3>
+    <p class="muted"><b>Calendar (recommended):</b> adds every regular bill to your iPhone Calendar, with an alert the day before. It works even when this app is closed.</p>
+    <button class="btn primary full" data-action="due-calendar">📅 Add bills to Calendar</button>
+    <p class="muted" style="margin-top:12px"><b>Daily Shortcut:</b> Shortcuts app → Automation → + → Time of Day (e.g. 8:00, Daily, Run Immediately) → add action <b>Open URLs</b> with:</p>
+    <div class="row gap"><input class="url-box grow" id="due-url" readonly value="${esc(location.origin + location.pathname)}#/due?days=1"><button class="btn ghost" data-action="copy-due-url">Copy</button></div>
+    <p class="sub">Every morning it opens "Due soon" showing today's and tomorrow's payments.</p>
+  </div>
+  <div class="card">
     <h3>Affordability</h3>
     <label class="field"><span>Always keep £</span><input id="st-buffer" inputmode="decimal" value="${(s.bufferPence / 100).toFixed(0)}"></label>
     <p class="sub">Safety cushion left in your current accounts after bills before payday.</p>
@@ -67,6 +80,10 @@ async function setTrackFrom(value, rerender) {
 }
 
 export const actions = {
+  'copy-due-url': async () => {
+    const v = document.getElementById('due-url').value;
+    try { await navigator.clipboard.writeText(v); toast('Link copied'); } catch { document.getElementById('due-url').select(); toast('Select and copy the link'); }
+  },
   'pp-add': async (_, rerender) => {
     const name = document.getElementById('pp-new').value.trim();
     if (!name) return toast('Type a name', { error: true });

@@ -108,6 +108,7 @@ export function parseStatementLines(lines, { fallbackYear = new Date().getFullYe
   let lastMonth = null;
   let yearOffset = 0;
   let lastWasTx = false;
+  let holderFrom = 0; // index of the first row not yet assigned to a cardholder
 
   const resolveDate = (r) => {
     let y = r.y;
@@ -164,7 +165,16 @@ export function parseStatementLines(lines, { fallbackYear = new Date().getFullYe
       continue;
     }
     // Lines starting with "Total" are subtotals, never transactions.
-    if (!dateMatch && /^total\b/i.test(text.trim())) { lastWasTx = false; pending = null; continue; }
+    if (!dateMatch && /^total\b/i.test(text.trim())) {
+      // "Total new spend transactions for SARAH MACPHAIL": everything since the last total was hers.
+      const holder = text.match(/transactions\s+for\s+([A-Z][A-Z' .-]+?)(?:\s+[\d£-]|$)/i);
+      if (holder) {
+        const name = holder[1].replace(/\s+/g, ' ').trim();
+        for (let i = holderFrom; i < raw.length; i++) if (!raw[i].holder) raw[i].holder = name;
+      }
+      holderFrom = raw.length;
+      lastWasTx = false; pending = null; continue;
+    }
     if (!amountToks.length) {
       if (dateMatch && desc) {
         pending = { date: currentDate, desc };
@@ -234,7 +244,7 @@ export function parseStatementLines(lines, { fallbackYear = new Date().getFullYe
     }
     if (e.bal != null) prevBal = e.bal;
     if (amount == null || amount === 0) continue;
-    transactions.push({ date: e.date, description: e.desc.replace(/\s+/g, ' ').trim(), amount, balance: e.bal });
+    transactions.push({ date: e.date, description: e.desc.replace(/\s+/g, ' ').trim(), amount, balance: e.bal, ...(e.holder ? { cardholder: e.holder } : {}) });
   }
 
   // Card statements print "Previous balance − New credits + New debits = Closing balance".

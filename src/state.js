@@ -9,6 +9,7 @@ import { statementCoverage } from './lib/coverage.js';
 import { cardSummary, suspectedCreditCards } from './lib/credit.js';
 import { findStoredDuplicates } from './lib/duplicates.js';
 import { isSummaryLine } from './lib/parse/junk.js';
+import { goalsMonthly } from './lib/goals.js';
 
 export const DEFAULT_SETTINGS = {
   income: null,          // pence/month; null = estimate from statements
@@ -26,6 +27,7 @@ export const DEFAULT_SETTINGS = {
   checkins: {},          // 'YYYY-MM' -> ISO date the monthly check-in was completed
   billFlags: {},         // recurring key -> 'cancel' | 'cancelled'
   wishlist: [],          // [{id, item, price, category, added}]
+  goals: [],             // savings goals [{id, name, icon, target, by: 'YYYY-MM', saved, accountId, owner}]
   cardPayoff: null,      // pence/month extra toward credit cards
   cardMethod: 'avalanche',
   ownNames: [],
@@ -50,6 +52,22 @@ export const ownerOf = (a) => a?.owner || state.settings.people[0]?.id || 'p1';
 export const personName = (id) => (id === 'joint' ? 'Joint' : state.settings.people.find((p) => p.id === id)?.name || 'Me');
 export const scopeLabel = () => (state.settings.scope === 'all' ? 'Household' : personName(state.settings.scope));
 
+/** Household member whose name matches a cardholder printed on a statement (words unique to one person). */
+export function personForName(name) {
+  if (!name) return null;
+  const hay = ` ${String(name).toUpperCase().replace(/[^A-Z]+/g, ' ')} `;
+  const people = state.settings.people.filter((p) => p.name && p.name !== 'Me');
+  const words = (n) => n.toUpperCase().replace(/[^A-Z ]/g, ' ').split(/\s+/).filter((w) => w.length >= 3);
+  const all = people.flatMap((p) => words(p.name));
+  const hits = people.filter((p) => words(p.name).some((w) => all.filter((v) => v === w).length === 1 && hay.includes(` ${w} `)));
+  return hits.length === 1 ? hits[0].id : null;
+}
+
+/** Whose spending is this? The cardholder named on the statement, else the account's owner. */
+export function txOwner(t, accountsById) {
+  return (t.cardholder && personForName(t.cardholder)) || ownerOf(accountsById[t.accountId]);
+}
+
 /** Which accounts and transactions the current view covers. */
 function applyView(allTxs, allAccounts) {
   const scope = state.settings.scope;
@@ -60,7 +78,16 @@ function applyView(allTxs, allAccounts) {
   state.hiddenCount = from ? allTxs.filter((t) => t.date < from).length : 0;
   state.allAccounts = allAccounts;
   state.accounts = accounts;
-  state.txs = allTxs.filter((t) => (!from || t.date >= from) && (scope === 'all' || ids.has(t.accountId) || (!known.has(t.accountId) && scope === state.settings.people[0]?.id)));
+  const byId = Object.fromEntries(allAccounts.map((a) => [a.id, a]));
+  // A person's view includes their purchases on a shared card (by cardholder), and excludes
+  // other cardholders' purchases on their own card.
+  state.txs = allTxs.filter((t) => {
+    if (from && t.date < from) return false;
+    if (scope === 'all') return true;
+    if (!known.has(t.accountId)) return scope === state.settings.people[0]?.id;
+    return txOwner(t, byId) === scope;
+  });
+  void ids;
 }
 
 export async function load() {
@@ -84,7 +111,14 @@ export async function load() {
 /** Settings in force for the current view: each person has their own income, goals and budgets. */
 function effectiveSettings() {
   const s = state.settings;
-  if (s.scope === 'all') return s;
+  if (s.scope === 'all') {
+    // Household income = everyone's payslip income together, once each person has one.
+    if (s.income == null && s.people.length > 1) {
+      const incomes = s.people.map((p) => s.scoped?.[p.id]?.income);
+      if (incomes.every((v) => v != null)) return { ...s, income: incomes.reduce((a, v) => a + v, 0) };
+    }
+    return s;
+  }
   return { ...s, income: null, savingsTarget: null, budgets: {}, cardPayoff: null, payday: null, ...(s.scoped?.[s.scope] || {}) };
 }
 
@@ -94,7 +128,9 @@ export function recompute() {
   const recurring = detectRecurring(state.txs, { today });
   const detected = detectPayday(recurring);
   const payday = state.eff.payday ?? detected?.day ?? null;
-  const budget = buildBudget(state.txs, state.eff, { today });
+  const byIdAll = Object.fromEntries((state.allAccounts || state.accounts).map((a) => [a.id, a]));
+  const gm = goalsMonthly(state.settings.goals || [], state.settings.scope, today, byIdAll);
+  const budget = buildBudget(state.txs, { ...state.eff, goalsMonthly: gm }, { today });
   const currentAccounts = state.accounts.filter((a) => a.type === 'current' && a.balance != null);
   // A balance older than ~10 days is too stale to trust for the bills check.
   const fresh = currentAccounts.filter((a) => a.balanceDate && daysBetween(a.balanceDate, today) <= 10);

@@ -27,7 +27,9 @@ export function buildBudget(txs, settings = {}, { today = todayISO() } = {}) {
   const n = Math.max(sums.length, 1);
   const avgIncome = Math.round(sums.reduce((a, s) => a + s.income, 0) / n);
   const income = settings.income ?? avgIncome;
-  const savingsTarget = settings.savingsTarget ?? roundDown(Math.round(income * 0.2));
+  // Savings goals must be funded: the target is at least what your goals need each month.
+  const goalsMonthly = settings.goalsMonthly || 0;
+  const savingsTarget = Math.max(settings.savingsTarget ?? roundDown(Math.round(income * 0.2)), goalsMonthly);
   // Extra paid to credit cards each month (repayments are transfers, so they come out of what's left).
   const cardPayoff = settings.cardPayoff ?? 0;
 
@@ -71,6 +73,7 @@ export function buildBudget(txs, settings = {}, { today = todayISO() } = {}) {
     incomeIsEstimate: settings.income == null,
     savingsTarget,
     cardPayoff,
+    goalsMonthly,
     committed,
     personalAllowance,
     unallocated: income - totalBudget - savingsTarget - cardPayoff,

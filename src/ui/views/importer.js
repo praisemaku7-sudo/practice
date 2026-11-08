@@ -2,7 +2,7 @@ import { state, personName, ownerOf } from '../../state.js';
 import { esc } from '../dom.js';
 import { fmt } from '../../lib/money.js';
 import { prettyDate, monthLabel } from '../../lib/dates.js';
-import { queue, commitAll, clearQueue, pickFiles, busyCount, retryFailed, reimportAllDuplicates } from '../import.js';
+import { queue, commitAll, clearQueue, pickFiles, busyCount, retryFailed, reimportAllDuplicates, applyPayslip } from '../import.js';
 
 const STATUS = {
   queued: ['Waiting', ''],
@@ -29,6 +29,14 @@ function itemCard(it) {
       <div class="sub">${it.status === 'ai' ? `Claude is reading it because ${esc(it.aiReason || 'it needs checking')}${it.progress?.total > 1 ? ` · part ${it.progress.done}/${it.progress.total}` : ''}. If your account's limit is reached it waits and retries automatically.` : it.status === 'queued' ? 'Waiting for a free slot' : 'Reading on your phone'}</div>`;
   } else if (it.status === 'error') {
     body = `<div class="alert">${esc(it.error)}</div>${/Not a PDF or CSV/.test(it.error) ? '' : `<button class="btn ghost full" data-action="imp-retry" data-id="${it.id}">Retry</button>`}`;
+  } else if (it.status === 'imported' && it.result?.payslip) {
+    body = `<div class="sub">✓ Take-home pay of ${fmt(it.payslip.monthlyNet)}/month saved as ${esc(personName(it.payslip.owner))}'s income.</div>`;
+  } else if (it.payslip && it.status === 'ready') {
+    const sl = it.payslip;
+    body = `<div class="tip-box"><b>💷 Payslip</b>${sl.employer ? ` from ${esc(sl.employer)}` : ''}${sl.payDate ? ` · paid ${prettyDate(sl.payDate)}` : ''}<br>
+      Take-home <b>${fmt(sl.net)}</b> ${sl.frequency !== 'monthly' ? `(${sl.frequency}) = <b>${fmt(sl.monthlyNet)}/month</b>` : 'per month'}${sl.gross ? ` · gross ${fmt(sl.gross)}` : ''}</div>
+      ${state.settings.people.length > 1 ? `<label class="field select slim"><span>Whose pay</span><select data-change="imp-slip-owner" data-id="${it.id}">${state.settings.people.map((pp) => `<option value="${pp.id}" ${sl.owner === pp.id ? 'selected' : ''}>${esc(pp.name)}</option>`).join('')}</select></label>` : ''}
+      <button class="btn primary full" data-action="imp-payslip" data-id="${it.id}">Use as monthly income</button>`;
   } else if (it.status === 'imported') {
     body = `<div class="sub">${it.result.added} transaction${it.result.added === 1 ? '' : 's'} → ${esc(it.result.account)}${it.result.replaced ? ` · replaced ${it.result.replaced} saved before` : ''}${it.result.dupes ? ` · ${it.result.dupes} already there` : ''}</div>`;
   } else if (p) {
@@ -118,11 +126,13 @@ export const actions = {
   'imp-preview': (el, rerender) => { const it = find(el); it.showPreview = !it.showPreview; rerender(); },
   'imp-done': () => { clearQueue(); location.hash = '#/home'; },
   'imp-retry': (el, rerender) => { retryFailed(el.dataset.id); rerender(); },
+  'imp-payslip': async (el, rerender) => { await applyPayslip(find(el)); rerender(); },
   'imp-reimport-all': (_, rerender) => { reimportAllDuplicates(); rerender(); },
 };
 export const changes = {
   'imp-acc': (el, rerender) => { find(el).accountChoice = el.value; rerender(); },
   'imp-type': (el) => { find(el).newAccount.type = el.value; },
+  'imp-slip-owner': (el) => { find(el).payslip.owner = el.value; },
   'imp-owner': (el) => { find(el).newAccount.owner = el.value; },
   'imp-include': (el, rerender) => {
     const it = find(el);

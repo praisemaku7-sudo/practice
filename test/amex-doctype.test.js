@@ -33,6 +33,8 @@ test('Amex-style layout: month-first dates, CR on the next line, totals, summary
   const r = parseStatementLines(lines, { fallbackYear: 2026 });
   assert.deepEqual(r.transactions.map((t) => [t.date, t.amount]), [['2026-09-26', 20000], ['2026-09-13', -6300], ['2026-09-16', 10000], ['2026-09-28', -1200]]);
   assert.equal(r.closingBalance, -77500);
+  // Spending listed before "Total new spend transactions for A PERSON" is that cardholder's.
+  assert.deepEqual(r.transactions.map((t) => t.cardholder || null), ['A PERSON', 'A PERSON', null, null]);
   assert.equal(r.openingBalance, -100000);
   assert.deepEqual(cardSummaryBox('Previous Closing Balance New Credits New Debits Closing Balance\n £1,311.66 - £458.87 + £148.69 = £ 1,001.48'), { previous: 131166, credits: 45887, debits: 14869, closing: 100148 });
 });

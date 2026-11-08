@@ -32,6 +32,7 @@ export function toTransactions(rows, { accountId, importId, source, userRules = 
       merchant,
       amount: r.amount,
       balance: r.balance ?? null,
+      ...(r.cardholder ? { cardholder: r.cardholder } : {}),
       category: categorize(r.description, r.amount, userRules),
     };
   });
