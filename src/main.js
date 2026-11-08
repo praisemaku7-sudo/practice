@@ -24,6 +24,7 @@ import * as audit from './ui/views/audit.js';
 import * as due from './ui/views/due.js';
 import * as goals from './ui/views/goals.js';
 import { initLock, lockActions } from './ui/lock.js';
+import { enhanceSections, sectionActions } from './ui/sections.js';
 import * as sync from './ui/views/sync.js';
 import * as add from './ui/views/add.js';
 import * as plan from './ui/views/plan.js';
@@ -44,6 +45,7 @@ async function render() {
   if (view.preload) await view.preload();
   const main = $('#main');
   main.innerHTML = view.render();
+  enhanceSections(main, current);
   const sb = $('#scope-btn');
   if (sb) {
     const multi = state.settings.people.length > 1 || state.allAccounts?.some((a) => a.owner === 'joint');
@@ -117,7 +119,7 @@ const globalActions = {
   },
 };
 
-const allActions = Object.assign({}, globalActions, lockActions, ...Object.values(VIEWS).map((v) => v.actions || {}));
+const allActions = Object.assign({}, globalActions, lockActions, sectionActions, ...Object.values(VIEWS).map((v) => v.actions || {}));
 const allChanges = Object.assign({}, ...Object.values(VIEWS).map((v) => v.changes || {}));
 const allInputs = Object.assign({}, ...Object.values(VIEWS).map((v) => v.inputs || {}));
 
