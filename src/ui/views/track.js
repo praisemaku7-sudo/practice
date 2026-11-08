@@ -12,9 +12,11 @@ import { creditReports, togglePlanItem, applyStage } from '../../lib/ontrack-sto
 import { saveSettings, recompute, incomeFor } from '../../state.js';
 import { checkinStatus, targetMonth } from './checkin.js';
 import { catChip } from '../common.js';
+import { buildPath, chosenSaving } from '../../lib/path.js';
+import { schedule } from '../../lib/mortgage.js';
 
 let reports = [];
-const ui = { showAllSavings: false };
+const ui = { showAllSavings: false, showAllPath: false };
 export async function preload() { reports = await creditReports(); }
 
 const statusWord = { ok: ['On track', 'pos'], tight: ['Tight', 'warn-text'], short: ['Short', 'neg'] };
@@ -50,6 +52,12 @@ export function render() {
   const ahead = outlook({ txs: state.txs, today, budget, months: 6, mortgage: mort, housingNow, incomeFor });
   const past = history({ txs: state.txs, today, n: 6 });
   const [word, wcls] = statusWord[mo.status];
+  const mortPay = mort ? (schedule({ ...mort }).rows[0]?.payment || 0) + (mort.extraCosts || 0) : null;
+  const path = buildPath({ budget, recurring, settings: s, income: ahead.months[0]?.income ?? budget.income, avgSpend: ahead.avgSpend, mortgagePayment: mortPay });
+  const chosen = s.pathChosen || {};
+  const picked = chosenSaving(path, chosen);
+  const withPlan = picked ? outlook({ txs: state.txs, today, budget, months: 6, mortgage: mort, housingNow, incomeFor, cut: picked }) : null;
+  const pathHtml = pathCard(path, chosen, picked);
   const plan = s.plan;
 
   // Back-on-track plan: from the spreadsheet if you imported one, else from your spending.
@@ -169,8 +177,11 @@ export function render() {
       <div class="pt-row head"><span>Month</span><span>In</span><span>Left</span><span>Running</span></div>
       ${ahead.months.map((m) => `<div class="pt-row ${m.mortgage ? 'start' : ''}"><span>${esc(monthLabel(m.month, { short: true }))}${m.mortgage ? ' 🏠' : ''}</span><span>${fmt(m.income, { whole: true })}</span><span class="${m.left < 0 ? 'neg' : ''}">${fmt(m.left, { whole: true, sign: true })}</span><span class="${m.running < 0 ? 'neg' : ''}">${fmt(m.running, { whole: true, sign: true })}</span></div>`).join('')}
     </div>
-    <p class="sub ${ahead.shortMonths ? 'warn-text' : ''}">${ahead.shortMonths ? `Short in ${ahead.shortMonths} of the next 6 months at this rate. The plan below shows where to close the gap.` : 'Enough every month at this rate.'}</p>
+    <p class="sub ${ahead.shortMonths ? 'warn-text' : ''}">${ahead.shortMonths ? `Short in ${ahead.shortMonths} of the next 6 months at this rate. Your path below shows how to close the gap.` : 'Enough every month at this rate.'}</p>
+    ${withPlan ? `<p class="sub"><b>With the ${Object.values(chosen).filter(Boolean).length} actions you've chosen</b> (${fmt(picked, { whole: true })}/month): ${withPlan.shortMonths ? `<span class="warn-text">still short in ${withPlan.shortMonths} of 6 months</span>` : '<span class="pos">enough every month</span>'}, ${fmt(withPlan.months.at(-1).running, { whole: true, sign: true })} after 6 months instead of ${fmt(ahead.months.at(-1).running, { whole: true, sign: true })}.</p>` : ''}
   </div>
+
+  ${pathHtml}
 
   <div class="card">
     <h3>Budgets this month ${over.length ? `<small class="pill warn">${over.length} over</small>` : ''}</h3>
@@ -191,7 +202,33 @@ export function render() {
   </div>`;
 }
 
+/** Ranked actions with the £ each frees up; tick the ones you'll do and watch the gap close. */
+function pathCard(path, chosen, picked) {
+  if (!path.actions.length) return '';
+  const short = Math.max(0, -path.gap);
+  const after = path.gap + picked;
+  const all = path.actions.reduce((a, x) => a + x.saving, 0);
+  const list = ui.showAllPath ? path.actions : path.actions.slice(0, 8);
+  const kindTag = { temporary: 'For now', income: 'Extra income', planned: 'When you move' };
+  return `<div class="card keep-open">
+    <h3>Your path to living within your means</h3>
+    <div class="path-sum">
+      <div><span class="label">${path.gap < 0 ? 'Short each month' : 'Spare each month'}</span><b class="${path.gap < 0 ? 'neg' : 'pos'}">${fmt(Math.abs(path.gap), { whole: true })}</b></div>
+      <div><span class="label">You've chosen</span><b class="pos">${fmt(picked, { whole: true })}</b></div>
+      <div><span class="label">Then</span><b class="${after < 0 ? 'neg' : 'pos'}">${fmt(after, { whole: true, sign: true })}</b></div>
+    </div>
+    ${short ? bar(picked / short, after >= 0 ? 'ok' : '') : ''}
+    <p class="sub">${short ? (after >= 0 ? '✓ With these you live within your means. Keep them up for 3 months and the forecast above turns green.' : `Tick what you'll do. Everything below adds up to ${fmt(all, { whole: true })}/month${all < short ? `, still ${fmt(short - all, { whole: true })} short: the rest is the big decisions (rent, giving, income)` : ''}.`) : 'You\'re within your means. These would add to what you save.'}</p>
+    ${list.map((a) => `<label class="path-item ${chosen[a.id] ? 'done' : ''}"><input type="checkbox" data-change="tr-path" data-id="${esc(a.id)}" ${chosen[a.id] ? 'checked' : ''}>
+      <span class="grow"><b>${esc(a.title)}</b>${kindTag[a.kind] ? ` <small class="pill">${kindTag[a.kind]}</small>` : ''}<br><small class="sub">${esc(a.detail)}</small>${a.help ? `<br><a class="act-link" href="${esc(a.help.url)}" target="_blank" rel="noopener">${esc(a.help.label)} ↗</a>` : a.id === 'cb' ? '<br><a class="act-link" href="https://www.gov.uk/child-benefit/how-to-claim" target="_blank" rel="noopener">Claim on GOV.UK ↗</a> <a class="act-tel" href="tel:03002003100">📞 0300 200 3100</a>' : ''}</span>
+      <b class="pos path-save">+${fmt(a.saving, { whole: true })}</b></label>`).join('')}
+    ${path.actions.length > list.length ? `<button class="btn ghost full" data-action="tr-path-more">Show all ${path.actions.length} actions</button>` : ''}
+    ${path.gap < 0 && after < 0 ? '<div class="act-links"><a class="act-link" href="https://www.stepchange.org/" target="_blank" rel="noopener">StepChange: free debt advice ↗</a><a class="act-tel" href="tel:08001381111">📞 0800 138 1111</a></div>' : ''}
+  </div>`;
+}
+
 export const actions = {
+  'tr-path-more': (_, rerender) => { ui.showAllPath = true; rerender(); },
   'tr-more': (_, rerender) => { ui.showAllSavings = true; rerender(); },
   'tr-stage': async (el, rerender) => { const n = await applyStage(+el.dataset.stage); toast(`${n} budgets moved to month ${+el.dataset.stage + 1} targets`); rerender(); },
   'tr-apply': async (_, rerender) => {
@@ -209,6 +246,24 @@ export const actions = {
 export const changes = {
   'tr-step': async (el, rerender) => { await togglePlanItem('step', +el.dataset.i, +el.dataset.j); rerender(); },
   'tr-save': async (el, rerender) => { await togglePlanItem('saving', +el.dataset.i); rerender(); },
+  'tr-path': async (el, rerender) => {
+    const chosen = { ...(state.settings.pathChosen || {}) };
+    const id = el.dataset.id;
+    const patch = {};
+    if (el.checked) {
+      chosen[id] = true;
+      // A spending cut becomes that category's budget, so alerts hold you to it.
+      if (id.startsWith('trim:')) {
+        const { budget, recurring } = state.derived;
+        const a = buildPath({ budget, recurring, settings: state.settings, income: budget.income, avgSpend: budget.avgSpend || 0 }).actions.find((x) => x.id === id);
+        if (a?.target != null) patch.budgets = { ...(state.settings.budgets || {}), [a.category]: a.target };
+      }
+      if (id.startsWith('sub:')) patch.billFlags = { ...(state.settings.billFlags || {}), [id.slice(4)]: 'cancel' };
+    } else delete chosen[id];
+    await saveSettings({ pathChosen: chosen, ...patch });
+    if (patch.budgets) { recompute(); toast('Set as your budget'); } else if (patch.billFlags) toast('Added to your cancel list');
+    rerender();
+  },
 };
 
 void CAT;

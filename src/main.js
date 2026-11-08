@@ -25,15 +25,22 @@ import * as due from './ui/views/due.js';
 import * as goals from './ui/views/goals.js';
 import { initLock, lockActions } from './ui/lock.js';
 import { enhanceSections, sectionActions } from './ui/sections.js';
+import { insightActions } from './ui/insight-actions.js';
 import * as sync from './ui/views/sync.js';
 import * as add from './ui/views/add.js';
 import * as plan from './ui/views/plan.js';
 import * as categories from './ui/views/categories.js';
 import * as track from './ui/views/track.js';
 import * as income from './ui/views/income.js';
+import * as movebills from './ui/views/movebills.js';
 
-const VIEWS = { home, budget, afford, insights, accounts, transactions, settings, history, import: importer, checkin, bills, cards, setup, audit, due, goals, sync, add, plan, categories, track, income };
-const TITLES = { home: 'Overview', budget: 'Budget', afford: 'Afford?', insights: 'Insights', accounts: 'Accounts', transactions: 'Transactions', settings: 'Settings', history: 'Monthly record', import: 'Import', checkin: 'Monthly check-in', bills: 'Bills & subscriptions', cards: 'Credit cards', setup: 'Fix accounts', audit: 'Check my numbers', due: 'Due soon', goals: 'Savings goals', sync: 'Bank sync', add: 'Quick add', plan: 'Future planning', categories: 'Categories', track: 'On track', income: 'Income' };
+const VIEWS = { home, budget, afford, insights, accounts, transactions, settings, history, import: importer, checkin, bills, cards, setup, audit, due, goals, sync, add, plan, categories, track, income, movebills };
+// Which tab each sub-page belongs to: highlights that tab, and is where Back goes with no history.
+const PARENT = { transactions: 'home', history: 'home', checkin: 'home', bills: 'home', import: 'home', cards: 'home', audit: 'home', due: 'home', goals: 'home', settings: 'home', add: 'home', setup: 'accounts', sync: 'accounts', plan: 'track', categories: 'insights', budget: 'track', income: 'track', movebills: 'accounts' };
+const ROOTS = new Set(['home', 'track', 'afford', 'insights', 'accounts']);
+// Pages visited inside the app this session, so Back returns to where you were (not out of the app).
+let navDepth = 0, goingBack = false;
+const TITLES = { home: 'Overview', budget: 'Budget', afford: 'Afford?', insights: 'Insights', accounts: 'Accounts', transactions: 'Transactions', settings: 'Settings', history: 'Monthly record', import: 'Import', checkin: 'Monthly check-in', bills: 'Bills & subscriptions', cards: 'Credit cards', setup: 'Fix accounts', audit: 'Check my numbers', due: 'Due soon', goals: 'Savings goals', sync: 'Bank sync', add: 'Quick add', plan: 'Future planning', categories: 'Categories', track: 'On track', income: 'Income', movebills: 'Move bills' };
 let current = 'home';
 
 function parseHash() {
@@ -59,11 +66,13 @@ async function render() {
   main.dataset.view = current;
   document.title = `${TITLES[current]} · Pocket Ledger`;
   // Which tab is highlighted for pages that aren't tabs themselves.
-  const PARENT = { transactions: 'home', history: 'home', checkin: 'home', bills: 'home', import: 'home', cards: 'home', audit: 'home', due: 'home', goals: 'home', setup: 'accounts', sync: 'accounts', plan: 'track', categories: 'insights', budget: 'track', income: 'track' };
+  const back = $('#back-btn');
+  if (back) { const root = ROOTS.has(current); back.hidden = root; document.body.classList.toggle('sub-page', !root); back.setAttribute('aria-label', `Back to ${TITLES[PARENT[current] || 'home']}`); }
   document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.view === (PARENT[current] || current)));
 }
 
-async function route() {
+async function route(e) {
+  if (e?.type === 'hashchange') { if (goingBack) { goingBack = false; navDepth = Math.max(0, navDepth - 1); } else navDepth++; }
   const { view, params } = parseHash();
   const changed = view !== current;
   current = view;
@@ -82,6 +91,9 @@ async function route() {
 
 const globalActions = {
   'close-sheet': () => closeSheet(),
+  'nav-back': () => {
+    if (navDepth > 0) { goingBack = true; window.history.back(); } else location.hash = '#/' + (PARENT[current] || 'home');
+  },
   'scope-pick': () => {
     const opts = [['all', '🏠 Household', 'Everyone together'], ...state.settings.people.map((p) => [p.id, `● ${p.name}`, 'Only their accounts']),
       ...(state.allAccounts?.some((a) => a.owner === 'joint') ? [['joint', '👥 Joint', 'Joint accounts only']] : [])];
@@ -121,7 +133,7 @@ const globalActions = {
   },
 };
 
-const allActions = Object.assign({}, globalActions, lockActions, sectionActions, ...Object.values(VIEWS).map((v) => v.actions || {}));
+const allActions = Object.assign({}, globalActions, lockActions, sectionActions, insightActions, ...Object.values(VIEWS).map((v) => v.actions || {}));
 const allChanges = Object.assign({}, ...Object.values(VIEWS).map((v) => v.changes || {}));
 const allInputs = Object.assign({}, ...Object.values(VIEWS).map((v) => v.inputs || {}));
 
@@ -189,7 +201,20 @@ document.addEventListener('focusout', () => { if (pendingRender) { pendingRender
       setTimeout(() => toast(`Removed ${junk.length} statement summary line${junk.length > 1 ? 's' : ''} (e.g. "${junk[0].description.slice(0, 24)}") that were wrongly counted as payments`), 600);
     }
   }
-  if (state.txs.length && (state.settings.transferRulesVersion || 1) < 5) {
+  if (state.txs.length && (state.settings.transferRulesVersion || 1) < 6) {
+    // Moves between your own money ("MB STARLING", Revolut pockets) were counted as spending, and
+    // could even have been accepted as bills. They're transfers whatever was chosen before.
+    const all6 = await db.all('tx');
+    const moved = [];
+    const rules = { ...(state.settings.userRules || {}) };
+    for (const t of all6) {
+      if (t.category === 'transfer' || categorize(t.description, t.amount, {}) !== 'transfer') continue;
+      t.category = 'transfer'; t.userCategory = false; moved.push(t);
+      if (t.merchant && rules[t.merchant] && rules[t.merchant] !== 'transfer') delete rules[t.merchant];
+    }
+    if (moved.length) { await db.putMany('tx', moved); await saveSettings({ userRules: rules }); setTimeout(() => toast(`${moved.length} moves between your own accounts (bank-app transfers, pockets) are no longer counted as spending`), 900); }
+  }
+  if (state.txs.length && (state.settings.transferRulesVersion || 1) < 6) {
     // Re-sort anything still "Other" with the improved rules (e.g. rent to letting agents), then
     // re-check transfers (names, aliases, savings, card repayments). Your own choices are kept.
     const all = await db.all('tx');
@@ -201,7 +226,7 @@ document.addEventListener('focusout', () => { if (pendingRender) { pendingRender
     }
     if (fixed.length) await db.putMany('tx', fixed);
     await relinkTransfers();
-    await saveSettings({ transferRulesVersion: 5 });
+    await saveSettings({ transferRulesVersion: 6 });
   }
   await route();
   sync.autoSync().then(() => render());

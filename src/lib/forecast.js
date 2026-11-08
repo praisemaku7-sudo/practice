@@ -49,7 +49,7 @@ export function history({ txs, today, n = 6 }) {
  * The next months at your recent average: income − spending, with rent swapped for the mortgage
  * from its start month if you've entered one in Future planning.
  */
-export function outlook({ txs, today, budget, months = 6, mortgage = null, housingNow = 0, incomeFor = null }) {
+export function outlook({ txs, today, budget, months = 6, mortgage = null, housingNow = 0, incomeFor = null, cut = 0 }) {
   const past = history({ txs, today, n: 3 });
   const avgSpend = past.length ? Math.round(past.reduce((a, m) => a + m.spend, 0) / past.length) : budget.avgSpend || 0;
   const income = budget.income || 0;
@@ -60,7 +60,7 @@ export function outlook({ txs, today, budget, months = 6, mortgage = null, housi
   for (let k = 1; k <= months; k++) {
     const m = addMonths(monthKey(today), k);
     const started = mortgage?.startMonth && m >= mortgage.startMonth;
-    const spend = avgSpend + (started ? (pay.get(m) || 0) + (mortgage.extraCosts || 0) - housingNow : 0);
+    const spend = avgSpend - cut + (started ? (pay.get(m) || 0) + (mortgage.extraCosts || 0) - housingNow : 0);
     // Income month by month when known (maternity pay ending, Child Benefit starting…).
     const inc = incomeFor ? incomeFor(m) : income;
     const left = inc - spend - (budget.goalsMonthly || 0);

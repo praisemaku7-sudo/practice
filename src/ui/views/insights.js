@@ -1,5 +1,6 @@
 import { state } from '../../state.js';
 import { db } from '../../lib/db.js';
+import { openInsight } from '../insight-actions.js';
 import { esc, toast } from '../dom.js';
 import { fmt } from '../../lib/money.js';
 import { buildInsights } from '../../lib/insights.js';
@@ -33,11 +34,11 @@ export function render() {
     ${report ? renderReport(report) : `<p class="muted">A written review of ${esc(monthLabel(state.month))}: what changed, what to fix, and a plan for next month. Only totals are sent, never your raw transactions.</p>
       <button class="btn primary full" data-action="ai-report" ${loadingReport ? 'disabled' : ''}>${loadingReport ? 'Writing your review…' : state.settings.apiKey ? 'Write my monthly review' : 'Add API key in Settings first'}</button>`}
   </div>
-  ${list.map((i) => `<div class="card insight lvl-${i.level}">
+  ${(lastList = list, list).map((i, n) => `<button class="card insight tap lvl-${i.level}" data-action="ins-open" data-n="${n}">
     <div class="insight-title">${esc(i.title)}</div>
     <div class="sub">${esc(i.detail)}</div>
-    ${i.saving > 0 && i.level !== 'good' ? `<div class="pill save">Could save ~${fmt(i.saving, { whole: true })}/mo</div>` : ''}
-  </div>`).join('') || '<p class="muted center">Nothing to flag this month. 👏</p>'}`;
+    <div class="row between ins-foot">${i.saving > 0 && i.level !== 'good' ? `<span class="pill save">Could save ~${fmt(i.saving, { whole: true })}/mo</span>` : '<span></span>'}<span class="ins-go">What to do ›</span></div>
+  </button>`).join('') || '<p class="muted center">Nothing to flag this month. 👏</p>'}`;
 }
 
 function renderReport(r) {
@@ -70,7 +71,9 @@ function summaryForAI(month) {
   };
 }
 
+let lastList = [];
 export const actions = {
+  'ins-open': (el) => { const i = lastList[+el.dataset.n]; if (i) openInsight(i); },
   'ai-report': async (_, rerender) => {
     if (!state.settings.apiKey) { location.hash = '#/settings'; return; }
     const month = state.month;

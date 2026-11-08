@@ -2,7 +2,6 @@ import { state, saveSettings, recompute, relinkTransfers, ownerOf, personName } 
 import { db } from '../../lib/db.js';
 import { esc, openSheet, closeSheet, confirmSheet, toast } from '../dom.js';
 import { fmt, parsePrice } from '../../lib/money.js';
-import { consolidationPlan } from '../../lib/consolidate.js';
 import { prettyDate, monthLabel } from '../../lib/dates.js';
 import { canonicalBank } from '../../lib/parse/details.js';
 import { catChip, emptyState } from '../common.js';
@@ -14,7 +13,6 @@ export function render() {
   if (!state.accounts.length) return emptyState({ title: 'No accounts yet', body: 'Each statement you import creates or updates an account here.' });
   const { recurring } = state.derived;
   const mainId = state.settings.mainAccountId;
-  const plan = mainId ? consolidationPlan({ accounts: state.accounts, recurring, mainAccountId: mainId, done: state.settings.consolidationDone }) : null;
   const counts = {};
   for (const t of state.txs) counts[t.accountId] = (counts[t.accountId] || 0) + 1;
   const outRec = recurring.filter((r) => r.direction === 'out' && r.active);
@@ -55,13 +53,7 @@ export function render() {
     ${outRec.length ? '<a class="btn ghost full" href="#/bills">Calendar &amp; cancel list</a>' : ''}
   </div>
 
-  <div class="card">
-    <h3>Consolidation plan</h3>
-    <p class="muted">Pick the one account you want everything to run through. I'll list every bill and payment that needs to move, and how to move it.</p>
-    <label class="field select"><select data-change="set-main"><option value="">Choose main account…</option>
-      ${state.accounts.filter((a) => a.type !== 'credit').map((a) => `<option value="${esc(a.id)}" ${a.id === mainId ? 'selected' : ''}>${esc(a.name)} (${esc(a.bank || '')})</option>`).join('')}</select></label>
-    ${plan ? renderPlan(plan) : ''}
-  </div>
+  <a class="card setup-cta" href="#/movebills"><div><b>🔀 Move bills to one account</b><div class="sub">Step by step: each Direct Debit, standing order and card payment, where it comes from now and how to move it.</div></div><span class="banner-go">›</span></a>
 
   <div class="card">
     <h3>Live bank connection</h3>
@@ -104,17 +96,6 @@ function renderStatements() {
 
 const accName = (id) => state.accounts.find((a) => a.id === id)?.name ?? '?';
 
-function renderPlan(plan) {
-  if (!plan.steps.length) return '<p class="good-note">✓ Nothing left to move. Every regular payment already runs through your main account.</p>';
-  return `<div class="plan-progress">${plan.doneItems}/${plan.totalItems} moved</div>
-    ${plan.steps.map((s) => `<div class="plan-step">
-      <h4>From ${esc(s.accountName)} → ${esc(plan.main.name)}</h4>
-      ${s.switchSuggested ? `<div class="tip-box"><b>Easiest: a full switch.</b> If you're closing ${esc(s.accountName)}, ask ${esc(plan.main.bank || 'your main bank')} for a <b>Current Account Switch</b> (CASS). It moves all Direct Debits, standing orders and incoming payments for you in 7 working days, redirects any stragglers for 3 years, and closes the old account. It does not move subscriptions paid by card. Update those yourself (below).</div>` : ''}
-      ${s.items.map((i) => `<label class="check-row ${i.done ? 'done' : ''}">
-        <input type="checkbox" data-change="plan-toggle" data-key="${esc(i.doneKey)}" ${i.done ? 'checked' : ''}>
-        <div class="grow"><div><b>${esc(i.name)}</b> · ${fmt(i.amount)} · ${esc(i.type === 'income' ? 'incoming' : i.type)}</div><div class="sub">${esc(i.how)}</div></div></label>`).join('')}
-    </div>`).join('')}`;
-}
 
 export const actions = {
   'edit-account': (el, rerender) => {
@@ -214,9 +195,4 @@ actions['cov-toggle'] = async (el, rerender) => {
 };
 
 export const changes = {
-  'set-main': async (el, rerender) => { await saveSettings({ mainAccountId: el.value || null }); rerender(); },
-  'plan-toggle': async (el, rerender) => {
-    const done = { ...state.settings.consolidationDone, [el.dataset.key]: el.checked };
-    await saveSettings({ consolidationDone: done }); rerender();
-  },
 };
