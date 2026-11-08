@@ -66,3 +66,50 @@ export function projection({ fromMonth, months = 24, income, everydaySpend, rent
   }
   return out;
 }
+
+// ----- Buying: tax, borrowing, deposit -----
+// Bands in pounds: [upTo, rate%]. England & NI rates from 1 April 2025; Scotland (LBTT) and Wales (LTT)
+// residential rates for a main home. Check gov.uk / revenue.scot / gov.wales before you rely on them.
+const BANDS = {
+  england: [[125000, 0], [250000, 2], [925000, 5], [1500000, 10], [Infinity, 12]],
+  englandFirst: [[300000, 0], [500000, 5]], // only if the price is £500,000 or less
+  scotland: [[145000, 0], [250000, 2], [325000, 5], [750000, 10], [Infinity, 12]],
+  scotlandFirst: [[175000, 0], [250000, 2], [325000, 5], [750000, 10], [Infinity, 12]],
+  wales: [[225000, 0], [400000, 6], [750000, 7.5], [1500000, 10], [Infinity, 12]],
+};
+const TAX_NAME = { england: 'Stamp Duty', scotland: 'LBTT', wales: 'Land Transaction Tax' };
+
+/** Property tax on a main home, in pence. */
+export function propertyTax(pricePence, { region = 'england', firstTime = false } = {}) {
+  const price = pricePence / 100;
+  let bands = BANDS[region] || BANDS.england;
+  let relief = false;
+  if (firstTime && region === 'england' && price <= 500000) { bands = BANDS.englandFirst; relief = true; }
+  if (firstTime && region === 'scotland') { bands = BANDS.scotlandFirst; relief = true; }
+  let tax = 0, lower = 0;
+  for (const [upTo, rate] of bands) {
+    if (price > lower) tax += (Math.min(price, upTo) - lower) * (rate / 100);
+    lower = upTo;
+  }
+  return { tax: Math.round(tax) * 100, name: TAX_NAME[region] || 'Stamp Duty', relief };
+}
+
+/** What lenders typically lend: about 4–4.5× gross household income (some go to 5× for higher earners). */
+export const borrowingRange = (grossAnnual) => ({ low: Math.round(grossAnnual * 4), high: Math.round(grossAnnual * 4.5) });
+
+/** Deposit bands: rates usually get cheaper at each step down in loan-to-value. */
+export function ltvBands(pricePence, depositPence = 0) {
+  return [95, 90, 85, 80, 75, 60].map((ltv) => {
+    const need = Math.round(pricePence * (1 - ltv / 100));
+    return { ltv, deposit: need, short: Math.max(0, need - depositPence), reached: depositPence >= need };
+  });
+}
+
+/** Months of saving until you have `need`, and the month you get there. */
+export function savingTimeline({ need, saved = 0, monthly = 0, fromMonth }) {
+  const gap = Math.max(0, need - saved);
+  if (!gap) return { gap: 0, months: 0, month: fromMonth };
+  if (!monthly) return { gap, months: null, month: null };
+  const months = Math.ceil(gap / monthly);
+  return { gap, months, month: addMonths(fromMonth, months) };
+}

@@ -26,6 +26,7 @@ import * as goals from './ui/views/goals.js';
 import { initLock, lockActions } from './ui/lock.js';
 import { enhanceSections, sectionActions } from './ui/sections.js';
 import { insightActions } from './ui/insight-actions.js';
+import { menuActions, menuInputs, closeMenu, menuIsOpen, setMenuCurrent, applyTheme } from './ui/menu.js';
 import * as sync from './ui/views/sync.js';
 import * as add from './ui/views/add.js';
 import * as plan from './ui/views/plan.js';
@@ -64,6 +65,7 @@ async function render() {
     sb.style.setProperty('--pc', p?.color || 'var(--accent)');
   }
   main.dataset.view = current;
+  setMenuCurrent(current);
   document.title = `${TITLES[current]} · Pocket Ledger`;
   // Which tab is highlighted for pages that aren't tabs themselves.
   const back = $('#back-btn');
@@ -77,7 +79,7 @@ async function route(e) {
   const changed = view !== current;
   current = view;
   await VIEWS[view].applyParams?.(params);
-  closeSheet();
+  closeSheet(); closeMenu();
   // Importing and fixing accounts always work on the whole household, so nothing is hidden.
   if (['import', 'setup', 'income'].includes(view) && state.settings.scope !== 'all') {
     await setScope('all');
@@ -101,7 +103,7 @@ const globalActions = {
       ${opts.map(([id, label, sub]) => `<button class="list-row tap scope-opt ${state.settings.scope === id ? 'sel' : ''}" data-action="scope-set" data-scope="${esc(id)}"><div class="grow"><b>${esc(label)}</b><div class="sub">${esc(sub)} · ${(state.allAccounts || []).filter((a) => id === 'all' || ownerOf(a) === id).length} accounts</div></div>${state.settings.scope === id ? '✓' : ''}</button>`).join('')}
       <a class="btn ghost full" href="#/settings" data-action="close-sheet-go" data-to="settings">Add or rename people</a>`);
   },
-  'scope-set': async (el) => { closeSheet(); await setScope(el.dataset.scope); render(); toast(`Showing ${scopeLabel()}`); },
+  'scope-set': async (el) => { closeSheet(); closeMenu(); await setScope(el.dataset.scope); render(); toast(`Showing ${scopeLabel()}`); },
   'close-sheet-go': (el) => { closeSheet(); location.hash = '#/' + el.dataset.to; },
   'banner-hide': async (el) => {
     await saveSettings({ hiddenBanners: { ...(state.settings.hiddenBanners || {}), [el.dataset.key]: el.dataset.sig } });
@@ -133,9 +135,9 @@ const globalActions = {
   },
 };
 
-const allActions = Object.assign({}, globalActions, lockActions, sectionActions, insightActions, ...Object.values(VIEWS).map((v) => v.actions || {}));
+const allActions = Object.assign({}, globalActions, lockActions, sectionActions, insightActions, menuActions, ...Object.values(VIEWS).map((v) => v.actions || {}));
 const allChanges = Object.assign({}, ...Object.values(VIEWS).map((v) => v.changes || {}));
-const allInputs = Object.assign({}, ...Object.values(VIEWS).map((v) => v.inputs || {}));
+const allInputs = Object.assign({}, menuInputs, ...Object.values(VIEWS).map((v) => v.inputs || {}));
 
 document.addEventListener('click', (ev) => {
   const el = ev.target.closest('[data-action]');
@@ -160,7 +162,30 @@ document.addEventListener('input', (ev) => {
   clearTimeout(inputTimers.get(key));
   inputTimers.set(key, setTimeout(() => { inputTimers.delete(key); fn(el, render); }, 200));
 });
-document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeSheet(); });
+document.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape') { closeSheet(); closeMenu(); }
+  // Enter in "Find a page" opens the first match.
+  if (ev.key === 'Enter' && ev.target.id === 'menu-q') {
+    ev.preventDefault();
+    const q = ev.target.value.trim().toLowerCase();
+    const hit = [...document.querySelectorAll('.menu-item')].find((a) => !q || a.dataset.q.includes(q));
+    if (hit) { closeMenu(); location.hash = '#/' + hit.dataset.to; }
+  }
+});
+
+// Swipe in from the left edge to go back on sub-pages (like Safari's back gesture).
+let edge = null;
+document.addEventListener('touchstart', (e) => {
+  const t = e.touches[0];
+  edge = e.touches.length === 1 && t.clientX < 28 && document.body.classList.contains('sub-page') && !menuIsOpen() && !document.querySelector('.sheet.open') ? { x: t.clientX, y: t.clientY } : null;
+}, { passive: true });
+document.addEventListener('touchend', (e) => {
+  if (!edge) return;
+  const t = e.changedTouches[0];
+  const dx = t.clientX - edge.x, dy = Math.abs(t.clientY - edge.y);
+  edge = null;
+  if (dx > 70 && dy < 60) globalActions['nav-back']();
+}, { passive: true });
 
 // Let files dropped onto the page (desktop) import directly.
 document.addEventListener('dragover', (e) => e.preventDefault());
@@ -186,6 +211,7 @@ document.addEventListener('focusout', () => { if (pendingRender) { pendingRender
 (async function boot() {
   try {
     await load();
+    applyTheme();
   } catch (e) {
     $('#main').innerHTML = `<div class="card alert">Storage is unavailable (${e.message}). Private Browsing blocks it. Open in normal Safari.</div>`;
     return;
