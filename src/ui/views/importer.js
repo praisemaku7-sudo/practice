@@ -3,6 +3,7 @@ import { state, personName, ownerOf } from '../../state.js';
 import { esc, toast } from '../dom.js';
 import { fmt } from '../../lib/money.js';
 import { prettyDate, monthLabel } from '../../lib/dates.js';
+import { saveCreditReport, usePlan } from '../../lib/ontrack-store.js';
 import { queue, commitAll, clearQueue, pickFiles, busyCount, retryFailed, reimportAllDuplicates, applyPayslip, applySA302, emptyAccounts, removeEmptyAccounts } from '../import.js';
 
 const STATUS = {
@@ -41,6 +42,23 @@ function itemCard(it) {
            <label class="field slim"><span>Total tax &amp; NI £</span><input inputmode="decimal" id="man-tax-${it.id}" placeholder="from the SA302"></label>`}
       ${state.settings.people.length > 1 ? `<label class="field select slim"><span>Whose</span><select id="man-owner-${it.id}">${state.settings.people.map((pp) => `<option value="${pp.id}" ${owner === pp.id ? 'selected' : ''}>${esc(pp.name)}</option>`).join('')}</select></label>` : ''}
       <button class="btn primary full" data-action="imp-manual-income" data-id="${it.id}" data-kind="${kind}">Use as usual income</button>`;
+  } else if (it.creditReport) {
+    const r = it.creditReport;
+    const active = r.accounts.filter((a) => a.section === 'active');
+    body = it.status === 'imported'
+      ? `<div class="sub">✓ Saved to ${esc(personName(r.owner))}'s credit health (On track → Credit).</div>`
+      : `<div class="tip-box"><b>📈 Credit report</b> · ${esc(r.provider)}${r.date ? ` · ${prettyDate(r.date)} ${r.date.slice(0, 4)}` : ''}<br>
+        ${r.score != null ? `Score <b>${r.score}</b> · ` : ''}${active.length} open account${active.length === 1 ? '' : 's'} · ${r.hardSearches.length} hard search${r.hardSearches.length === 1 ? '' : 'es'}${active.some((a) => a.late12) ? ' · <span class="neg">late payments in the last year</span>' : ''}${active.some((a) => a.overLimit) ? ' · <span class="neg">over a limit</span>' : ''}</div>
+        <p class="sub">Read on your phone and kept on your phone only. It isn't imported as transactions.</p>
+        ${state.settings.people.length > 1 ? `<label class="field select slim"><span>Whose report</span><select data-change="imp-credit-owner" data-id="${it.id}">${state.settings.people.map((pp) => `<option value="${pp.id}" ${r.owner === pp.id ? 'selected' : ''}>${esc(pp.name)}</option>`).join('')}</select></label>` : ''}
+        <button class="btn primary full" data-action="imp-credit-save" data-id="${it.id}">Save to credit health</button>`;
+  } else if (it.plan) {
+    const pl = it.plan;
+    body = it.status === 'imported'
+      ? '<div class="sub">✓ Your plan is in On track.</div>'
+      : `<div class="tip-box"><b>🧭 Household plan</b><br>${[pl.budget.length && `${pl.budget.length} budget lines`, pl.debts.length && `${pl.debts.length} debts`, pl.savings.length && `${pl.savings.length} savings actions (${fmt(pl.savings.reduce((a, x) => a + (x.saving || 0), 0), { whole: true })}/month)`, pl.regular.length && `${pl.regular.length} regular payments`, pl.steps.length && `${pl.steps.length}-step action plan`].filter(Boolean).join(' · ')}</div>
+        <label class="check-row"><input type="checkbox" id="plan-budgets-${it.id}" checked> <span><b>Use its suggested budget</b><br><small class="sub">Sets your category budgets to the spreadsheet's "suggested" amounts.</small></span></label>
+        <button class="btn primary full" data-action="imp-plan-use" data-id="${it.id}">Use this plan</button>`;
   } else if (it.status === 'imported' && it.result?.sa302) {
     body = `<div class="sub">✓ ${esc(it.sa302.taxYear || 'SA302')} saved for ${esc(personName(it.sa302.owner))}: usual income ${fmt(it.sa302.monthlyNet)}/month.</div>`;
   } else if (it.sa302 && it.status === 'ready') {
@@ -158,6 +176,12 @@ export const actions = {
   'imp-retry': (el, rerender) => { retryFailed(el.dataset.id); rerender(); },
   'imp-clean': async (_, rerender) => { const n = await removeEmptyAccounts(); rerender(); toast(`Removed ${n} empty account${n === 1 ? '' : 's'}`); },
   'imp-payslip': async (el, rerender) => { await applyPayslip(find(el)); rerender(); },
+  'imp-credit-save': async (el, rerender) => { const it = find(el); await saveCreditReport(it.creditReport); it.status = 'imported'; toast('Saved to credit health'); rerender(); },
+  'imp-plan-use': async (el, rerender) => {
+    const it = find(el);
+    const n = await usePlan(it.plan, { budgets: document.getElementById(`plan-budgets-${it.id}`)?.checked });
+    it.status = 'imported'; toast(`Plan saved${n ? ` · ${n} budgets set` : ''}`); rerender();
+  },
   'imp-sa302': async (el, rerender) => { await applySA302(find(el)); rerender(); },
   'imp-manual-income': async (el, rerender) => {
     const it = find(el);
@@ -185,6 +209,7 @@ export const changes = {
   'imp-acc': (el, rerender) => { find(el).accountChoice = el.value; rerender(); },
   'imp-type': (el) => { find(el).newAccount.type = el.value; },
   'imp-slip-owner': (el) => { find(el).payslip.owner = el.value; },
+  'imp-credit-owner': (el) => { find(el).creditReport.owner = el.value; },
   'imp-sa-owner': (el) => { find(el).sa302.owner = el.value; },
   'imp-owner': (el) => { find(el).newAccount.owner = el.value; },
   'imp-include': (el, rerender) => {

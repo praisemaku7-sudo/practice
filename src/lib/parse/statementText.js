@@ -188,7 +188,7 @@ export function parseStatementLines(lines, { fallbackYear = new Date().getFullYe
     }
     // Lines starting with "Total" are subtotals, never transactions.
     if (!dateMatch && /^total\b/i.test(text.trim())) {
-      // "Total new spend transactions for SARAH MACPHAIL": everything since the last total was hers.
+      // "Total new spend transactions for JANE SMITH": everything since the last total was hers.
       const holder = text.match(/transactions\s+for\s+([A-Z][A-Z' .-]+?)(?:\s+[\d£-]|$)/i);
       if (holder) {
         const name = holder[1].replace(/\s+/g, ' ').trim();

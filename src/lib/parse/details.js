@@ -67,11 +67,12 @@ const PRODUCTS = [
 
 /** A person's name: letters only, 2+ words, no digits or month names. */
 const looksLikeName = (v) => !!v && /^[A-Za-z][A-Za-z' .-]+$/.test(v.trim()) && v.trim().split(/\s+/).length >= 2
-  && !/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b|\bstatement\b|\bbalance\b/i.test(v);
+  // Whole month names only: "Jane", "Mark", "Martin", "Declan" are names, not dates.
+  && !/\b(jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|june?|july?|aug(ust)?|sep(t|tember)?|oct(ober)?|nov(ember)?|dec(ember)?)\b|\bstatement\b|\bbalance\b/i.test(v);
 
 /** Text on the line under a label, at the same column (statements often print values below their labels). */
 function valueBelow(lines, labelRe) {
-  for (let i = 0; i < lines.length - 1; i++) {
+  for (let i = 0; i < lines.length; i++) {
     const m = lines[i].match(labelRe);
     if (!m) continue;
     // Value on the same line: stop at the next label ("Membership Number", "Sort code"...).
@@ -79,6 +80,7 @@ function valueBelow(lines, labelRe) {
       .split(/\s{2,}|\b(?:membership|account|card|sort|date|number|page|statement)\b/i)[0].trim();
     if (looksLikeName(sameLine)) return sameLine;
     const below = lines[i + 1];
+    if (below == null) continue; // label on the last line: nothing underneath
     const col = m.index;
     const seg = (below.slice(Math.max(0, col - 2)).match(/^\s*([^\s].*?)(\s{2,}|$)/) || [])[1];
     if (seg && looksLikeName(seg)) return seg.trim();

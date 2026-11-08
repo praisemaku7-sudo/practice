@@ -25,7 +25,7 @@ export function render() {
       <span class="sub">${(state.allAccounts || []).filter((a) => ownerOf(a) === p.id).length} accounts</span>
       ${i > 0 ? `<button class="icon-btn small" data-action="pp-remove" data-id="${esc(p.id)}" aria-label="Remove">×</button>` : ''}</div>`).join('')}
     <div class="row gap"><label class="field slim grow"><input id="pp-new" placeholder="Add a person, e.g. your wife's name" autocomplete="off"></label><button class="btn primary" data-action="pp-add">Add</button></div>
-    <p class="sub">Tip: use full names as they appear on statements (e.g. "Praise Maku"). Statements with that name are assigned to that person automatically, and transfers between you are recognised.</p>
+    <p class="sub">Tip: use full names as they appear on statements (e.g. "Alex Doe"). Statements with that name are assigned to that person automatically, and transfers between you are recognised.</p>
     <a class="btn ghost full" href="#/setup">Assign accounts to people</a>
   </div>
   <div class="card">
