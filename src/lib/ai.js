@@ -69,7 +69,7 @@ function friendlyError(err) {
   if (err instanceof Anthropic.AuthenticationError) return new Error('Your Claude API key was rejected. Check it in Settings.');
   if (err instanceof Anthropic.RateLimitError) return new Error('Your Claude account hit its per-minute limit. Wait a minute, then tap Retry. (Limits rise automatically as your account is used.)');
   if (err instanceof Anthropic.APIError && err.status === 529) return new Error('Claude is busy right now. Tap Retry in a minute.');
-  if (err instanceof Anthropic.APIError && err.status === 400 && /credit balance/i.test(err.message)) return new Error('Your Claude API credit has run out. Top up at console.anthropic.com, then tap Retry.');
+  if (err instanceof Anthropic.APIError && err.status === 400 && /credit balance/i.test(err.message)) return new Error('Your Claude API credit has run out. Add credit (and turn on auto-reload) at console.anthropic.com → Settings → Billing, then tap Retry. Statements whose balances add up are still read on your phone for free.');
   if (err instanceof Anthropic.APIConnectionError) return new Error("Couldn't reach the Claude API. Are you online?");
   if (err instanceof Anthropic.APIError) return new Error(`Claude API error: ${err.message}`);
   return err;
@@ -79,8 +79,10 @@ function friendlyError(err) {
 const CHUNK_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['bank', 'account_name', 'account_type', 'account_last4', 'period_start', 'period_end', 'closing_balance', 'tx'],
+  required: ['is_statement', 'document_type', 'bank', 'account_name', 'account_type', 'account_last4', 'period_start', 'period_end', 'closing_balance', 'tx'],
   properties: {
+    is_statement: { type: 'boolean', description: 'true only for a bank, card or savings account statement' },
+    document_type: { type: 'string', description: 'e.g. bank statement, credit card statement, payslip, receipt, invoice, bill' },
     bank: { type: ['string', 'null'] },
     account_name: { type: ['string', 'null'] },
     account_type: { type: 'string', enum: ['current', 'savings', 'credit'] },
@@ -126,6 +128,8 @@ function mergeChunks(results) {
     .filter((t) => /^\d{4}-\d{2}-\d{2}$/.test(t.d) && t.a)
     .map((t) => ({ date: t.d, description: t.t, amount: p(t.a), balance: p(t.b) }));
   return {
+    isStatement: results.some((r) => r.is_statement !== false),
+    documentType: results.map((r) => r.document_type).find(Boolean) || null,
     bank: first('bank'), accountName: first('account_name'), accountType: first('account_type') || 'current',
     accountRef: first('account_last4')?.slice(-4) || null,
     closingBalance: p(closing ?? null),

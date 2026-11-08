@@ -11,7 +11,7 @@ import { isSummaryLine, CLOSING_LINE, OPENING_LINE } from './junk.js';
 const OUT_HEAD = /^(paid out|money out|out|withdrawn|withdrawals?|debits?|debit amount|payments?|spent|money out \(£\))$/i;
 const IN_HEAD = /^(paid in|money in|in|deposits?|credits?|credit amount|received|money in \(£\))$/i;
 const BAL_HEAD = /^(balance|running balance|balance \(£\))$/i;
-const AMT_HEAD = /^(amount|amount \(£\)|value|£)$/i;
+const AMT_HEAD = /^(amount|amount \(£\)|amount £|amount gbp|value|£|gbp)$/i;
 const SKIP = /\b(balance (brought|carried) forward|brought forward|carried forward|opening balance|closing balance|start balance|end balance|total (paid|money|payments|debits|credits|in|out)|totals?$|page \d+|statement (date|period|number)|sort code|account number|iban|bic|continued)\b/i;
 const INCOME_HINT = /\b(SALARY|WAGES|PAYROLL|REFUND|HMRC|DWP|INTEREST (PAID|EARNED)|CREDIT|RECEIVED|FROM|DEPOSIT|PAYMENT RECEIVED|THANK YOU)\b/i;
 
@@ -76,6 +76,19 @@ function inferPeriod(fullText, fallbackYear) {
 }
 
 const near = (a, b) => Math.abs(a - b) <= 1;
+
+const CREDIT_WORDS = /\b(BENEFIT|CREDIT|REFUND|CASHBACK|POINTS TOWARDS|REWARD|REVERSAL|ADJUSTMENT)\b/i;
+const MONEY = '£?\\s*([\\d,]+\\.\\d{2})';
+
+/** Parse a credit-card summary box: previous balance, credits, debits, closing balance (pence). */
+export function cardSummaryBox(text) {
+  const re = new RegExp(`previous[^\\n]{0,30}balance[^\\n]*credits?[^\\n]*debits?[^\\n]*balance[^\\n]*\\n[^\\d£]*${MONEY}\\s*[-–]\\s*${MONEY}\\s*\\+\\s*${MONEY}\\s*=\\s*${MONEY}`, 'i');
+  const m = String(text).match(re);
+  if (!m) return null;
+  const p = (v) => Math.round(parseFloat(v.replace(/,/g, '')) * 100);
+  const box = { previous: p(m[1]), credits: p(m[2]), debits: p(m[3]), closing: p(m[4]) };
+  return box.previous - box.credits + box.debits === box.closing ? box : null;
+}
 
 /**
  * @param {Array<{page:number,y:number,items:Array<{x:number,w:number,str:string}>}>} lines
@@ -145,6 +158,13 @@ export function parseStatementLines(lines, { fallbackYear = new Date().getFullYe
     const descToks = toks.filter((t) => !AMOUNT_TOKEN.test(t.t) && !/^(£|GBP|CR|DR)$/i.test(t.t));
     const desc = lineText(descToks).trim();
 
+    // "CR" / "DR" printed on its own line under the amount (American Express).
+    if (!amountToks.length && !dateMatch && /^(CR|DR)$/i.test(text.trim()) && lastWasTx) {
+      raw[raw.length - 1].suffix = text.trim().toUpperCase();
+      continue;
+    }
+    // Lines starting with "Total" are subtotals, never transactions.
+    if (!dateMatch && /^total\b/i.test(text.trim())) { lastWasTx = false; pending = null; continue; }
     if (!amountToks.length) {
       if (dateMatch && desc) {
         pending = { date: currentDate, desc };
@@ -198,7 +218,7 @@ export function parseStatementLines(lines, { fallbackYear = new Date().getFullYe
     if (e.out != null || e.in != null) {
       amount = (e.in || 0) - (e.out || 0);
     } else if (e.amt) {
-      const a = e.amt;
+      const a = e.suffix ? { ...e.amt, credit: e.suffix === 'CR', debit: e.suffix === 'DR' } : e.amt;
       if (a.credit) amount = a.pence;
       else if (a.debit) amount = -a.pence;
       else if (anyNegative) amount = a.negative ? -a.pence : a.pence;
@@ -217,6 +237,24 @@ export function parseStatementLines(lines, { fallbackYear = new Date().getFullYe
     transactions.push({ date: e.date, description: e.desc.replace(/\s+/g, ' ').trim(), amount, balance: e.bal });
   }
 
+  // Card statements print "Previous balance − New credits + New debits = Closing balance".
+  // Use it to check signs (a credit printed without "CR" gets fixed) and as the balances.
+  const box = cardSummaryBox(fullText);
+  if (box) {
+    const credits = () => transactions.filter((t) => t.amount > 0).reduce((a, t) => a + t.amount, 0);
+    let diff = box.credits - credits();
+    if (diff > 0) {
+      // A debit that should be a credit: flip the one whose size matches the gap.
+      const cand = transactions.find((t) => t.amount === -diff) || transactions.find((t) => t.amount < 0 && CREDIT_WORDS.test(t.description) && -t.amount <= diff);
+      if (cand) cand.amount = -cand.amount;
+    } else if (diff < 0) {
+      const cand = transactions.find((t) => t.amount === -diff);
+      if (cand) cand.amount = -cand.amount;
+    }
+    // Stored as balances: what you owe is negative.
+    openingBalance = -box.previous;
+    closingBalance = -box.closing;
+  }
   if (prevBal != null && closingBalance == null) closingBalance = prevBal;
   if (!transactions.length) warnings.push('No transactions recognised. If this is a scanned PDF, turn on AI reading in Settings.');
   if (!cols && raw.length) warnings.push('Column headers not found; money in/out was inferred. Please review signs.');

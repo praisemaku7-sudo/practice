@@ -36,6 +36,12 @@ export function matchLeadingDate(text) {
   if ((m = s.match(named))) {
     return { y: m[3] ? fullYear(m[3]) : null, m: monthIndex(m[2]), d: +m[1], length: m[0].length };
   }
+  // Month first, as American Express prints it: "Jun 14" or "Jun 14, 2026".
+  const monthFirst = new RegExp(`^${MONTH_RE}\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?(?!\\d)\\b`, 'i');
+  if ((m = s.match(monthFirst))) {
+    const d = +m[2];
+    if (d >= 1 && d <= 31) return { y: m[3] ? +m[3] : null, m: monthIndex(m[1]), d, length: m[0].length };
+  }
   return null;
 }
 

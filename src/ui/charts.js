@@ -57,3 +57,24 @@ export function sparkline(values, { w = 96, h = 28, color = 'var(--accent)' } = 
     <path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
     <circle cx="${lx}" cy="${ly}" r="2.8" fill="${color}"/></svg>`;
 }
+
+/**
+ * Cumulative spending through the month: this month (solid) vs last month (dashed).
+ * cur/prev: arrays of daily spend (pence), index 0 = day 1. curDays = days elapsed this month.
+ */
+export function paceChart(cur, prev, curDays, { w = 320, h = 110 } = {}) {
+  const cum = (arr) => arr.reduce((acc, v) => { acc.push((acc[acc.length - 1] || 0) + Math.max(0, v)); return acc; }, []);
+  const c = cum(cur).slice(0, curDays), p = cum(prev);
+  const days = Math.max(prev.length, cur.length, 28);
+  const max = Math.max(1, ...c, ...p);
+  const x = (i) => 4 + (i / (days - 1)) * (w - 8);
+  const y = (v) => h - 6 - (v / max) * (h - 16);
+  const path = (arr) => arr.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  const area = c.length ? `${path(c)} L${x(c.length - 1).toFixed(1)},${h - 6} L${x(0)},${h - 6} Z` : '';
+  const last = c.length ? [x(c.length - 1), y(c[c.length - 1])] : null;
+  return `<svg class="pace" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="Spending this month compared with last month">
+    <defs><linearGradient id="paceFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--accent)" stop-opacity=".28"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>
+    ${p.length ? `<path d="${path(p)}" class="pace-prev"/>` : ''}
+    ${area ? `<path d="${area}" fill="url(#paceFill)"/><path d="${path(c)}" class="pace-cur"/>` : ''}
+    ${last ? `<circle cx="${last[0]}" cy="${last[1]}" r="4" class="pace-dot"/>` : ''}</svg>`;
+}

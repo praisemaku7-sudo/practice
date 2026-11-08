@@ -4,8 +4,8 @@ import { fmt } from '../../lib/money.js';
 import { compareMonths, spendCategoriesOf, summarizeMonth } from '../../lib/analysis.js';
 import { budgetProgress } from '../../lib/budget.js';
 import { catName, catKind } from '../../lib/categories.js';
-import { monthKey, addMonths, monthLabel, prettyDate, nextDayOfMonth, daysBetween } from '../../lib/dates.js';
-import { donut, trendBars, progressBar } from '../charts.js';
+import { monthKey, addMonths, monthLabel, prettyDate, nextDayOfMonth, daysBetween, daysInMonth as daysInMonthOf } from '../../lib/dates.js';
+import { donut, trendBars, progressBar, paceChart } from '../charts.js';
 import { monthSwitcher, catChip, delta, emptyState, hideable } from '../common.js';
 import { checkinStatus } from './checkin.js';
 
@@ -39,6 +39,20 @@ export function render() {
   const upcoming = recurring.filter((r) => r.direction === 'out' && r.active && (!nextPay || r.nextDue < nextPay)).sort((a, b) => a.nextDue.localeCompare(b.nextDue));
   const upcomingTotal = upcoming.reduce((a, r) => a + r.amount, 0);
 
+  // Daily spend this month vs last month, for the pace line.
+  const dailySpend = (key) => {
+    const arr = new Array(daysInMonthOf(key)).fill(0);
+    for (const t of state.txs) {
+      if (monthKey(t.date) !== key || ['income', 'transfer', 'savings'].includes(catKind(t.category))) continue;
+      arr[+t.date.slice(8) - 1] -= t.amount;
+    }
+    return arr;
+  };
+  const curDaily = dailySpend(month), prevDaily = dailySpend(addMonths(month, -1));
+  const daysSoFar = isCurrent ? +today.slice(8) : curDaily.length;
+  const prevSameDay = prevDaily.slice(0, daysSoFar).reduce((a, v) => a + Math.max(0, v), 0);
+  const paceDelta = s.spend - prevSameDay;
+
   const trendData = months.slice(-6).map((m) => {
     const x = summarizeMonth(state.txs, m);
     return { label: monthLabel(m, { short: true }).split(' ')[0], income: x.income, spend: x.spend, active: m === month };
@@ -67,10 +81,12 @@ export function render() {
   ${hideable('off:' + month, Math.round(s.spend / 10000) + '|' + Math.round(s.income / 10000), offBanner)}
   ${hideable('dups', derived.duplicates.length, dupBanner)}
   ${hideable('missing', missing.map((m) => m.accountId + m.month).join(','), banner)}
-  <div class="card hero">
+  <div class="card hero feature">
     <div class="hero-row">
       <div><button class="explain" data-action="explain" data-what="spent"><div class="label">Spent ⓘ</div><div class="big">${fmt(s.spend, { whole: true })}</div></button>
-        ${cmp.hasPrev ? `<div class="sub">${delta(s.spend - cmp.prev.spend)} vs ${esc(monthLabel(addMonths(month, -1), { short: true }))}</div>` : ''}</div>
+        ${cmp.hasPrev ? (isCurrent
+          ? `<div class="sub">${delta(paceDelta)} vs this point in ${esc(monthLabel(addMonths(month, -1), { short: true }))}</div>`
+          : `<div class="sub">${delta(s.spend - cmp.prev.spend)} vs ${esc(monthLabel(addMonths(month, -1), { short: true }))}</div>`) : ''}</div>
       <div class="hero-side">
         <button class="explain" data-action="explain" data-what="in"><span class="label">In ⓘ</span> <b class="pos">${fmt(s.income, { whole: true })}</b></button>
         <button class="explain" data-action="explain" data-what="saved"><span class="label">Saved ⓘ</span> <b>${fmt(s.saved, { whole: true })}</b></button>
@@ -78,6 +94,9 @@ export function render() {
       </div>
     </div>
     ${totalBudget ? `${progressBar(s.spend / totalBudget)}<div class="sub">${fmt(s.spend, { whole: true })} of ${fmt(totalBudget, { whole: true })} monthly budget</div>` : ''}
+    ${cmp.hasPrev ? `<div class="pace-wrap">${paceChart(curDaily, prevDaily, daysSoFar)}
+      <div class="pace-legend"><span><i class="sw cur"></i>${esc(monthLabel(month, { short: true }))}</span><span><i class="sw prev"></i>${esc(monthLabel(addMonths(month, -1), { short: true }))}</span>
+      <b class="${paceDelta > 0 ? 'neg' : 'pos'}">${paceDelta > 0 ? '▲' : '▼'} ${fmt(Math.abs(paceDelta), { whole: true })} vs same point last month</b></div></div>` : ''}
     <a class="link small-link" href="#/audit">What's counted here? ›</a>
   </div>
   ${funCard}
