@@ -1,6 +1,6 @@
 // Offline support: app files are cached as they load; the app always opens, even without signal.
 // Never caches API calls (Claude) — those always go to the network.
-const CACHE = 'pocket-ledger-v1';
+const CACHE = 'pocket-ledger-v2';
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', './index.html', './manifest.webmanifest'])).then(() => self.skipWaiting()));
