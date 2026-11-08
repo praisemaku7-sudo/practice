@@ -41,7 +41,7 @@ export function enhanceSections(main, view) {
     head.setAttribute('role', 'button');
     head.tabIndex = 0;
     // Remembered choice, else fold sections that are very long (never the first one on the page).
-    const folded = id in state ? state[id] : !shownOpen.has(id) && i > 0 && card.offsetHeight > LONG
+    const folded = id in state ? state[id] : !card.classList.contains('keep-open') && !shownOpen.has(id) && i > 0 && card.offsetHeight > LONG
       // Sections you type into (API key, amounts, names) never fold themselves.
       && !card.querySelector('input:not([type=checkbox]):not([type=radio]):not([type=file]), textarea');
     if (!folded) shownOpen.add(id);

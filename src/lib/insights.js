@@ -108,7 +108,7 @@ export function buildInsights({ txs, key, budget, recurring, accounts = [] }) {
   // Consolidation
   const accountsWithBills = new Set(recurring.filter((r) => r.direction === 'out' && r.active).map((r) => r.accountId));
   if (accountsWithBills.size >= 3) {
-    out.push({ id: 'consolidate', level: 'tip', title: `Bills come out of ${accountsWithBills.size} different accounts`, detail: 'Moving them to one bills account means one balance to watch and fewer missed payments. See Accounts → Consolidation plan.', saving: 0 });
+    out.push({ id: 'consolidate', level: 'tip', title: `Bills come out of ${accountsWithBills.size} different accounts`, detail: 'Moving them to one bills account means one balance to watch and fewer missed payments. Tap for a step-by-step guide.', saving: 0 });
   }
 
   // Don't say "over budget" and "up on usual" about the same category.

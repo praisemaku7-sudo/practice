@@ -698,3 +698,38 @@ input, select, textarea, .field.slim input, .field.slim select, .filters select,
 .slip-row { display: grid; grid-template-columns: 1fr auto auto auto; gap: 8px; align-items: center; padding: 7px 0; border-top: 1px solid var(--line); font-size: 14px; }
 .slip-row b { font-family: var(--num); }
 .slip-row.oneoff b, .slip-row.oneoff span { color: var(--muted); }
+
+/* Actionable insights */
+button.card.insight { display: block; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.ins-foot { margin-top: 8px; }
+.ins-go { color: var(--accent); font-weight: 650; font-size: 14px; white-space: nowrap; }
+.act-steps { padding-left: 20px; display: grid; gap: 8px; margin: 6px 0 12px; }
+.act-item { display: grid; gap: 4px; padding: 10px 12px; border-radius: 14px; background: var(--track); margin-bottom: 8px; }
+.act-item .chip { justify-self: start; margin-top: 4px; }
+.act-item .chip.sel { background: var(--accent-soft); border-color: var(--accent); }
+.act-links { display: grid; gap: 8px; margin-bottom: 12px; }
+.act-link { color: var(--accent); font-weight: 650; text-decoration: none; }
+.act-tel { display: inline-block; margin-left: 10px; color: var(--ink); font-weight: 650; text-decoration: none; }
+.move-item { padding: 6px 0 10px; border-top: 1px solid var(--line); }
+.move-item.done .grow { color: var(--muted); }
+.move-item .act-steps { margin: 2px 0 6px 30px; font-size: 14px; }
+.move-item .act-link { margin-left: 30px; font-size: 14px; }
+
+/* Back button on sub-pages */
+.back-btn { display: inline-flex; align-items: center; gap: 2px; min-height: 40px; padding: 0 10px 0 2px; margin-right: 4px; border: 0; background: none; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; }
+.back-btn[hidden] { display: none; }
+.back-btn svg { width: 22px; height: 22px; }
+body.sub-page .brand-name { display: none; }
+.topbar .brand { margin-right: auto; }
+/* Path to living within your means */
+.path-sum { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
+.path-sum > div { display: flex; flex-direction: column; min-width: 0; }
+.path-sum b { font-size: 1.15rem; }
+.path-item { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--line); min-width: 0; }
+.path-item input { margin-top: 3px; flex: none; width: 20px; height: 20px; accent-color: var(--accent); }
+.path-item .grow { min-width: 0; overflow-wrap: anywhere; }
+.path-item.done { background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 12px; padding-left: 8px; padding-right: 8px; }
+.path-save { flex: none; white-space: nowrap; }
+.cat-bar.ok span { background: var(--pos, #16a34a); }
+/* Calendar days with payments are tappable */
+button.cal-cell { font: inherit; color: inherit; border: 0; cursor: pointer; }

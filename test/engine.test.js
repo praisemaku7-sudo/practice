@@ -6,7 +6,6 @@ import { markTransfers, summarizeMonth, detectRecurring, detectPayday, compareMo
 import { buildBudget } from '../src/lib/budget.js';
 import { canIAfford } from '../src/lib/afford.js';
 import { buildInsights } from '../src/lib/insights.js';
-import { consolidationPlan } from '../src/lib/consolidate.js';
 import { demoData } from '../src/lib/demo.js';
 
 const TODAY = '2026-11-07';
@@ -100,7 +99,7 @@ test('can I afford: small yes, huge no', () => {
   void accounts;
 });
 
-test('insights and consolidation plan', () => {
+test('insights and bills to move', () => {
   const { txs, accounts } = demoTxs();
   const budget = buildBudget(txs, {}, { today: TODAY });
   const recurring = detectRecurring(txs, { today: TODAY });
@@ -110,8 +109,6 @@ test('insights and consolidation plan', () => {
   assert.ok(ids.includes('streaming'));
   assert.ok(ids.some((i) => i.startsWith('rise-')));
   assert.ok(ids.includes('consolidate'));
-  const plan = consolidationPlan({ accounts, recurring, mainAccountId: 'demo-main' });
-  const old = plan.steps.find((s) => s.accountId === 'demo-old');
-  assert.ok(old.items.length >= 4);
-  assert.equal(old.switchSuggested, true);
+  // Bills to move off the old account (shown step by step on the Move bills page).
+  assert.ok(recurring.filter((r) => r.active && r.direction === 'out' && r.accountId === 'demo-old').length >= 4);
 });
