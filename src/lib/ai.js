@@ -75,17 +75,19 @@ function friendlyError(err) {
 const CHUNK_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['is_statement', 'document_type', 'bank', 'account_name', 'account_type', 'account_last4', 'period_start', 'period_end', 'closing_balance', 'tx'],
+  required: ['is_statement', 'document_type', 'bank', 'account_name', 'account_holder', 'account_type', 'account_last4', 'period_start', 'period_end', 'opening_balance', 'closing_balance', 'tx'],
   properties: {
     is_statement: { type: 'boolean', description: 'true only for a bank, card or savings account statement' },
     document_type: { type: 'string', description: 'e.g. bank statement, credit card statement, payslip, receipt, invoice, bill' },
     bank: { type: ['string', 'null'] },
-    account_name: { type: ['string', 'null'] },
+    account_name: { type: ['string', 'null'], description: 'product name, e.g. FlexDirect, Club M Saver, Platinum Card. Never a person\'s name' },
+    account_holder: { type: ['string', 'null'], description: 'name of the account holder printed on the statement' },
+    opening_balance: { type: ['number', 'null'], description: 'balance at the start of the period (for cards: amount owed, positive)' },
     account_type: { type: 'string', enum: ['current', 'savings', 'credit'] },
     account_last4: { type: ['string', 'null'], description: 'Last 4 digits of account or card number' },
     period_start: { type: ['string', 'null'], description: 'YYYY-MM-DD' },
     period_end: { type: ['string', 'null'], description: 'YYYY-MM-DD' },
-    closing_balance: { type: ['number', 'null'] },
+    closing_balance: { type: ['number', 'null'], description: 'balance at the end of the period (for cards: amount owed, positive)' },
     tx: {
       type: 'array',
       items: {
@@ -104,7 +106,7 @@ const CHUNK_SCHEMA = {
   },
 };
 
-const STATEMENT_SYSTEM = 'You extract transactions from UK bank and credit-card statements with perfect accuracy. Include every transaction row in the excerpt exactly once, in order. Only include real transaction rows. Never include summary-box lines: new/previous/statement balance, brought/carried forward, credit limit, available credit, interest-rate or APR tables (e.g. "Standard purchase rate"), estimated interest, minimum payment, amount due, "you have incurred…" warnings, or totals. Merge multi-line descriptions into one. For credit cards, purchases are negative and payments to the card are positive. Use the statement period to give every date a year. If a header field is not in this excerpt, use null.';
+const STATEMENT_SYSTEM = 'You extract transactions from UK bank and credit-card statements with perfect accuracy. Include every transaction row in the excerpt exactly once, in order. Only include real transaction rows. Never include summary-box lines: new/previous/statement balance, brought/carried forward, credit limit, available credit, interest-rate or APR tables (e.g. "Standard purchase rate"), estimated interest, minimum payment, amount due, "you have incurred…" warnings, or totals. Do include interest charged, fees and charges when they appear as rows in the transaction list. Merge multi-line descriptions into one. For credit cards, purchases are negative and payments to the card are positive. Use the statement period to give every date a year. If a header field is not in this excerpt, use null.';
 
 /** Run async tasks with a concurrency limit. */
 async function pool(items, limit, fn) {
@@ -127,7 +129,8 @@ function mergeChunks(results) {
   return {
     isStatement: results.some((r) => r.is_statement !== false),
     documentType: results.map((r) => r.document_type).find(Boolean) || null,
-    bank: first('bank'), accountName: first('account_name'), accountType: first('account_type') || 'current',
+    bank: first('bank'), accountName: first('account_name'), holder: first('account_holder'),
+    openingBalance: p(results.map((r) => r.opening_balance).find((v) => v != null) ?? null), accountType: first('account_type') || 'current',
     accountRef: first('account_last4')?.slice(-4) || null,
     closingBalance: p(closing ?? null),
     period: { start: first('period_start'), end: [...results].reverse().map((r) => r.period_end).find(Boolean) || null },

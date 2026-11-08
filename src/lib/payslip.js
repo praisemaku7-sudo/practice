@@ -1,5 +1,6 @@
 // Reads take-home pay from a UK payslip so the budget uses real income, not an estimate.
 import { findNamedDates } from './dates.js';
+import { amountFor } from './parse/amounts.js';
 
 const MONEY = /£?\s*(\d{1,3}(?:,\d{3})*\.\d{2}|\d+\.\d{2})/;
 const take = (re, text) => {
@@ -18,10 +19,10 @@ export function toMonthly(pence, frequency) {
  */
 export function parsePayslip(text) {
   const t = String(text || '').replace(/ /g, ' ');
-  // "Net Pay 2,345.67", "NET PAY: £2,345.67", "Take home pay ... 2345.67", "Amount paid 2,345.67"
-  const net = take(new RegExp(`(?:net\\s*pay(?:ment)?|take[- ]home(?:\\s*pay)?|amount\\s*paid|total\\s*net)[^\\d£\\n]{0,40}${MONEY.source}`, 'i'), t);
-  if (!net) return null;
-  const gross = take(new RegExp(`(?:gross\\s*pay|total\\s*gross|total\\s*payments?)(?!\\s*(?:ytd|year))[^\\d£\\n]{0,40}${MONEY.source}`, 'i'), t);
+  // "Net Pay 2,345.67", "NET PAY: £2,345.67", or a "Net Pay" column with the amount underneath.
+  const net = amountFor(t, /\b(net\s*pay(?:ment)?|take[- ]home(?:\s*pay)?|amount\s*paid(?:\s*to\s*you)?|total\s*net(?:\s*pay)?|net\s*amount)\b/i);
+  if (!net || net <= 0) return null;
+  const gross = amountFor(t, /\b(gross\s*pay|total\s*gross(?:\s*pay)?|total\s*payments?|gross\s*earnings)\b(?!\s*(ytd|year))/i);
   const frequency = /\b(4|four)[- ]?week(ly)?\b/i.test(t) ? 'four-weekly'
     : /\b(fortnight(ly)?|bi-?weekly|2[- ]?week(ly)?)\b/i.test(t) ? 'fortnightly'
     : /\bweekly\b|\bweek\s*(no|number)\b/i.test(t) ? 'weekly' : 'monthly';

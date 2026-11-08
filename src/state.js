@@ -189,7 +189,7 @@ export function recompute() {
   const fresh = currentAccounts.filter((a) => a.balanceDate && daysBetween(a.balanceDate, today) <= 10);
   const balance = fresh.length ? fresh.reduce((s, a) => s + a.balance, 0) : null;
   const coverage = statementCoverage({ accounts: state.accounts, imports: state.imports, txs: state.txs, today, dismissed: state.settings.coverageDismissed || {}, startMonth: state.settings.trackFrom ? monthKey(state.settings.trackFrom) : null });
-  const cards = cardSummary({ accounts: state.accounts, txs: state.txs, today, trackFrom: state.settings.trackFrom });
+  const cards = cardSummary({ accounts: state.accounts, txs: state.txs, allTxs: state.allTxs, today, trackFrom: state.settings.trackFrom });
   const suspects = suspectedCreditCards(state.accounts, state.txs);
   const duplicates = findStoredDuplicates(state.txs);
   state.derived = { today, coverage, cards, suspects, duplicates, recurring, payday, detectedPayday: detected, budget, balance, staleBalance: currentAccounts.length > 0 && !fresh.length, months: monthsPresent(state.txs) };
@@ -246,6 +246,17 @@ export async function removeSummaryLines() {
   const ids = new Set(junk.map((t) => t.id));
   state.txs = state.txs.filter((t) => !ids.has(t.id));
   return junk;
+}
+
+/**
+ * Start fresh: delete accounts, transactions and the import log, but keep people, income,
+ * goals, budgets, rules, settings and the cache of Claude's reads (so re-importing is free and quick).
+ */
+export async function startFresh() {
+  await Promise.all(['tx', 'accounts', 'imports'].map((s) => db.clear(s)));
+  const keep = { ...state.settings, bankSync: { ...(state.settings.bankSync || {}), links: {}, lastSync: {} }, consolidationDone: {}, coverageDismissed: {}, hiddenBanners: {}, mainAccountId: null };
+  await db.kvSet('settings', keep);
+  await load();
 }
 
 export async function wipeAll() {

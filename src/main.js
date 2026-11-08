@@ -182,10 +182,10 @@ document.addEventListener('focusout', () => { if (pendingRender) { pendingRender
       setTimeout(() => toast(`Removed ${junk.length} statement summary line${junk.length > 1 ? 's' : ''} (e.g. "${junk[0].description.slice(0, 24)}") that were wrongly counted as payments`), 600);
     }
   }
-  if (state.txs.length && (state.settings.transferRulesVersion || 1) < 3) {
+  if (state.txs.length && (state.settings.transferRulesVersion || 1) < 4) {
     // Re-check transfers with the improved rules (names, aliases, savings, card repayments).
     await relinkTransfers();
-    await saveSettings({ transferRulesVersion: 3 });
+    await saveSettings({ transferRulesVersion: 4 });
   }
   await route();
   sync.autoSync().then(() => render());

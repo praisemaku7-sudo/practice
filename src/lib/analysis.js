@@ -63,6 +63,12 @@ export function markTransfers(txs, accountsById = {}, { ownNames = [] } = {}) {
     }
   }
   const ownBanks = ownBanksOf(accountsById);
+  // Card companies you have a card account with: paying them from a current account is moving
+  // money to your own debt, not new spending (the purchases are already counted on the card).
+  const CARD_ALIASES = { 'american express': ['AMERICAN EXPRESS', 'AMEX'], aqua: ['AQUA', 'NEWDAY'], 'capital one': ['CAPITAL ONE'], barclaycard: ['BARCLAYCARD'],
+    vanquis: ['VANQUIS'], mbna: ['MBNA'], 'tesco bank': ['TESCO BANK', 'TESCO CREDIT CARD'], marbles: ['MARBLES', 'NEWDAY'], fluid: ['FLUID', 'NEWDAY'], zopa: ['ZOPA'] };
+  const cardWords = Object.values(accountsById).filter((a) => a.type === 'credit')
+    .flatMap((a) => CARD_ALIASES[String(a.bank || '').toLowerCase()] || (a.bank ? [String(a.bank).toUpperCase()] : []));
   const names = ownNames.map((n) => n.toUpperCase().replace(/[^A-Z ]/g, ' ').replace(/\s+/g, ' ').trim()).filter((n) => n.length >= 3);
   for (const t of txs) {
     if (t.userCategory || t.pairId) continue;
@@ -72,6 +78,10 @@ export function markTransfers(txs, accountsById = {}, { ownNames = [] } = {}) {
     if (acc?.type === 'savings') {
       if (!/\b(INTEREST|BONUS)\b/i.test(t.description)) { t.category = 'transfer'; t.autoTransfer = true; }
       continue;
+    }
+    if (t.amount < 0 && acc?.type !== 'credit' && cardWords.length && ['debt', 'other', 'transfer', 'shopping'].includes(t.category)) {
+      const d = ` ${String(t.description || '').toUpperCase()} `;
+      if (cardWords.some((w) => d.includes(` ${w} `) || d.includes(` ${w}`))) { t.category = 'transfer'; t.autoTransfer = true; continue; }
     }
     if (['income', 'other', 'transfer'].includes(t.category) && looksLikeOwnTransfer(t, { ownBanks, ownNames: names })) {
       t.category = 'transfer'; t.autoTransfer = true;

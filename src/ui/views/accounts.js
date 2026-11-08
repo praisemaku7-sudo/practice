@@ -4,6 +4,7 @@ import { esc, openSheet, closeSheet, confirmSheet, toast } from '../dom.js';
 import { fmt, parsePrice } from '../../lib/money.js';
 import { consolidationPlan } from '../../lib/consolidate.js';
 import { prettyDate, monthLabel } from '../../lib/dates.js';
+import { canonicalBank } from '../../lib/parse/details.js';
 import { catChip, emptyState } from '../common.js';
 
 const TYPE_LABEL = { current: 'Current / debit', savings: 'Savings', credit: 'Credit card' };
@@ -17,10 +18,17 @@ export function render() {
   for (const t of state.txs) counts[t.accountId] = (counts[t.accountId] || 0) + 1;
   const outRec = recurring.filter((r) => r.direction === 'out' && r.active);
 
+  // Accounts whose name and bank disagree (left over from earlier misfiled imports).
+  const BANK_WORDS = ['Nationwide', 'Revolut', 'Monzo', 'Starling', 'Chase', 'HSBC', 'Barclays', 'Lloyds', 'Halifax', 'NatWest', 'Santander', 'Virgin Money', 'American Express', 'Capital One', 'Aqua', 'Barclaycard'];
+  const muddled = state.accounts.filter((a) => {
+    const named = BANK_WORDS.find((b) => a.name.toLowerCase().includes(b.toLowerCase()));
+    return named && a.bank && canonicalBank(named) !== canonicalBank(a.bank);
+  });
   const dups = state.derived.duplicates;
   const suspects = state.derived.suspects;
   return `
   <h1 class="page-title">Accounts</h1>
+  ${muddled.length ? `<div class="card banner bad"><b>${muddled.length} account${muddled.length > 1 ? 's look' : ' looks'} muddled</b><span class="sub">${muddled.map((a) => `${esc(a.name)} (bank: ${esc(a.bank)})`).join(', ')}. Usually left over from earlier wrong imports. The cleanest fix: start fresh and re-import (people, income and goals are kept; files already read are free).</span><button class="btn primary full" data-action="st-fresh">Start fresh &amp; re-import</button></div>` : ''}
   ${state.accounts.some((x) => !x.typeLocked) ? `<a class="card setup-cta" href="#/setup"><div><b>Confirm account types &amp; balances</b><div class="sub">${state.accounts.filter((x) => !x.typeLocked).length} not confirmed yet: set debit, credit card or savings once and it stays locked</div></div><span class="banner-go">›</span></a>` : ''}
   ${suspects.length ? `<a class="card banner" href="#/setup"><b>${suspects.length} account${suspects.length > 1 ? 's look' : ' looks'} like a credit card</b><span class="sub">${suspects.map((x) => esc(x.name)).join(', ')}: confirm so the app tracks what you owe.</span><span class="banner-go">Fix ›</span></a>` : ''}
   ${dups.length ? `<div class="card banner"><b>${dups.length} duplicate transaction${dups.length > 1 ? 's' : ''} found</b>
@@ -31,7 +39,7 @@ export function render() {
       <span class="bank-badge" style="${state.settings.people.length > 1 ? `box-shadow: inset 0 -3px 0 ${state.settings.people.find((p) => p.id === ownerOf(a))?.color || 'var(--muted)'}` : ''}">${a.type === 'credit' ? '💳' : esc((a.bank || a.name).slice(0, 2).toUpperCase())}</span>
       <div class="grow"><div>${esc(a.name)} ${a.id === mainId ? '<small class="pill">main</small>' : ''}</div>
       <div class="sub">${state.settings.people.length > 1 ? `<b>${esc(personName(ownerOf(a)))}</b> · ` : ''}${a.typeLocked ? '🔒 ' : ''}${[a.bank, TYPE_LABEL[a.type] || a.type].filter(Boolean).map(esc).join(' · ')} · ${counts[a.id] || 0} transactions${a.lastImport ? ' · updated ' + prettyDate(a.lastImport) : ''}</div></div>
-      <div class="bal"><b class="${a.balance < 0 ? 'neg' : ''}">${a.balance != null ? (a.type === 'credit' ? `${fmt(Math.max(0, -a.balance))} owed` : fmt(a.balance)) : '—'}</b>${a.balanceDate ? `<small class="sub">${a.balanceDate === state.derived.today ? 'today' : 'on ' + prettyDate(a.balanceDate)}</small>` : ''}</div></button>`).join('')}
+      <div class="bal"><b class="${a.balance < 0 ? 'neg' : ''}">${a.balance != null ? (a.type === 'credit' ? `${fmt(Math.max(0, -a.balance))} owed` : fmt(a.balance)) : a.balanceUnverified ? `<span class="muted">${fmt(Math.abs(a.balanceUnverified.amount))}?</span>` : '—'}</b>${a.balanceUnverified && a.balance == null ? '<small class="sub warn-text">unverified</small>' : ''}${a.balanceDate ? `<small class="sub">${a.balanceDate === state.derived.today ? 'today' : 'on ' + prettyDate(a.balanceDate)}</small>` : ''}</div></button>`).join('')}
     <div class="row gap"><button class="btn primary grow" data-action="import">Import</button><button class="btn ghost grow" data-action="go" data-to="transactions">Transactions</button><a class="btn ghost grow" href="#/cards">💳 Cards</a></div>
     <a class="link small-link" href="#/setup">Edit types, balances or merge accounts ›</a>
     <a class="link small-link" href="#/sync">🔗 Live bank sync ›</a>

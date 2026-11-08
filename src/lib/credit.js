@@ -41,18 +41,20 @@ export function owedNow(account, txs) {
  * Per-card summary and totals.
  * spent = purchases this month (money out, excluding refunds), paid = repayments in.
  */
-export function cardSummary({ accounts, txs, today, trackFrom = null }) {
+export function cardSummary({ accounts, txs, allTxs = txs, today, trackFrom = null }) {
+  // What's owed is the card's whole balance: every transaction on it, including ones before
+  // you started tracking and other cardholders' purchases. Spending figures follow the view.
   const key = monthKey(today);
   const cards = accounts.filter(isCredit).map((a) => {
     const mine = txs.filter((t) => t.accountId === a.id && !['excluded'].includes(t.category));
     const month = mine.filter((t) => monthKey(t.date) === key);
     const purchases = mine.filter((t) => t.amount < 0 && t.category !== 'transfer' && t.category !== 'fees');
     const lastPurchase = purchases.map((t) => t.date).sort().pop() || null;
-    const owed = owedNow(a, txs);
+    const owed = owedNow(a, allTxs);
     // Owed at tracking start = today's balance with everything since then undone.
     let owedAtStart = null;
     if (owed != null && trackFrom) {
-      const since = mine.filter((t) => t.date >= trackFrom).reduce((s, t) => s + t.amount, 0);
+      const since = allTxs.filter((t) => t.accountId === a.id && t.date >= trackFrom).reduce((s, t) => s + t.amount, 0);
       owedAtStart = Math.max(0, owed + since);
     }
     const monthSpend = month.filter((t) => t.amount < 0 && t.category !== 'transfer').reduce((s, t) => s - t.amount, 0);

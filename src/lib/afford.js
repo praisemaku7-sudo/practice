@@ -43,7 +43,7 @@ export function canIAfford({ price, category = 'shopping', txs, budget, recurrin
   const checks = [];
   if (kind === 'personal') {
     checks.push({
-      id: 'fun', label: 'Fun money left this month', pass: price <= funLeft,
+      id: 'fun', label: 'Fun money left this month', pass: price <= funLeft, left: funLeft,
       detail: (funLeft > 0 ? `${fmt(funLeft)} left of ${fmt(budget.personalAllowance)}` : `Already ${fmt(-funLeft)} over your ${fmt(budget.personalAllowance)} allowance`)
         + (upcomingPersonal ? ` (after ${fmt(upcomingPersonal)} of subscriptions still due)` : ''),
     });
@@ -76,7 +76,7 @@ export function canIAfford({ price, category = 'shopping', txs, budget, recurrin
   } else if (!hardFail && funOk) {
     verdict = 'tight'; headline = `Yes, but take it from another category. It's over your ${catName(category)} budget.`;
   } else {
-    verdict = 'no'; headline = get('bills').pass === false ? "No. You'd be short for bills before payday." : get('savings').pass === false ? 'No. It would break your savings goal this month.' : "No. You've used this month's fun money.";
+    verdict = 'no'; headline = get('bills').pass === false ? "No. You'd be short for bills before payday." : get('savings').pass === false ? 'No. It would break your savings goal this month.' : (() => { const f = checks.find((c) => c.id === 'fun'); const left = f?.left ?? 0; return left > 0 ? `No. It's more than the ${fmt(left)} fun money you have left this month.` : "No. You've used this month's fun money."; })();
   }
 
   const advice = [];

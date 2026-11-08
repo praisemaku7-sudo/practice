@@ -1,4 +1,4 @@
-import { state, saveSettings, wipeAll, load, relinkTransfers, recompute, PERSON_COLORS, ownerOf } from '../../state.js';
+import { state, saveSettings, wipeAll, load, relinkTransfers, recompute, PERSON_COLORS, ownerOf, startFresh } from '../../state.js';
 import { db } from '../../lib/db.js';
 import { esc, toast, confirmSheet, busy } from '../dom.js';
 import { fmt, parsePrice } from '../../lib/money.js';
@@ -72,6 +72,8 @@ export function render() {
     ${(state.allAccounts || []).some((a) => a.id.startsWith('demo-'))
       ? '<button class="btn danger full" data-action="remove-demo">Remove sample data</button>'
       : `<button class="btn ghost full" data-action="load-demo" ${(state.allAccounts || []).length ? 'hidden' : ''}>Load sample data</button>`}
+    <button class="btn ghost full" data-action="st-fresh">Start fresh: re-import all statements</button>
+    <p class="sub">Clears accounts and transactions only. People, income, goals, budgets and category rules stay, and files Claude already read are re-read for free. Use it if earlier imports got muddled.</p>
     <button class="btn danger full" data-action="st-wipe">Delete everything</button>
   </div>
   <p class="sub center">Pocket Ledger · runs on your phone · no account, no tracking</p>`;
@@ -106,6 +108,13 @@ function applePayCard() {
 }
 
 export const actions = {
+  'st-fresh': async (_, rerender) => {
+    if (!(await confirmSheet({ title: 'Start fresh?', body: 'Deletes all accounts and transactions (people, income, goals, budgets and settings are kept). Then import all your statements again in one go.', ok: 'Start fresh', danger: true }))) return;
+    await startFresh();
+    toast('Cleared. Now import all your statements');
+    location.hash = '#/import';
+    rerender();
+  },
   'copy-ap-prompt': async () => {
     const v = document.getElementById('ap-prompt').value;
     try { await navigator.clipboard.writeText(v); toast('Prompt copied'); } catch { document.getElementById('ap-prompt').select(); toast('Select and copy the prompt'); }

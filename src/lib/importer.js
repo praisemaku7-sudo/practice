@@ -33,6 +33,7 @@ export function toTransactions(rows, { accountId, importId, source, userRules = 
       amount: r.amount,
       balance: r.balance ?? null,
       ...(r.cardholder ? { cardholder: r.cardholder } : {}),
+      ...(r.fromSummary ? { fromSummary: true } : {}),
       category: categorize(r.description, r.amount, userRules),
     };
   });
