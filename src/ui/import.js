@@ -15,6 +15,8 @@ import { looksLikeCreditText, isCardIssuer } from '../lib/credit.js';
 import { isSummaryLine } from '../lib/parse/junk.js';
 import { classifyDocument } from '../lib/parse/doctype.js';
 import { parsePayslip } from '../lib/payslip.js';
+import { extractDetails, suggestAccountName } from '../lib/parse/details.js';
+import { personForName } from '../state.js';
 import { saveSettings } from '../state.js';
 
 /** The live import queue, shown by the Import page. */
@@ -58,8 +60,10 @@ async function readPdf(item, buf) {
   }
   const pageTexts = res.hasText ? linesToPageTexts(res.lines) : [];
   const text = pageTexts.join('\n');
-  const bank = guessBank(text);
-  const meta = { headText: text.slice(0, 3000), bank, accountType: isCardIssuer(bank) && !/current account/i.test(text) ? 'credit' : guessType(text), accountRef: detectAccountRef(text) };
+  // Bank from the statement header (cross-checked with the sort code), product, holder, last 4 digits.
+  const details = extractDetails(text);
+  const bank = details.bank || guessBank(text);
+  const meta = { headText: text.slice(0, 3000), details, bank, accountType: isCardIssuer(bank) && !/current account/i.test(text) ? 'credit' : guessType(text), accountRef: details.last4 || detectAccountRef(text) };
   const { apiKey, model, pdfMode } = state.settings;
   const canAI = apiKey && pdfMode !== 'never';
 
@@ -110,15 +114,18 @@ async function readFile(item) {
     const text = new TextDecoder().decode(buf);
     const r = parseCSVStatement(text);
     const head = item.name + ' ' + text.slice(0, 600);
-    const bank = guessBank(head);
+    const details = extractDetails(text.slice(0, 3000) + ' ' + item.name);
+    const bank = details.bank || guessBank(head);
     const cardRows = r.transactions.filter((t) => /PAYMENT RECEIVED|THANK YOU|INTEREST CHARGED|MINIMUM PAYMENT/i.test(t.description)).length;
     const type = isCardIssuer(head) || (cardRows && isCardIssuer(bank)) ? 'credit' : guessType(head);
-    return { ...r, headText: head, bank, accountType: type, accountRef: detectAccountRef(head), method: 'CSV', verified: reconcile(r).confident };
+    return { ...r, headText: head, details, bank, accountType: type, accountRef: details.last4 || detectAccountRef(head), method: 'CSV', verified: reconcile(r).confident };
   }
   return readPdf(item, buf);
 }
 
 export function defaultName(p) {
+  const suggested = p.details && suggestAccountName({ ...p.details, last4: p.details.last4 || p.accountRef }, p.accountType);
+  if (suggested) return suggested;
   const base = p.accountName || [p.bank, p.accountType === 'credit' ? 'Card' : p.accountType === 'savings' ? 'Savings' : 'Current'].filter(Boolean).join(' ') || 'Current';
   // Two cards from the same bank need different names: add the last 4 digits.
   return p.accountRef && !base.includes(p.accountRef) ? `${base} ••${p.accountRef}` : base;
@@ -144,6 +151,9 @@ function matchAccount(p) {
 
 /** Whose statement is it? Looks for a household member's name in the file name or statement header. */
 function guessOwner(item, p) {
+  // The account holder printed on the statement is the best evidence.
+  const byHolder = personForName(p.details?.holder);
+  if (byHolder) return byHolder;
   const hay = ` ${item.name} ${p.headText || ''} `.toUpperCase().replace(/[^A-Z]+/g, ' ');
   const people = state.settings.people.filter((x) => x.name && x.name !== 'Me');
   const words = (n) => n.toUpperCase().replace(/[^A-Z ]/g, ' ').split(/\s+/).filter((w) => w.length >= 3);
@@ -237,11 +247,23 @@ export async function commitItem(item) {
     account = (p.accountRef && state.accounts.find((a) => a.ref === p.accountRef))
       || state.accounts.find((a) => a.name.toLowerCase() === n.name.toLowerCase() && a.type === n.type && refOk(a, p));
     if (!account) {
-      account = { id: 'acc-' + (crypto.randomUUID?.() || Date.now().toString(36)), name: n.name || 'Account', bank: n.bank, type: n.type, owner: n.owner, balance: null, balanceDate: null };
+      account = { id: 'acc-' + (crypto.randomUUID?.() || Date.now().toString(36)), name: n.name || 'Account', bank: n.bank, type: n.type, owner: n.owner, balance: null, balanceDate: null, autoName: n.name === defaultName(p) };
       state.accounts.push(account);
     }
   } else account = state.accounts.find((a) => a.id === item.accountChoice);
-  if (p.accountRef && !account.ref) account.ref = p.accountRef;
+  // The statement's own card/account number is the truth for the account you chose (fixes refs read wrongly before).
+  if (p.accountRef && account.ref !== p.accountRef && (p.details?.last4 || !account.ref)) account.ref = p.accountRef;
+  if (p.details) {
+    // Keep what the statement says about the account (only the last 4 digits of the number).
+    const d = p.details;
+    account.details = { ...(account.details || {}), ...Object.fromEntries(Object.entries({ bank: d.bank, bankFromSort: d.bankFromSort, sortCode: d.sortCode, last4: d.last4 || p.accountRef, holder: d.holder, postcode: d.postcode, product: d.product }).filter(([, v]) => v)) };
+    if (d.bank && !account.bank) account.bank = d.bank;
+    const suggested = suggestAccountName({ ...account.details }, account.type);
+    // Names the app made up itself are corrected; names you typed are kept (Fix accounts suggests instead).
+    // Generic names like "Nationwide Card" or "American Express Card ••0476" were made up by the app, so they're corrected too.
+    const generic = /^[A-Za-z&' -]+ (Card|Current|Savings)( ••\d{4})?$/.test(account.name) || /^Current( ••\d{4})?$/.test(account.name);
+    if (suggested && account.name !== suggested && (account.autoName || generic || (item.accountChoice === '__new' && item.newAccount?.name === account.name))) { account.name = suggested; account.autoName = true; }
+  }
   // An account nobody has been assigned to takes the owner named on the statement.
   if (!account.owner && item.newAccount?.owner && item.newAccount.owner !== state.settings.people[0]?.id) account.owner = item.newAccount.owner;
 
