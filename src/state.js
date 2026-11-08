@@ -2,7 +2,7 @@
 import { db } from './lib/db.js';
 import { markTransfers, detectRecurring, detectPayday, monthsPresent, clearAnalysisCache } from './lib/analysis.js';
 import { buildBudget } from './lib/budget.js';
-import { monthKey, todayISO, daysBetween } from './lib/dates.js';
+import { monthKey, todayISO, daysBetween, nextDayOfMonth } from './lib/dates.js';
 import { DEFAULT_MODEL } from './lib/models.js';
 import { categorize, merchantKey } from './lib/categorize.js';
 import { statementCoverage } from './lib/coverage.js';
@@ -186,11 +186,22 @@ function effectiveSettings() {
   return { ...mine, income: base == null ? (extra || null) : base + extra };
 }
 
+/** Regular payments you added by hand (e.g. rent not found in statements yet). */
+function withManualBills(detected, today) {
+  const ids = new Set(state.accounts.map((a) => a.id));
+  const names = new Set(detected.map((r) => r.name.toUpperCase()));
+  const manual = (state.settings.manualBills || [])
+    .filter((b) => (!b.accountId || ids.has(b.accountId) || state.settings.scope === 'all') && !names.has(String(b.name).toUpperCase()))
+    .map((b) => ({ key: 'manual|' + b.id, id: b.id, name: b.name, description: b.name, category: b.category || 'bills', amount: b.amount, direction: 'out', accountId: b.accountId || null,
+      day: b.day, lastDate: null, nextDue: nextDayOfMonth(today, b.day), months: 0, type: b.type || 'Direct Debit', priceChange: 0, active: true, manual: true }));
+  return [...detected, ...manual].sort((a, b) => b.amount - a.amount);
+}
+
 export function recompute() {
   clearAnalysisCache(); // data may have changed (categories, imports…)
   const today = todayISO();
   state.eff = effectiveSettings();
-  const recurring = detectRecurring(state.txs, { today });
+  const recurring = withManualBills(detectRecurring(state.txs, { today }), today);
   const detected = detectPayday(recurring);
   const payday = state.eff.payday ?? detected?.day ?? null;
   const byIdAll = Object.fromEntries((state.allAccounts || state.accounts).map((a) => [a.id, a]));

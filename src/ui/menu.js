@@ -47,11 +47,10 @@ export function applyTheme(t = state.settings?.theme || 'auto') {
 matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => applyTheme());
 
 let open = false;
-const GKEY = 'pl-menu-groups', MKEY = 'pl-menu-mode';
+const GKEY = 'pl-menu-groups';
 const readJSON = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
 const writeJSON = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* not remembered */ } };
-/** Which groups are open, and whether several can be open at once ('many') or one ('one', like a drop-down). */
-const groupMode = () => readJSON(MKEY, 'one');
+/** Which page groups are open (each opens and closes on its own). */
 function openGroups() {
   const saved = readJSON(GKEY, null);
   if (saved) return saved;
@@ -63,7 +62,6 @@ let current = 'home';
 function menuHtml() {
   const s = state.settings;
   const theme = s.theme || 'auto';
-  const mode = groupMode();
   const opened = openGroups();
   const multi = s.people.length > 1 || state.allAccounts?.some((a) => a.owner === 'joint');
   const scopes = [['all', '🏠 Household'], ...s.people.map((p) => [p.id, p.name.split(' ')[0]]), ...(state.allAccounts?.some((a) => a.owner === 'joint') ? [['joint', '👥 Joint']] : [])];
@@ -74,7 +72,7 @@ function menuHtml() {
       <div class="seg" role="radiogroup" aria-label="Appearance">${[['auto', '◐ Auto'], ['light', '☀︎ Light'], ['dark', '☾ Dark']].map(([v, l]) => `<button role="radio" aria-checked="${theme === v}" class="${theme === v ? 'sel' : ''}" data-action="theme-set" data-theme="${v}">${l}</button>`).join('')}</div>
     </div>
     ${multi ? `<div class="menu-row"><div class="seg scroll" role="radiogroup" aria-label="Whose money">${scopes.map(([id, l]) => `<button role="radio" aria-checked="${s.scope === id}" class="${s.scope === id ? 'sel' : ''}" data-action="scope-set" data-scope="${esc(id)}">${esc(l)}</button>`).join('')}</div></div>` : ''}
-    <div class="menu-row menu-mode"><span class="sub">Sections</span><div class="seg" role="radiogroup" aria-label="How sections open">${[['one', 'One at a time'], ['many', 'Several open']].map(([v, l]) => `<button role="radio" aria-checked="${mode === v}" class="${mode === v ? 'sel' : ''}" data-action="menu-mode" data-mode="${v}">${l}</button>`).join('')}</div></div>
+    <div class="menu-row menu-mode"><span class="sub grow">Pages</span><button class="chip" data-action="menu-expand" data-open="1">⊕ Expand all</button><button class="chip" data-action="menu-expand" data-open="0">⊖ Collapse all</button></div>
     <nav class="menu-groups">
       ${PAGES.map(([group, items]) => { const isOpen = opened.includes(group); const hasCur = items.some(([v]) => v === current); return `<div class="menu-group ${isOpen ? 'open' : ''}" data-group="${esc(group)}">
         <button class="menu-gh" data-action="menu-group" data-group="${esc(group)}" aria-expanded="${isOpen}"><span class="grow">${group}</span>${hasCur && !isOpen ? '<span class="mi-dot" aria-hidden="true"></span>' : ''}<small>${items.length}</small><span class="mg-chev" aria-hidden="true">›</span></button>
@@ -110,8 +108,7 @@ export const menuActions = {
     const g = el.dataset.group;
     let opened = openGroups();
     const wasOpen = opened.includes(g);
-    if (groupMode() === 'one') opened = wasOpen ? [] : [g];
-    else opened = wasOpen ? opened.filter((x) => x !== g) : [...opened, g];
+    opened = wasOpen ? opened.filter((x) => x !== g) : [...opened, g];
     writeJSON(GKEY, opened);
     document.querySelectorAll('.menu-group').forEach((box) => {
       const on = opened.includes(box.dataset.group);
@@ -119,12 +116,8 @@ export const menuActions = {
       box.querySelector('.menu-gh').setAttribute('aria-expanded', String(on));
     });
   },
-  'menu-mode': (el) => {
-    writeJSON(MKEY, el.dataset.mode);
-    // Going back to one-at-a-time keeps just the first open section.
-    if (el.dataset.mode === 'one') writeJSON(GKEY, openGroups().slice(0, 1));
-    openMenu();
-  },
+  'menu-expand': (el) => { writeJSON(GKEY, el.dataset.open === '1' ? PAGES.map(([g]) => g) : []); openMenu(); },
+
   'menu-go': (el) => { closeMenu(); location.hash = '#/' + el.dataset.to; },
   'theme-set': async (el) => {
     applyTheme(el.dataset.theme);

@@ -1,7 +1,7 @@
 import { CAT, catKind, isSpendCategory } from './categories.js';
 import { merchantKey } from './categorize.js';
 import { isSummaryLine } from './parse/junk.js';
-import { monthKey, addMonths, daysBetween, addDays, todayISO } from './dates.js';
+import { monthKey, addMonths, daysBetween, addDays, todayISO, nextDayOfMonth } from './dates.js';
 
 const OWN_TRANSFER = /\b(TOP[- ]?UP|TOPUP|TOPPED UP|TRANSFER|TFR|INTERNAL|OWN ACCOUNT|TO POT|FROM POT|POT TRANSFER|ROUND[- ]?UPS?|SPARE CHANGE|SAVINGS POT|VAULT|SAVER|MOVED (TO|FROM)|SENT FROM|DEPOSIT FROM|WITHDRAWAL TO|INSTANT ACCESS|EASY ACCESS)\b/;
 const BANKS = ['MONZO', 'STARLING', 'REVOLUT', 'CHASE', 'NATIONWIDE', 'HSBC', 'FIRST DIRECT', 'BARCLAYS', 'LLOYDS', 'HALIFAX', 'NATWEST', 'SANTANDER', 'TSB', 'KROO', 'CHIP', 'PLUM', 'MONEYBOX', 'MARCUS', 'ZOPA', 'WISE', 'VIRGIN MONEY', 'METRO BANK', 'CO-OPERATIVE', 'TIDE', 'AMEX', 'AMERICAN EXPRESS', 'BARCLAYCARD', 'CAPITAL ONE'];
@@ -168,12 +168,16 @@ const median = (arr) => {
  * Returns [{ key, name, category, amount (pence, positive), direction, accountId, day, lastDate,
  *            nextDue, months, type, priceChange }]
  */
+const SPLIT_CATS = new Set(['housing', 'bills', 'insurance', 'debt', 'childcare', 'education']);
+
 export function detectRecurring(txs, { today = todayISO() } = {}) {
   const groups = new Map();
   for (const t of txs) {
     if (t.category === 'transfer' || t.category === 'excluded' || isSummaryLine(t.description)) continue;
     const dir = t.amount < 0 ? 'out' : 'in';
-    const key = `${dir}|${t.merchant || merchantKey(t.description)}`;
+    // Month names in references ("RENT NOV", "OCTOBER RENT") would split one payee into many.
+    const payee = String(t.merchant || merchantKey(t.description)).toUpperCase().replace(/\b(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|SEPT|OCT|NOV|DEC)[A-Z]*\b/g, ' ').replace(/\b\d+\b/g, ' ').replace(/\s+/g, ' ').trim() || String(t.merchant || t.description).toUpperCase();
+    const key = `${dir}|${payee}`;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(t);
   }
@@ -183,15 +187,27 @@ export function detectRecurring(txs, { today = todayISO() } = {}) {
     const months = new Set(list.map((t) => monthKey(t.date)));
     if (months.size < 2) continue;
     // Roughly one payment per month, at a fairly stable interval.
-    if (list.length > months.size * 1.5 + 1) continue;
     const gaps = [];
     for (let i = 1; i < list.length; i++) gaps.push(daysBetween(list[i - 1].date, list[i].date));
-    const g = median(gaps);
-    if (g < 25 || g > 36) continue;
+    let g = median(gaps);
     const amounts = list.map((t) => Math.abs(t.amount));
-    const med = median(amounts);
+    let med = median(amounts);
     const stable = amounts.filter((a) => Math.abs(a - med) <= Math.max(med * 0.2, 200)).length / amounts.length;
-    if (stable < 0.6) continue;
+    let split = false;
+    if (list.length > months.size * 1.5 + 1 || g < 25 || g > 36 || stable < 0.6) {
+      // Rent, council tax or a loan paid in parts (e.g. each of you pays half, or two transfers):
+      // treat the month's total as one regular payment if the totals and dates are steady.
+      if (!SPLIT_CATS.has(list[list.length - 1].category)) continue;
+      const byMonth = {};
+      for (const t of list) (byMonth[monthKey(t.date)] ||= []).push(t);
+      const totals = Object.values(byMonth).map((ts) => ts.reduce((a, t) => a + Math.abs(t.amount), 0));
+      const mt = median(totals);
+      const steady = totals.filter((x) => Math.abs(x - mt) <= Math.max(mt * 0.15, 500)).length / totals.length;
+      const days = list.map((t) => +t.date.slice(8));
+      const spread = Math.max(...days) - Math.min(...days);
+      if (steady < 0.6 || (spread > 8 && spread < 23)) continue;
+      med = mt; g = 30.4; split = true;
+    }
     const last = list[list.length - 1];
     const prev = list[list.length - 2];
     const desc = list.map((t) => t.description.toUpperCase()).join(' ');
@@ -200,9 +216,18 @@ export function detectRecurring(txs, { today = todayISO() } = {}) {
       : /\b(DD|DIRECT DEBIT|D\/D)\b/.test(desc) ? 'Direct Debit'
       : /\b(SO|STO|STANDING ORDER|S\/O)\b/.test(desc) ? 'Standing Order'
       : 'Card / Subscription';
+    const typeLabel = split ? `${type === 'Card / Subscription' ? 'Payments' : type} (in parts)` : type;
+    // Monthly payments fall on the same day each month; others repeat at their own interval.
     let nextDue = addDays(last.date, Math.round(g));
     while (nextDue < today) nextDue = addDays(nextDue, Math.round(g));
-    const lastAmt = Math.abs(last.amount), prevAmt = Math.abs(prev.amount);
+    if (split || (g >= 26 && g <= 35)) nextDue = nextDayOfMonth(addDays(last.date, 1) > today ? addDays(last.date, 1) : today, +last.date.slice(8));
+    let lastAmt = Math.abs(last.amount), prevAmt = Math.abs(prev.amount);
+    if (split) {
+      const sumIn = (mk) => list.filter((t) => monthKey(t.date) === mk).reduce((a, t) => a + Math.abs(t.amount), 0);
+      const mks = [...months].sort();
+      lastAmt = sumIn(mks.at(-1)); prevAmt = sumIn(mks.at(-2));
+      if (lastAmt < med * 0.6) lastAmt = med; // latest month only partly imported
+    }
     out.push({
       key,
       name: last.merchant || merchantKey(last.description),
@@ -215,7 +240,8 @@ export function detectRecurring(txs, { today = todayISO() } = {}) {
       lastDate: last.date,
       nextDue,
       months: months.size,
-      type,
+      type: typeLabel,
+      split,
       priceChange: prevAmt && Math.abs(lastAmt - prevAmt) > Math.max(prevAmt * 0.04, 50) ? lastAmt - prevAmt : 0,
       // Considered lapsed if it hasn't appeared for ~2 intervals.
       active: daysBetween(last.date, today) <= g * 2 + 5,

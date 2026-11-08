@@ -4,13 +4,37 @@ import { fmt } from '../../lib/money.js';
 import { compareMonths, spendCategoriesOf, summarizeMonth } from '../../lib/analysis.js';
 import { budgetProgress } from '../../lib/budget.js';
 import { catName, catKind } from '../../lib/categories.js';
-import { monthKey, addMonths, monthLabel, prettyDate, nextDayOfMonth, daysInMonth as daysInMonthOf } from '../../lib/dates.js';
+import { monthKey, addMonths, addDays, monthLabel, prettyDate, nextDayOfMonth, daysInMonth as daysInMonthOf } from '../../lib/dates.js';
 import { donut, trendBars, progressBar, paceChart } from '../charts.js';
-import { monthSwitcher, catChip, delta, emptyState, hideable } from '../common.js';
-import { checkinStatus } from './checkin.js';
+import { monthSwitcher, catChip, delta, emptyState } from '../common.js';
 import { goalPlan } from '../../lib/goals.js';
 import { dashboard } from '../dashboard.js';
+import { alertStrip } from '../alerts.js';
+import { balanceForecast, paidThisMonth } from '../../lib/cashflow.js';
 import { monthOutlook, budgetAlerts } from '../../lib/forecast.js';
+
+/** Balance from today to just after payday, with each bill and pay as a tappable dot. */
+function cashflowCard() {
+  const d = state.derived;
+  const cur = state.accounts.filter((a) => a.type === 'current' && a.balance != null);
+  if (!cur.length) return '';
+  const flags = state.settings.billFlags || {}, hidden = state.settings.billHidden || {};
+  const live = d.recurring.filter((r) => r.category !== 'transfer' && !hidden[r.key] && flags[r.key] !== 'cancelled');
+  const start = d.balance ?? cur.reduce((a, x) => a + x.balance, 0);
+  const until = d.payday ? nextDayOfMonth(addDays(d.today, 1), d.payday) : `${monthKey(d.today)}-${String(daysInMonthOf(monthKey(d.today))).padStart(2, '0')}`;
+  const fc = balanceForecast({ start, today: d.today, until, recurring: live, paidKeys: paidThisMonth(live, state.txs, monthKey(d.today), state.settings.billPaid) });
+  if (fc.rows.length < 2) return '';
+  const W = 320, H = 80, vals = fc.rows.map((r) => r.balance), lo = Math.min(0, ...vals), hi = Math.max(0, ...vals), span = hi - lo || 1;
+  const x = (i) => 6 + (i / (fc.rows.length - 1)) * (W - 12), y = (v) => H - 6 - ((v - lo) / span) * (H - 14);
+  const path = fc.rows.map((r, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(r.balance).toFixed(1)}`).join(' ');
+  const events = fc.rows.filter((r) => r.inflow || r.outflow);
+  return `<div class="card cf-card"><div class="row between"><h3>Balance to payday</h3><a class="chip" href="#/bills">Calendar ›</a></div>
+    <div class="cf-stats"><span>Now <b>${fmt(start, { whole: true })}</b></span><span>Lowest <b class="${fc.low.balance < 0 ? 'neg' : ''}">${fmt(fc.low.balance, { whole: true })}</b> <small>${prettyDate(fc.low.date)}</small></span><span>After pay <b>${fmt(fc.end, { whole: true })}</b></span></div>
+    <svg class="fc-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Balance forecast to payday"><line x1="0" x2="${W}" y1="${y(0)}" y2="${y(0)}" class="fc-zero"/><path d="${path}" class="fc-line"/>
+      ${fc.rows.map((r, i) => (r.inflow || r.outflow ? `<circle cx="${x(i)}" cy="${y(r.balance)}" r="4.5" class="${r.balance < 0 ? 'fc-neg' : r.inflow ? 'fc-in' : 'fc-out'}" data-action="cf-day" data-date="${r.date}" role="button" aria-label="${prettyDate(r.date)}"/>` : '')).join('')}</svg>
+    <div class="cf-events">${events.slice(0, 6).map((r) => `<button class="cf-ev ${r.balance < 0 ? 'neg' : ''}" data-action="cf-day" data-date="${r.date}"><b>${prettyDate(r.date)}</b><span class="ellipsis">${esc(r.items.map((i) => i.name).join(', '))}</span><span class="${r.inflow ? 'pos' : ''}">${r.inflow ? '+' + fmt(r.inflow, { whole: true }) : '−' + fmt(r.outflow, { whole: true })}</span></button>`).join('')}</div>
+    <p class="sub">Bills and pay still to come${d.balance == null ? ', from your last imported balance' : ''}. Card spending isn't included.</p></div>`;
+}
 
 export function render() {
   const { derived, month } = state;
@@ -51,37 +75,10 @@ export function render() {
 
   const movers = cmp.hasPrev ? cmp.rows.filter((r) => Math.abs(r.delta) >= 1000 && !['income', 'transfer', 'savings'].includes(r.category)).slice(0, 4) : [];
 
-  const missing = derived.coverage.missing;
-  const looksOff = (budget.income > 0 && s.income > budget.income * 1.8) || (budget.avgSpend > 0 && s.spend > budget.avgSpend * 1.8) || (s.spend > 0 && s.income > 0 && s.spend > s.income * 1.5);
-  const offBanner = looksOff ? `<a class="card banner bad" href="#/audit"><b>These totals look too high</b><span class="sub">Usually money moving between your own accounts counted as spending and income, or one account imported twice. Tap to see what's counted and fix it.</span><span class="banner-go">Check ›</span></a>` : '';
-  const dupBanner = derived.duplicates.length ? `<a class="card banner" href="#/accounts"><b>${derived.duplicates.length} duplicate transaction${derived.duplicates.length > 1 ? 's' : ''}</b><span class="sub">Imported twice. Totals are inflated until removed.</span><span class="banner-go">Fix ›</span></a>` : '';
-  const monthMissing = missing.filter((m) => m.month === month);
-  const banner = missing.length ? `<a class="card banner" href="#/accounts">
-      <b>${missing.length} statement${missing.length > 1 ? 's' : ''} missing</b>
-      <span class="sub">${monthMissing.length ? `${esc(monthLabel(month))} is incomplete: no statement from ${monthMissing.map((m) => esc(m.accountName)).join(', ')}. Totals will be too low.` : missing.slice(0, 3).map((m) => `${esc(m.accountName)} ${esc(monthLabel(m.month, { short: true }))}`).join(' · ')}</span>
-      <span class="banner-go">Review ›</span></a>` : '';
-
-  const ci = checkinStatus();
-  const ciCard = !ci.complete && months.includes(ci.month) ? `<a class="card checkin-card" href="#/checkin">
-      <div><b>${esc(monthLabel(ci.month))} check-in</b><div class="sub">${ci.done}/4 done · import, tidy up, review, plan</div></div>
-      <div class="steps-bar mini">${ci.steps.map((x) => `<span class="${x ? 'on' : ''}"></span>`).join('')}</div><span class="banner-go">›</span></a>` : '';
-
   return `
   ${monthSwitcher(month, months)}
-  ${(() => {
-    // On-track alert: budgets over, or the month heading short at today's pace (current month only).
-    if (!isCurrent) return '';
-    const mo = monthOutlook({ txs: state.txs, today, budget: derived.budget, recurring: derived.recurring });
-    const al = budgetAlerts({ txs: state.txs, today, budget: derived.budget });
-    const over = al.filter((a) => a.status === 'over'), heading = al.filter((a) => a.status === 'heading');
-    if (!over.length && !heading.length && mo.status === 'ok') return '';
-    const bits = [mo.status !== 'ok' && `heading for ${fmt(mo.left, { whole: true, sign: true })} at month end`, over.length && `${over.map((a) => catName(a.category)).slice(0, 2).join(', ')}${over.length > 2 ? ` +${over.length - 2}` : ''} over budget`, !over.length && heading.length && `${heading.map((a) => catName(a.category)).slice(0, 2).join(', ')} heading over`].filter(Boolean);
-    return hideable('track:' + month, `${mo.status}|${over.length}|${heading.length}`, `<a class="card banner ${mo.status === 'short' || over.length ? 'bad' : ''}" href="#/track"><b>${mo.status === 'short' ? '⚠ Short this month at this pace' : over.length ? '⚠ Over budget' : 'Watch your spending'}</b><span class="sub">${esc(bits.join(' · '))}</span><span class="banner-go">On track ›</span></a>`);
-  })()}
-  ${hideable('checkin:' + ci.month, ci.done, ciCard)}
-  ${hideable('off:' + month, Math.round(s.spend / 10000) + '|' + Math.round(s.income / 10000), offBanner)}
-  ${hideable('dups', derived.duplicates.length, dupBanner)}
-  ${hideable('missing', missing.map((m) => m.accountId + m.month).join(','), banner)}
+  ${alertStrip()}
+  <nav class="quick-row" aria-label="Shortcuts"><a class="qchip" href="#/insights">✨ AI review</a><a class="qchip" href="#/bills">📅 Calendar</a><a class="qchip" href="#/track">📈 On track</a><a class="qchip" href="#/budget">🎯 Budget</a><a class="qchip" href="#/afford">❓ Afford?</a><a class="qchip" href="#/transactions">🧾 Transactions</a></nav>
   <div class="card hero feature">
     <div class="hero-row">
       <div><button class="explain" data-action="explain" data-what="spent"><div class="label">Spent ⓘ</div><div class="big">${fmt(s.spend, { whole: true })}</div></button>
@@ -107,7 +104,7 @@ export function render() {
     const byId = Object.fromEntries((state.allAccounts || state.accounts).map((a) => [a.id, a]));
     return `<a class="card goals-mini" href="#/goals"><div class="label">🎯 Goals</div>${gs.slice(0, 3).map((g) => { const p = goalPlan(g, today, byId); return `<div class="goal-line"><span class="ellipsis">${esc(g.icon || '🎯')} ${esc(g.name)}</span><span class="sub">${Math.round(p.progress * 100)}%</span></div>${progressBar(p.progress, { warnAt: 2 })}`; }).join('')}</a>`;
   })()}
-  ${derived.suspects.length ? `<a class="card banner" href="#/cards"><b>💳 ${derived.suspects.length} account${derived.suspects.length > 1 ? 's' : ''} may be a credit card</b><span class="sub">Tap to confirm.</span><span class="banner-go">›</span></a>` : ''}
+  ${isCurrent ? cashflowCard() : ''}
   ${movers.length ? `<div class="card"><h3>What changed vs last month</h3>
     ${movers.map((r) => `<div class="list-row">${catChip(r.category)}<div class="grow">${esc(catName(r.category))}<div class="sub">${fmt(r.previous, { whole: true })} → ${fmt(r.current, { whole: true })}</div></div>${delta(r.delta)}</div>`).join('')}
   </div>` : ''}
@@ -150,6 +147,7 @@ function txList(txs, n = 12) {
 }
 
 export const actions = {
+  'cf-day': (el) => { location.hash = `#/bills?month=${el.dataset.date.slice(0, 7)}`; },
   explain: (el) => {
     const month = state.month;
     const { budget, recurring, today } = state.derived;
