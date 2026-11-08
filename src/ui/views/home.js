@@ -9,6 +9,7 @@ import { donut, trendBars, progressBar, paceChart } from '../charts.js';
 import { monthSwitcher, catChip, delta, emptyState, hideable } from '../common.js';
 import { checkinStatus } from './checkin.js';
 import { goalPlan } from '../../lib/goals.js';
+import { monthOutlook, budgetAlerts } from '../../lib/forecast.js';
 
 export function render() {
   const { derived, month } = state;
@@ -78,6 +79,16 @@ export function render() {
 
   return `
   ${monthSwitcher(month, months)}
+  ${(() => {
+    // On-track alert: budgets over, or the month heading short at today's pace (current month only).
+    if (!isCurrent) return '';
+    const mo = monthOutlook({ txs: state.txs, today, budget: derived.budget, recurring: derived.recurring });
+    const al = budgetAlerts({ txs: state.txs, today, budget: derived.budget });
+    const over = al.filter((a) => a.status === 'over'), heading = al.filter((a) => a.status === 'heading');
+    if (!over.length && !heading.length && mo.status === 'ok') return '';
+    const bits = [mo.status !== 'ok' && `heading for ${fmt(mo.left, { whole: true, sign: true })} at month end`, over.length && `${over.map((a) => catName(a.category)).slice(0, 2).join(', ')}${over.length > 2 ? ` +${over.length - 2}` : ''} over budget`, !over.length && heading.length && `${heading.map((a) => catName(a.category)).slice(0, 2).join(', ')} heading over`].filter(Boolean);
+    return hideable('track:' + month, `${mo.status}|${over.length}|${heading.length}`, `<a class="card banner ${mo.status === 'short' || over.length ? 'bad' : ''}" href="#/track"><b>${mo.status === 'short' ? '⚠ Short this month at this pace' : over.length ? '⚠ Over budget' : 'Watch your spending'}</b><span class="sub">${esc(bits.join(' · '))}</span><span class="banner-go">On track ›</span></a>`);
+  })()}
   ${hideable('checkin:' + ci.month, ci.done, ciCard)}
   ${hideable('off:' + month, Math.round(s.spend / 10000) + '|' + Math.round(s.income / 10000), offBanner)}
   ${hideable('dups', derived.duplicates.length, dupBanner)}

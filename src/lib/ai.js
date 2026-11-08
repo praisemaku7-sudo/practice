@@ -264,7 +264,7 @@ export async function aiCategorizeMerchants({ apiKey, model = DEFAULT_MODEL, mer
           properties: {
             merchant: { type: 'string', description: 'exactly as given' },
             category: { type: 'string', enum: CAT_IDS.filter((id) => id !== 'transfer' && id !== 'excluded') },
-            business: { type: 'string', description: 'what the business is, in a few words, e.g. "Butcher in Kirkwall" or "Energy supplier"' },
+            business: { type: 'string', description: 'what the business is, in a few words, e.g. "Butcher in Anytown" or "Energy supplier"' },
             confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
           } } } },
       },

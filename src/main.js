@@ -29,9 +29,10 @@ import * as sync from './ui/views/sync.js';
 import * as add from './ui/views/add.js';
 import * as plan from './ui/views/plan.js';
 import * as categories from './ui/views/categories.js';
+import * as track from './ui/views/track.js';
 
-const VIEWS = { home, budget, afford, insights, accounts, transactions, settings, history, import: importer, checkin, bills, cards, setup, audit, due, goals, sync, add, plan, categories };
-const TITLES = { home: 'Overview', budget: 'Budget', afford: 'Afford?', insights: 'Insights', accounts: 'Accounts', transactions: 'Transactions', settings: 'Settings', history: 'Monthly record', import: 'Import', checkin: 'Monthly check-in', bills: 'Bills & subscriptions', cards: 'Credit cards', setup: 'Fix accounts', audit: 'Check my numbers', due: 'Due soon', goals: 'Savings goals', sync: 'Bank sync', add: 'Quick add', plan: 'Future planning', categories: 'Categories' };
+const VIEWS = { home, budget, afford, insights, accounts, transactions, settings, history, import: importer, checkin, bills, cards, setup, audit, due, goals, sync, add, plan, categories, track };
+const TITLES = { home: 'Overview', budget: 'Budget', afford: 'Afford?', insights: 'Insights', accounts: 'Accounts', transactions: 'Transactions', settings: 'Settings', history: 'Monthly record', import: 'Import', checkin: 'Monthly check-in', bills: 'Bills & subscriptions', cards: 'Credit cards', setup: 'Fix accounts', audit: 'Check my numbers', due: 'Due soon', goals: 'Savings goals', sync: 'Bank sync', add: 'Quick add', plan: 'Future planning', categories: 'Categories', track: 'On track' };
 let current = 'home';
 
 function parseHash() {
@@ -57,7 +58,7 @@ async function render() {
   main.dataset.view = current;
   document.title = `${TITLES[current]} · Pocket Ledger`;
   // Which tab is highlighted for pages that aren't tabs themselves.
-  const PARENT = { transactions: 'home', history: 'home', checkin: 'home', bills: 'home', import: 'home', cards: 'home', audit: 'home', due: 'home', goals: 'home', setup: 'accounts', sync: 'accounts', plan: 'budget', categories: 'insights' };
+  const PARENT = { transactions: 'home', history: 'home', checkin: 'home', bills: 'home', import: 'home', cards: 'home', audit: 'home', due: 'home', goals: 'home', setup: 'accounts', sync: 'accounts', plan: 'track', categories: 'insights', budget: 'track' };
   document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.view === (PARENT[current] || current)));
 }
 

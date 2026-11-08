@@ -15,7 +15,7 @@ test('transfers between own accounts are not spending or income', () => {
     ...tx('nw', [
       { date: '2026-09-25', description: 'ACME LTD SALARY', amount: 250000 },
       { date: '2026-09-01', description: 'TO REVOLUT 1234', amount: -50000 }, // arrives 6 days later
-      { date: '2026-09-10', description: 'FASTER PAYMENT P MAKU', amount: -30000 }, // to an account not imported
+      { date: '2026-09-10', description: 'FASTER PAYMENT A DOE', amount: -30000 }, // to an account not imported
       { date: '2026-09-12', description: 'PAYMENT FROM CHASE', amount: 20000 }, // from own Chase, other side not imported
       { date: '2026-09-15', description: 'TESCO STORES', amount: -4000 },
     ]),
@@ -30,7 +30,7 @@ test('transfers between own accounts are not spending or income', () => {
     ]),
   ];
   const before = summarizeMonth(JSON.parse(JSON.stringify(txs)), '2026-09');
-  markTransfers(txs, accounts, { ownNames: ['P Maku'] });
+  markTransfers(txs, accounts, { ownNames: ['A Doe'] });
   const s = summarizeMonth(txs, '2026-09');
   assert.ok(before.spend > s.spend, 'spend reduced');
   assert.equal(s.spend, 4000 + 2500, 'only Tesco and Deliveroo are spending');

@@ -4,7 +4,7 @@ import { categorize, merchantKey } from './categorize.js';
 import { catName } from './categories.js';
 import { daysBetween } from './dates.js';
 
-// "SQ *THE COFFEE BAR", "SUMUP *KIRKWALL BUTCHER", "PAYPAL *NETFLIX": the real merchant is after the prefix.
+// "SQ *THE COFFEE BAR", "SUMUP *ANYTOWN BUTCHER", "PAYPAL *NETFLIX": the real merchant is after the prefix.
 const PROCESSOR = /^(SQ|SQUARE|SUMUP|SUM ?UP|ZETTLE|IZETTLE|IZ|PP|PAYPAL|CRV|CURVE|STRIPE|SP|GOCARDLESS|WORLDPAY|YOYO|TAP|PAYPOINT|ELAVON)\b\s*\*?\s*/i;
 
 /** Every "Other" payment grouped by merchant, biggest first. */

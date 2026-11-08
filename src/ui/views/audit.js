@@ -63,8 +63,8 @@ export function render() {
   </div>
 
   <div class="card"><h3>Your name on transfers</h3>
-    <p class="muted">When you move money between your own accounts, the statement usually shows your name (e.g. "P MAKU" or "MAKU P"). Anything with it is treated as a transfer, not income or spending.</p>
-    <label class="field"><input id="au-names" placeholder="e.g. P MAKU, PRAISE MAKU" value="${esc(names)}"></label>
+    <p class="muted">When you move money between your own accounts, the statement usually shows your name (e.g. "J SMITH" or "SMITH J"). Anything with it is treated as a transfer, not income or spending.</p>
+    <label class="field"><input id="au-names" placeholder="e.g. J SMITH, JANE SMITH" value="${esc(names)}"></label>
     <button class="btn primary full" data-action="au-names">Save &amp; recheck</button>
   </div>
 

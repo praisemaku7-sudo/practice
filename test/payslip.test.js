@@ -18,7 +18,7 @@ test('weekly and four-weekly payslips convert to monthly', () => {
 });
 
 test('payslip with Net Pay as a column heading (amount underneath)', () => {
-  const t = `Employee: Mr Praise Maku         Pay date 23/10/2026
+  const t = `Employee: Mr Alex Doe         Pay date 23/10/2026
 Gross Pay        Deductions        Net Pay
 3,450.00         846.60            2,603.40
 Tax code 1257L   NI number AB123456C`;

@@ -26,6 +26,7 @@ import { cardSummaryFields, applyCardSummary } from '../lib/parse/cardSummary.js
 import { printedTotals, validateStatement } from '../lib/validate.js';
 import { isSummaryLine } from '../lib/parse/junk.js';
 import { classifyDocument, isInvestmentDocument } from '../lib/parse/doctype.js';
+import { isCreditReport, parseCreditReport } from '../lib/creditreport.js';
 import { parsePayslip } from '../lib/payslip.js';
 import { parseSA302, isSA302 } from '../lib/sa302.js';
 import { extractDetails, suggestAccountName, canonicalBank } from '../lib/parse/details.js';
@@ -84,6 +85,10 @@ async function readPdf(item, buf) {
   const meta = { headText: text.slice(0, 3000), details, bank, accountType: isCardIssuer(bank) && !/current account/i.test(text) ? 'credit' : guessType(text), accountRef: details.last4 || detectAccountRef(text) };
   const { apiKey, model, pdfMode } = state.settings;
   const printed = res.hasText ? printedTotals(text) : { in: [], out: [] };
+  // Credit reports (Checkmyfile, ClearScore…): read on the phone for the credit-health check.
+  if (res.hasText && isCreditReport(text.slice(0, 20000))) {
+    return { ...meta, headText: '', creditReport: parseCreditReport(text), transactions: [], closingBalance: null, warnings: [], method: 'on-device', verified: false, isStatement: false, documentType: 'credit report' };
+  }
   // Investment and pension statements (Quilter, Hargreaves Lansdown, pensions…) are never bank accounts:
   // recognised on the phone and skipped, without spending Claude credit.
   if (res.hasText && isInvestmentDocument(text.slice(0, 20000))) {
@@ -163,7 +168,14 @@ async function readFile(item) {
     item.file = new File([buf], item.name, { type: item.file.type || 'image/jpeg' });
     return readScreenshot(item);
   }
-  if (isSpreadsheet(item.file)) throw new Error('Spreadsheet files can\'t be read yet. In your bank\'s app or website, download the statement as CSV (or PDF) instead.');
+  if (isSpreadsheet(item.file)) {
+    if (!/\.xlsx$/i.test(item.name)) throw new Error('Only .xlsx spreadsheets can be read. Save it as .xlsx (Excel), or for a bank statement download CSV or PDF instead.');
+    const { readXlsx } = await import('../lib/xlsx.js');
+    const { extractPlan, hasPlan } = await import('../lib/plan.js');
+    const plan = extractPlan(await readXlsx(await fileBytes(item)));
+    if (!hasPlan(plan)) throw new Error('This spreadsheet has no budget, debts or action plan the app recognises. Bank statements: download CSV or PDF instead.');
+    return { plan, headText: '', transactions: [], closingBalance: null, warnings: [], method: 'spreadsheet', verified: false, isStatement: false, documentType: 'plan' };
+  }
   if (!isPdf(item.file) && !isCsv(item.file)) throw new Error('Not a statement, CSV, OFX/QIF or screenshot, so it was skipped.');
   const buf = await fileBytes(item);
   try { item.hash = await fileHash(buf); } catch { item.hash = null; }
@@ -204,7 +216,7 @@ export function defaultName(p) {
 
 /**
  * Learn names from statements: if you're still called "Me", take the holder's name; if a holder is
- * clearly one of you under another name (e.g. "Sarah MacPhail" for Sarah Maku), remember it.
+ * clearly one of you under another name (e.g. "Jane Smith" for Jane Doe), remember it.
  */
 async function learnHolder(holder) {
   if (!holder) return;
@@ -300,8 +312,13 @@ async function processItem(item) {
       item.sa302Manual = { owner: guessOwner(item, parsed), taxYear: (item.name.match(/20\d\d/) || [])[0] || '' };
       item.include = false; item.doc = { isStatement: false, kind: 'sa302' };
     }
+    if (parsed.creditReport) {
+      item.creditReport = { ...parsed.creditReport, owner: guessOwner(item, { details: { holder: parsed.creditReport.person }, headText: '' }) };
+      item.include = false; item.doc = { isStatement: false, kind: 'credit report' };
+    }
+    if (parsed.plan) { item.plan = parsed.plan; item.include = false; item.doc = { isStatement: false, kind: 'plan' }; }
     // A payslip: offer to use its take-home pay as that person's monthly income.
-    if (!item.sa302 && (item.doc.kind === 'payslip' || (!parsed.transactions.length && parsed.headText))) {
+    if (!item.sa302 && !item.creditReport && !item.plan && (item.doc.kind === 'payslip' || (!parsed.transactions.length && parsed.headText))) {
       const slip = parsePayslip(parsed.headText);
       if (slip) { item.payslip = { ...slip, owner: guessOwner(item, parsed) }; item.include = false; }
       else if (item.doc.kind === 'payslip' || /payslip|pay slip/i.test(item.name)) {

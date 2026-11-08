@@ -23,7 +23,7 @@ const CSV = {
     'CARD_PAYMENT,Current,2026-10-04 10:00:00,,Zara,-30.00,0.00,GBP,REVERTED,',
     'TOPUP,Current,2026-10-05 09:00:00,2026-10-05 09:00:01,Payment from ACME LTD,2603.40,0.00,GBP,COMPLETED,3598.90',
     'EXCHANGE,Current,2026-10-06 09:00:00,2026-10-06 09:00:01,Exchanged to EUR,-100.00,-0.50,GBP,COMPLETED,3498.40'],
-  natwest: ['Date, Type, Description, Value, Balance, Account Name, Account Number', '03 Oct 2026,POS,"PRET A MANGER",-4.50,995.50,\'MR P MAKU,\'600000-12345678', '05 Oct 2026,BAC,"ACME LTD SALARY",2603.40,3598.90,\'MR P MAKU,\'600000-12345678'],
+  natwest: ['Date, Type, Description, Value, Balance, Account Name, Account Number', '03 Oct 2026,POS,"PRET A MANGER",-4.50,995.50,\'MR A DOE,\'600000-12345678', '05 Oct 2026,BAC,"ACME LTD SALARY",2603.40,3598.90,\'MR A DOE,\'600000-12345678'],
   amex: ['Date,Description,Amount,Extended Details,Appears On Your Statement As,Address,Town/City,Postcode,Country,Reference,Category',
     '03/10/2026,PRET A MANGER,4.50,,PRET,,,,,\'AT1\',Restaurant', '05/10/2026,PAYMENT RECEIVED - THANK YOU,-100.00,,,,,,,\'AT2\','],
   capitalOne: ['Transaction Date,Posted Date,Card No.,Description,Category,Debit,Credit', '2026-10-03,2026-10-04,3915,PRET A MANGER,Dining,4.50,', '2026-10-05,2026-10-05,3915,PAYMENT RECEIVED,Payment,,100.00'],
