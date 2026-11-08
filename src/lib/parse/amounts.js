@@ -26,3 +26,29 @@ export function amountFor(text, labelRe, { maxBelow = 2 } = {}) {
   }
   return null;
 }
+
+/** Every amount that belongs to a label anywhere in the text (same line, or the column below). */
+const MONEY_PENCE = /£?\s*(-?\d{1,3}(?:,\d{3})*\.\d{2}|-?\d+\.\d{2})(?![\d%])/;
+export function amountsFor(text, labelRe, { maxBelow = 2, limit = 4 } = {}) {
+  const MONEY = MONEY_PENCE;
+  const lines = String(text || '').split('\n');
+  const out = [];
+  const re0 = new RegExp(labelRe.source, labelRe.flags.replace('g', ''));
+  for (let i = 0; i < lines.length && out.length < limit; i++) {
+    const m = lines[i].match(re0);
+    if (!m) continue;
+    const after = lines[i].slice(m.index + m[0].length);
+    const same = after.match(MONEY);
+    if (same && same.index < 40) { out.push(Math.abs(toPence(same[1]))); continue; }
+    for (let k = 1; k <= maxBelow && i + k < lines.length; k++) {
+      const re = new RegExp(MONEY.source, 'g');
+      let best = null, x;
+      while ((x = re.exec(lines[i + k]))) {
+        const dist = Math.abs(x.index - m.index);
+        if (dist < 30 && (!best || dist < best.dist)) best = { v: x[1], dist };
+      }
+      if (best) { out.push(Math.abs(toPence(best.v))); break; }
+    }
+  }
+  return [...new Set(out)];
+}

@@ -6,7 +6,7 @@ import { fmt, parsePrice } from '../../lib/money.js';
 import { payoffPlan } from '../../lib/credit.js';
 import { monthKey, monthLabel, prettyDate } from '../../lib/dates.js';
 import { progressBar } from '../charts.js';
-import { catChip } from '../common.js';
+import { catChip, checksBox } from '../common.js';
 
 export function render() {
   const { cards: sum, suspects, budget } = state.derived;
@@ -31,6 +31,7 @@ export function render() {
   return `
   <h1 class="page-title">Credit cards</h1>
   ${suspectBox}
+  ${checksBox({ only: (a) => a.type === 'credit', title: 'Check these cards' })}
   <div class="card hero ${sum.totalOwed === 0 && !sum.unknownBalances ? 'verdict yes' : ''}">
     <div class="label">Owed across ${sum.cards.length} card${sum.cards.length > 1 ? 's' : ''} · goal £0</div>
     <div class="big ${sum.totalOwed > 0 ? 'neg' : 'pos'}">${fmt(sum.totalOwed)}</div>

@@ -3,6 +3,12 @@ import { monthLabel } from '../lib/dates.js';
 import { CAT } from '../lib/categories.js';
 import { fmt } from '../lib/money.js';
 import { state } from '../state.js';
+import { accountChecks } from '../lib/checks.js';
+
+function accountChecksFor() {
+  const byId = new Map(state.accounts.map((a) => [a.id, a]));
+  return accountChecks({ accounts: state.accounts, txs: state.allTxs || state.txs, today: state.derived.today }).map((c) => ({ ...c, account: byId.get(c.accountId) }));
+}
 
 export function monthSwitcher(month, months) {
   const i = months.indexOf(month);
@@ -57,4 +63,14 @@ export function hideable(key, sig, html) {
   if (!html) return '';
   if ((state.settings.hiddenBanners || {})[key] === String(sig)) return '';
   return `<div class="hideable">${html}<button class="banner-x" data-action="banner-hide" data-key="${esc(key)}" data-sig="${esc(String(sig))}" aria-label="Hide this">×</button></div>`;
+}
+
+/** "Sense checks" card: where an account's numbers disagree with its statements or look odd. */
+export function checksBox({ only = null, title = 'Sense checks' } = {}) {
+  const all = accountChecksFor().filter((c) => !only || only(c.account));
+  if (!all.length) return '';
+  const icon = { bad: '⚠️', warn: '❓', info: 'ℹ️' };
+  return `<div class="card banner"><b>${esc(title)}</b>
+    ${all.map((c) => `<div class="list-row"><div class="grow"><div>${icon[c.level]} <b>${esc(c.account.name)}</b>: ${esc(c.title)}</div><div class="sub">${esc(c.detail)}</div>
+      ${c.fix ? `<div class="chip-grid"><button class="chip" data-action="chk-use" data-id="${esc(c.accountId)}">Use the statement's ${fmt(Math.abs(c.fix.amount))}</button></div>` : ''}</div></div>`).join('')}</div>`;
 }

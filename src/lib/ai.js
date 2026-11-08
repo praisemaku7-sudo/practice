@@ -106,7 +106,7 @@ const CHUNK_SCHEMA = {
   },
 };
 
-const STATEMENT_SYSTEM = 'You extract transactions from UK bank and credit-card statements with perfect accuracy. Include every transaction row in the excerpt exactly once, in order. Only include real transaction rows. Never include summary-box lines: new/previous/statement balance, brought/carried forward, credit limit, available credit, interest-rate or APR tables (e.g. "Standard purchase rate"), estimated interest, minimum payment, amount due, "you have incurred…" warnings, or totals. Merge multi-line descriptions into one. For credit cards, purchases are negative and payments to the card are positive. Use the statement period to give every date a year. If a header field is not in this excerpt, use null.';
+const STATEMENT_SYSTEM = 'You extract transactions from UK bank and credit-card statements with perfect accuracy. Include every transaction row in the excerpt exactly once, in order. Only include real transaction rows. Never include summary-box lines: new/previous/statement balance, brought/carried forward, credit limit, available credit, interest-rate or APR tables (e.g. "Standard purchase rate"), estimated interest, minimum payment, amount due, "you have incurred…" warnings, or totals. Do include interest charged, fees and charges when they appear as rows in the transaction list. Merge multi-line descriptions into one. For credit cards, purchases are negative and payments to the card are positive. Use the statement period to give every date a year. If a header field is not in this excerpt, use null.';
 
 /** Run async tasks with a concurrency limit. */
 async function pool(items, limit, fn) {

@@ -7,7 +7,7 @@ import { fmt } from '../../lib/money.js';
 import { catKind, catName } from '../../lib/categories.js';
 import { monthKey, monthLabel, prettyDate, daysBetween } from '../../lib/dates.js';
 import { similarity } from '../../lib/duplicates.js';
-import { monthSwitcher, catChip } from '../common.js';
+import { monthSwitcher, catChip, checksBox } from '../common.js';
 
 const ui = { showTransfers: false };
 
@@ -55,6 +55,7 @@ export function render() {
   return `
   ${monthSwitcher(month, state.derived.months)}
   <h1 class="page-title">Check my numbers</h1>
+  ${checksBox({ title: 'Account balances' }) || '<div class="card"><b>✓ Account balances</b><div class="sub">Every balance agrees with its latest statement.</div></div>'}
   <div class="card">
     <div class="stat-grid"><div><span class="label">Counted as income</span><b class="pos">${fmt(inTotal, { whole: true })}</b></div>
     <div><span class="label">Counted as spending</span><b>${fmt(outTotal, { whole: true })}</b></div></div>
@@ -95,6 +96,17 @@ export function render() {
 }
 
 export const actions = {
+  // Accept the latest statement's balance when the app couldn't prove it.
+  'chk-use': async (el, rerender) => {
+    const a = state.allAccounts.find((x) => x.id === el.dataset.id);
+    const u = a?.balanceUnverified;
+    if (!u) return;
+    a.balance = u.amount; a.balanceDate = u.date; delete a.balanceUnverified;
+    await db.put('accounts', a);
+    recompute();
+    toast(`${a.name}: using the statement's balance`);
+    rerender();
+  },
   'au-toggle': (_, rerender) => { ui.showTransfers = !ui.showTransfers; rerender(); },
   'au-set': async (el, rerender) => {
     const t = state.txs.find((x) => x.id === el.dataset.id);

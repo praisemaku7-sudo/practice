@@ -22,6 +22,7 @@ import { merchantKey } from '../lib/categorize.js';
 import { overlapReport, fileHash } from '../lib/coverage.js';
 import { matchIncoming } from '../lib/duplicates.js';
 import { looksLikeCreditText, isCardIssuer } from '../lib/credit.js';
+import { cardSummaryFields, applyCardSummary } from '../lib/parse/cardSummary.js';
 import { isSummaryLine } from '../lib/parse/junk.js';
 import { classifyDocument } from '../lib/parse/doctype.js';
 import { parsePayslip } from '../lib/payslip.js';
@@ -102,10 +103,20 @@ async function readPdf(item, buf) {
   // Check Claude's read against the statement's own opening/closing balances (cards report what's owed).
   const card = (meta.accountType || r.accountType) === 'credit';
   const asBal = (v) => (v == null ? null : card ? -Math.abs(v) : v);
-  const check = reconcile({ transactions: r.transactions, openingBalance: asBal(r.openingBalance), closingBalance: asBal(r.closingBalance) });
+  let check = reconcile({ transactions: r.transactions, openingBalance: asBal(r.openingBalance), closingBalance: asBal(r.closingBalance) });
+  // The card's own balance summary (read on the phone) proves the balance and supplies interest/fees
+  // that Claude may have skipped because they aren't listed as transactions.
+  let balanceProven = false;
+  const box = card && res.hasText ? cardSummaryFields(text) : null;
+  if (box) {
+    const fixed = applyCardSummary({ transactions: r.transactions, period: r.period }, box);
+    r.transactions = fixed.transactions; r.openingBalance = fixed.openingBalance; r.closingBalance = fixed.closingBalance;
+    check = reconcile(fixed);
+    balanceProven = true;
+  }
   const mergedDetails = { ...meta.details, holder: meta.details?.holder || r.holder || null };
   return { ...meta, ...r, details: mergedDetails, bank: meta.bank || r.bank, accountType: meta.accountType === 'credit' || r.accountType === 'credit' ? 'credit' : (r.accountType || meta.accountType),
-    accountRef: meta.accountRef || r.accountRef, method: 'Claude', verified: check.confident, check };
+    accountRef: meta.accountRef || r.accountRef, method: 'Claude', verified: check.confident, balanceProven, check };
 }
 
 const isCsv = (f) => /\.(csv|txt)$/i.test(f.name) || /csv|comma-separated|text\/plain/.test(f.type);
@@ -381,10 +392,12 @@ export async function commitItem(item) {
   const lastDate = dates[dates.length - 1] || (p.screenshot ? state.derived.today : undefined);
   const closing = p.closingBalance ?? [...rows].reverse().find((r) => r.balance != null)?.balance ?? null;
   // A screenshot shows the balance right now; a statement shows it on its last day.
-  const balDate = p.screenshot ? state.derived.today : lastDate;
+  // (Statement balances are as of the statement date, which can be a few days after the last purchase.)
+  const pEnd = p.period?.end && lastDate && p.period.end > lastDate && daysBetween(lastDate, p.period.end) <= 35 && p.period.end <= state.derived.today ? p.period.end : lastDate;
+  const balDate = p.screenshot ? state.derived.today : pEnd;
   // Only save a balance that's proven (it agrees with the statement's own opening balance and
   // transactions, or you took a screenshot of it). Otherwise keep the old one and flag it.
-  const trusted = p.verified || p.screenshot;
+  const trusted = p.verified || p.screenshot || p.balanceProven;
   if (closing != null && balDate && (!account.balanceDate || balDate >= account.balanceDate)) {
     if (trusted) {
       account.balance = account.type === 'credit' ? -Math.abs(closing) : closing;

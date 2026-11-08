@@ -7,6 +7,25 @@
 import { matchLeadingDate, findNamedDates, iso } from '../dates.js';
 import { parseMoney, AMOUNT_TOKEN } from '../money.js';
 import { isSummaryLine, CLOSING_LINE, OPENING_LINE } from './junk.js';
+import { linesToPageTexts } from './layout.js';
+import { cardSummaryFields, applyCardSummary } from './cardSummary.js';
+import { looksLikeCreditText } from '../credit.js';
+
+// The amount that belongs to a summary label: the first one after it, before the next label
+// ("New balance £381.12  Minimum payment £25.00" is £381.12, not £25).
+const NEXT_LABEL = /\b(minimum|min\.?|credit limit|available|payment due|due date|interest|apr|estimated|total|paid (in|out)|money (in|out))\b/i;
+function amountAfter(text, labelRe, toks) {
+  const m = text.match(labelRe);
+  if (m) {
+    let rest = text.slice(m.index + m[0].length);
+    const n = rest.match(NEXT_LABEL);
+    if (n) rest = rest.slice(0, n.index);
+    const a = rest.split(/\s+/).find((w) => AMOUNT_TOKEN.test(w));
+    if (a) return a;
+  }
+  const amts = toks.filter((t) => AMOUNT_TOKEN.test(t.t));
+  return amts.length ? amts[amts.length - 1].t : null;
+}
 
 const OUT_HEAD = /^(paid out|money out|out|withdrawn|withdrawals?|debits?|debit amount|payments?|spent|money out \(£\))$/i;
 const IN_HEAD = /^(paid in|money in|in|deposits?|credits?|credit amount|received|money in \(£\))$/i;
@@ -131,11 +150,11 @@ export function parseStatementLines(lines, { fallbackYear = new Date().getFullYe
       lastWasTx = false;
       const amts = toks.filter((t) => AMOUNT_TOKEN.test(t.t));
       if (amts.length && OPENING_LINE.test(text) && openingBalance == null) {
-        const p = parseMoney(amts[amts.length - 1].t);
+        const p = parseMoney(amountAfter(text, OPENING_LINE, toks));
         openingBalance = p.negative || p.debit ? -p.pence : p.pence;
       }
       if (amts.length && CLOSING_LINE.test(text)) {
-        const p = parseMoney(amts[amts.length - 1].t);
+        const p = parseMoney(amountAfter(text, CLOSING_LINE, toks));
         closingBalance = p.negative || p.debit ? -p.pence : p.pence;
       }
       continue;
@@ -247,26 +266,23 @@ export function parseStatementLines(lines, { fallbackYear = new Date().getFullYe
     transactions.push({ date: e.date, description: e.desc.replace(/\s+/g, ' ').trim(), amount, balance: e.bal, ...(e.holder ? { cardholder: e.holder } : {}) });
   }
 
-  // Card statements print "Previous balance − New credits + New debits = Closing balance".
-  // Use it to check signs (a credit printed without "CR" gets fixed) and as the balances.
-  const box = cardSummaryBox(fullText);
+  // Card statements print a balance summary (Amex: "Previous balance − credits + debits = New balance";
+  // Aqua/Barclaycard/Capital One: one figure per line or per column, often with interest and fees).
+  // Use it to fix signs, prove the balances and add interest/fees that are only in the summary.
+  const amex = cardSummaryBox(fullText);
+  const box = amex ? { ...amex, interest: 0, fees: 0 }
+    : looksLikeCreditText(fullText) ? cardSummaryFields(linesToPageTexts(lines).join('\n')) : null;
+  let balanceProven = false;
   if (box) {
-    const credits = () => transactions.filter((t) => t.amount > 0).reduce((a, t) => a + t.amount, 0);
-    let diff = box.credits - credits();
-    if (diff > 0) {
-      // A debit that should be a credit: flip the one whose size matches the gap.
-      const cand = transactions.find((t) => t.amount === -diff) || transactions.find((t) => t.amount < 0 && CREDIT_WORDS.test(t.description) && -t.amount <= diff);
-      if (cand) cand.amount = -cand.amount;
-    } else if (diff < 0) {
-      const cand = transactions.find((t) => t.amount === -diff);
-      if (cand) cand.amount = -cand.amount;
-    }
-    // Stored as balances: what you owe is negative.
-    openingBalance = -box.previous;
-    closingBalance = -box.closing;
+    const res = applyCardSummary({ transactions, period }, box);
+    transactions.splice(0, transactions.length, ...res.transactions);
+    openingBalance = res.openingBalance;
+    closingBalance = res.closingBalance;
+    balanceProven = true;
+    if (res.added.length) warnings.push(`Added ${res.added.map((t) => `${t.description.split(' (')[0].toLowerCase()} £${(-t.amount / 100).toFixed(2)}`).join(' and ')} from the statement summary (not listed as transactions).`);
   }
   if (prevBal != null && closingBalance == null) closingBalance = prevBal;
   if (!transactions.length) warnings.push('No transactions recognised. If this is a scanned PDF, turn on AI reading in Settings.');
   if (!cols && raw.length) warnings.push('Column headers not found; money in/out was inferred. Please review signs.');
-  return { transactions, openingBalance, closingBalance, period, warnings };
+  return { transactions, openingBalance, closingBalance, period, warnings, balanceProven };
 }

@@ -189,7 +189,7 @@ export function recompute() {
   const fresh = currentAccounts.filter((a) => a.balanceDate && daysBetween(a.balanceDate, today) <= 10);
   const balance = fresh.length ? fresh.reduce((s, a) => s + a.balance, 0) : null;
   const coverage = statementCoverage({ accounts: state.accounts, imports: state.imports, txs: state.txs, today, dismissed: state.settings.coverageDismissed || {}, startMonth: state.settings.trackFrom ? monthKey(state.settings.trackFrom) : null });
-  const cards = cardSummary({ accounts: state.accounts, txs: state.txs, today, trackFrom: state.settings.trackFrom });
+  const cards = cardSummary({ accounts: state.accounts, txs: state.txs, allTxs: state.allTxs, today, trackFrom: state.settings.trackFrom });
   const suspects = suspectedCreditCards(state.accounts, state.txs);
   const duplicates = findStoredDuplicates(state.txs);
   state.derived = { today, coverage, cards, suspects, duplicates, recurring, payday, detectedPayday: detected, budget, balance, staleBalance: currentAccounts.length > 0 && !fresh.length, months: monthsPresent(state.txs) };
