@@ -147,11 +147,25 @@ async function readScreenshot(item) {
   return { ...r, headText: '', method: 'Claude (screenshot)', verified: false, screenshot: true };
 }
 
+/** The picked file's contents, copied when it was picked. */
+async function fileBytes(item) {
+  try { return await (item.bytes || item.file.arrayBuffer()); } catch (e) {
+    item.bytes = null;
+    throw new Error(/NotReadable|NotFound|I\/O/i.test(`${e?.name} ${e?.message}`)
+      ? "Couldn't open this file. If it's in iCloud Drive, open it once in the Files app so it downloads to the phone, then import it again."
+      : `Couldn't open this file (${e?.message || e}). Try choosing it again.`);
+  }
+}
+
 async function readFile(item) {
-  if (isImage(item.file)) return readScreenshot(item);
+  if (isImage(item.file)) {
+    const buf = await fileBytes(item);
+    item.file = new File([buf], item.name, { type: item.file.type || 'image/jpeg' });
+    return readScreenshot(item);
+  }
   if (isSpreadsheet(item.file)) throw new Error('Spreadsheet files can\'t be read yet. In your bank\'s app or website, download the statement as CSV (or PDF) instead.');
   if (!isPdf(item.file) && !isCsv(item.file)) throw new Error('Not a statement, CSV, OFX/QIF or screenshot, so it was skipped.');
-  const buf = await item.file.arrayBuffer();
+  const buf = await fileBytes(item);
   try { item.hash = await fileHash(buf); } catch { item.hash = null; }
   const prior = item.hash && state.imports.find((i) => i.fileHash === item.hash);
   if (prior) item.prior = prior;
@@ -249,7 +263,7 @@ async function processItem(item) {
     if (isCardIssuer(parsed.bank || '') && parsed.accountType !== 'savings') parsed.accountType = 'credit';
     item.parsed = parsed;
     // Not a statement (payslip, receipt, invoice, bill...)? Say so and don't import it by default.
-    const investDoc = parsed.documentType === 'investment' || /invest|pension|portfolio|\bisa\b|valuation|shares|fund/i.test(parsed.documentType || '') || (parsed.headText && isInvestmentDocument(parsed.headText));
+    const investDoc = parsed.documentType === 'investment' || /invest|pension|portfolio|stocks|shares|fund|valuation/i.test(parsed.documentType || '') && !/cash isa|savings|bank|current|credit card/i.test(parsed.documentType || '') || (parsed.headText && isInvestmentDocument(parsed.headText));
     item.doc = investDoc
       ? { isStatement: false, kind: 'investment', reason: (parsed.headText && classifyDocument(parsed.headText).kind === 'investment' ? classifyDocument(parsed.headText).reason : "This is an investment or pension statement. It isn't a bank account, so it's not counted in your spending, income or balances.") }
       : parsed.documentType && parsed.isStatement === false
@@ -322,20 +336,38 @@ export function addFiles(files) {
   queue.summary = null;
   const sorted = [...files].sort((a, b) => a.name.localeCompare(b.name));
   for (const file of sorted) {
-    queue.items.push({ id: Math.random().toString(36).slice(2), file, name: file.name, status: 'queued', progress: null, flip: false, showPreview: false });
+    // Copy the file's contents straight away: on iPhone the picked file can stop being readable
+    // later (it's a temporary copy, sometimes still downloading from iCloud).
+    const bytes = file.arrayBuffer();
+    bytes.catch(() => {}); // handled when the file is read
+    queue.items.push({ id: Math.random().toString(36).slice(2), file, bytes, name: file.name, status: 'queued', progress: null, flip: false, showPreview: false });
   }
   if (!location.hash.startsWith('#/import')) location.hash = '#/import';
   changed();
   drain();
 }
 
+// Kept in the page (not just in memory) while the picker is open: iOS can throw away a detached
+// input before you've chosen, and then the files never arrive.
+let picker = null;
 export function pickFiles() {
   pdfLib(); // start loading the PDF engine while the picker is open
+  picker?.remove();
   const input = document.createElement('input');
   input.type = 'file';
   input.multiple = true;
-  input.accept = '.pdf,.csv,.txt,.tsv,.ofx,.qfx,.qif,application/pdf,text/csv,text/plain,text/comma-separated-values,image/*';
-  input.onchange = () => addFiles([...input.files]);
+  // iPhones and iPads only understand common file types here; unusual ones (.ofx, .qif) can grey
+  // out every file or stop the picker opening. Any file can be chosen there and is checked on import.
+  const ios = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (!ios) input.accept = '.pdf,.csv,.txt,.tsv,.ofx,.qfx,.qif,application/pdf,text/csv,text/plain,text/comma-separated-values,image/*';
+  input.style.cssText = 'position:fixed;left:-9999px;width:1px;height:1px;opacity:0';
+  // Left in the page until the next import: removing it can make the chosen files unreadable on iPhone.
+  input.addEventListener('change', () => {
+    const files = [...(input.files || [])];
+    if (files.length) addFiles(files);
+  });
+  document.body.appendChild(input);
+  picker = input;
   input.click();
 }
 
@@ -445,15 +477,16 @@ export async function commitItem(item) {
   await db.put('imports', rec);
   item.status = 'imported';
   item.result = { added: fresh.length, dupes: dupes.length, account: account.name, replaced: replacedOld, moved: item.movedFrom || 0 };
-  return { added: fresh.length, lastDate };
+  // A re-read of a statement you'd already imported replaces it: count only what's actually new.
+  return { added: Math.max(0, fresh.length - replacedOld), refreshed: Math.min(fresh.length, replacedOld), lastDate };
 }
 
 export async function commitAll() {
   const ready = queue.items.filter((i) => i.status === 'ready' && i.include);
-  let added = 0, latest = '';
+  let added = 0, refreshed = 0, latest = '';
   for (const item of ready) {
     const r = await commitItem(item);
-    added += r.added;
+    added += r.added; refreshed += r.refreshed || 0;
     if (r.lastDate > latest) latest = r.lastDate;
   }
   // Only mark as skipped once nothing is still being read (you may import in several goes).
@@ -461,8 +494,8 @@ export async function commitAll() {
   await relinkTransfers();
   recompute();
   if (latest) state.month = monthKey(latest);
-  const prev = queue.summary || { added: 0, files: 0 };
-  queue.summary = { added: prev.added + added, files: prev.files + ready.length };
+  const prev = queue.summary || { added: 0, files: 0, refreshed: 0 };
+  queue.summary = { added: prev.added + added, refreshed: (prev.refreshed || 0) + refreshed, files: prev.files + ready.length };
   changed();
 }
 
