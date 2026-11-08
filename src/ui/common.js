@@ -28,6 +28,18 @@ export function delta(pence, { invert = false } = {}) {
 }
 
 export function emptyState({ title, body, cta = true }) {
+  const scope = state.settings.scope;
+  if (scope !== 'all' && (state.allAccounts || []).length) {
+    // Viewing one person, but the household has data: say so instead of "No accounts yet".
+    const who = scope === 'joint' ? 'joint accounts' : state.settings.people.find((p) => p.id === scope)?.name || 'this person';
+    return `<div class="empty card">
+      <div class="empty-art">👤</div>
+      <h2>Nothing for ${esc(who)} yet</h2>
+      <p class="muted">You're viewing ${esc(who)} only. ${(state.allAccounts || []).length === 1 ? 'Your 1 account belongs' : `Your ${(state.allAccounts || []).length} accounts belong`} to someone else in the household. Give ${esc(who)} their accounts, or go back to the whole household.</p>
+      <button class="btn primary" data-action="scope-set" data-scope="all">Show the whole household</button>
+      <a class="btn ghost" href="#/setup">Choose whose account is whose</a>
+    </div>`;
+  }
   return `<div class="empty card">
     <div class="empty-art">📄</div>
     <h2>${esc(title)}</h2>

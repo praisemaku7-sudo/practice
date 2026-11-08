@@ -28,7 +28,7 @@ function itemCard(it) {
     body = `<div class="pbar ${it.status === 'ai' ? '' : 'indeterminate'}"><span style="width:${pct ?? 35}%"></span></div>
       <div class="sub">${it.status === 'ai' ? `Claude is reading it because ${esc(it.aiReason || 'it needs checking')}${it.progress?.total > 1 ? ` · part ${it.progress.done}/${it.progress.total}` : ''}. If your account's limit is reached it waits and retries automatically.` : it.status === 'queued' ? 'Waiting for a free slot' : 'Reading on your phone'}</div>`;
   } else if (it.status === 'error') {
-    body = `<div class="alert">${esc(it.error)}</div>${/Not a PDF or CSV/.test(it.error) ? '' : `<button class="btn ghost full" data-action="imp-retry" data-id="${it.id}">Retry</button>`}`;
+    body = `<div class="alert">${esc(it.error)}</div>${/Not a (PDF or CSV|statement)/.test(it.error) ? '' : `<button class="btn ghost full" data-action="imp-retry" data-id="${it.id}">Retry</button>`}`;
   } else if (it.status === 'imported' && it.result?.payslip) {
     body = `<div class="sub">✓ Take-home pay of ${fmt(it.payslip.monthlyNet)}/month saved as ${esc(personName(it.payslip.owner))}'s income.</div>`;
   } else if (it.payslip && it.status === 'ready') {
@@ -45,11 +45,12 @@ function itemCard(it) {
       : p.method === 'Claude' ? '<span class="pill">Read by Claude</span>' : txs.length ? `<span class="pill warn">Check the amounts</span>` : '';
     body = `
       ${it.doc && !it.doc.isStatement ? `<div class="alert"><b>Not a statement?</b> ${esc(it.doc.reason)} It won't be imported unless you tick Import.</div>` : ''}
-      ${it.prior ? `<div class="tip-box">Imported before on ${new Date(it.prior.at).toLocaleDateString('en-GB')} (${it.prior.count} transactions${it.prior.method ? `, read ${esc(it.prior.method)}` : ''}). Tick <b>Import</b> to read it again and <b>replace</b> what was saved.</div>` : ''}
-      ${!it.prior && it.overlap?.likelyDuplicate ? `<div class="tip-box">Already imported: ${it.overlap.matched} of ${it.overlap.total} transactions are saved${ovAcc ? ` in ${esc(ovAcc.name)}` : ''}. Tick <b>Import</b> to replace them with this read.</div>` : ''}
+      ${(it.prior || it.overlap?.likelyDuplicate) ? `<div class="tip-box">${it.prior ? `Imported before on ${new Date(it.prior.at).toLocaleDateString('en-GB')}.` : `Already saved${ovAcc ? ` in ${esc(ovAcc.name)}` : ''}.`} ${it.include ? 'This read checks out, so it will <b>replace</b> the saved copy (nothing doubles up).' : 'Tick <b>Import</b> to replace the saved copy with this read.'}</div>` : ''}
       ${it.include && it.replace && txs.length ? `<div class="sub warn-text">Will replace the saved transactions for this account from ${prettyDate(dates[0])} to ${prettyDate(dates[dates.length - 1])}.</div>` : ''}
       ${!it.prior && it.overlap?.partialOverlap ? `<div class="tip-box">${it.overlap.matched} overlap an earlier statement. Only ${it.overlap.total - it.overlap.matched} new will be added.</div>` : ''}
       ${(p.warnings || []).map((w) => `<div class="sub warn-text">• ${esc(w)}</div>`).join('')}
+      ${p.screenshot && p.closingBalance != null ? `<div class="tip-box">📸 Balance shown: <b>${fmt(Math.abs(p.closingBalance))}</b>${p.accountType === 'credit' ? ' owed' : ''}. It will update the account you choose.</div>` : ''}
+      ${!txs.length && p.screenshot ? `<label class="field select slim grow"><select data-change="imp-acc" data-id="${it.id}">${state.accounts.map((a) => `<option value="${esc(a.id)}" ${it.accountChoice === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}<option value="__new" ${it.accountChoice === '__new' ? 'selected' : ''}>+ New: ${esc(it.newAccount.name)}</option></select></label>` : ''}
       ${txs.length ? `<div class="imp-stats"><b>${txs.length}</b> transactions · ${prettyDate(dates[0])}–${prettyDate(dates[dates.length - 1])} · <span class="pos">${fmt(inSum, { whole: true })} in</span> · ${fmt(outSum, { whole: true })} out</div>
       <div class="row gap wrap-sm">
         <label class="field select slim grow"><select data-change="imp-acc" data-id="${it.id}">
@@ -91,7 +92,7 @@ export function render() {
   const ready = items.filter((i) => i.status === 'ready' && i.include);
   const txCount = ready.reduce((a, i) => a + i.parsed.transactions.length - (i.replace ? 0 : (i.overlap?.matched || 0)), 0);
   const done = items.filter((i) => ['ready', 'imported', 'skipped', 'error'].includes(i.status)).length;
-  const failed = items.filter((i) => i.status === 'error' && !/Not a PDF or CSV/.test(i.error || ''));
+  const failed = items.filter((i) => i.status === 'error' && !/Not a (PDF or CSV|statement)/.test(i.error || ''));
   const dupes = items.filter((i) => i.status === 'ready' && !i.include && i.parsed?.transactions.length && (i.prior || i.overlap?.likelyDuplicate));
   const missing = state.derived.coverage.missing;
   const order = { error: 0, ready: 1, ai: 2, reading: 3, queued: 4, imported: 5, skipped: 6 };
@@ -105,7 +106,7 @@ export function render() {
   ${sorted.map(itemCard).join('')}
   ${ready.length || busy ? `<div class="sticky-cta">
     <button class="btn ghost" data-action="import">＋ More</button>
-    <button class="btn primary grow" data-action="imp-commit" ${!ready.length ? 'disabled' : ''}>${ready.length ? `Import ${ready.length} file${ready.length === 1 ? '' : 's'} · ${txCount}${busy ? ` · ${busy} still reading` : ''}` : `Reading ${busy} file${busy === 1 ? '' : 's'}…`}</button>
+    <button class="btn primary grow" data-action="imp-commit" ${!ready.length ? 'disabled' : ''}>${ready.length ? `Import ${ready.length} file${ready.length === 1 ? '' : 's'} · ${txCount}${busy ? ` · ${busy} still reading` : ''}` : busy ? `Reading ${busy} file${busy === 1 ? '' : 's'}…` : 'Nothing ticked: tick Import on a file above'}</button>
   </div>` : ''}`;
 }
 

@@ -2,9 +2,11 @@
 // (a regulated Open Banking provider). It keeps the provider's private key and your bank
 // sessions server-side; the app only ever talks to this Worker, using your APP_TOKEN.
 //
-// Secrets (wrangler secret put …): EB_APP_ID, EB_PRIVATE_KEY (PKCS#8 PEM), APP_TOKEN
+// Stateless: nothing is stored here. Your bank connections (session ids) are kept in the app on
+// your phone; this Worker only holds the provider key and signs requests. No database to set up.
+//
+// Secrets: EB_APP_ID, EB_PRIVATE_KEY (PKCS#8 PEM), APP_TOKEN
 // Vars: ALLOWED_ORIGIN (your app's origin, e.g. https://you.github.io), EB_API (optional)
-// KV binding: STORE
 
 const EB_API = 'https://api.enablebanking.com';
 
@@ -61,6 +63,22 @@ export function pickBalance(balances = []) {
   return b ? Math.round(parseFloat(b.balance_amount.amount) * 100) : null;
 }
 
+async function hmac(secret, text) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return b64u(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(text)));
+}
+/** The bank round-trip carries its own signed, expiring state, so nothing needs storing. */
+export async function signState(env, data) {
+  const body = b64uJson({ ...data, exp: Date.now() + 3600000 });
+  return `${body}.${await hmac(env.APP_TOKEN, body)}`;
+}
+export async function readState(env, state) {
+  const [body, sig] = String(state || '').split('.');
+  if (!body || !sig || (await hmac(env.APP_TOKEN, body)) !== sig) return null;
+  const data = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(body.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((body.length + 3) % 4)), (c) => c.charCodeAt(0))));
+  return data.exp > Date.now() ? data : null;
+}
+
 const json = (data, status, cors) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', ...cors } });
 
 export default {
@@ -77,20 +95,17 @@ export default {
     try {
       // The bank sends you back here after you approve access in its app.
       if (url.pathname === '/callback') {
-        const state = url.searchParams.get('state');
-        const pending = state && JSON.parse((await env.STORE.get(`state:${state}`)) || 'null');
+        const pending = await readState(env, url.searchParams.get('state'));
         if (!pending) return new Response('This link has expired. Start again from the app.', { status: 400 });
-        await env.STORE.delete(`state:${state}`);
         const back = new URL(pending.redirect);
         if (url.searchParams.get('error')) { back.hash = `#/sync?error=${encodeURIComponent(url.searchParams.get('error'))}`; return Response.redirect(back.toString(), 302); }
         const session = await eb(env, 'POST', '/sessions', { code: url.searchParams.get('code') });
-        const sessions = JSON.parse((await env.STORE.get('sessions')) || '[]');
-        sessions.push({
+        const link = {
           id: session.session_id, bank: pending.bank, country: pending.country, validUntil: session.access?.valid_until || null,
-          accounts: (session.accounts || []).map((a) => ({ uid: a.uid, name: a.name || a.product || 'Account', iban: a.account_id?.iban || null, currency: a.currency, type: a.cash_account_type || null })),
-        });
-        await env.STORE.put('sessions', JSON.stringify(sessions));
-        back.hash = '#/sync?connected=1';
+          accounts: (session.accounts || []).map((a) => ({ uid: a.uid, name: a.name || a.product || 'Account', last4: (a.account_id?.iban || '').slice(-4) || null, currency: a.currency })),
+        };
+        // Hand the connection back to the app (kept on your phone, not here).
+        back.hash = `#/sync?link=${b64uJson(link)}`;
         return Response.redirect(back.toString(), 302);
       }
 
@@ -108,8 +123,9 @@ export default {
       if (url.pathname === '/connect' && request.method === 'POST') {
         const { bank, country = 'GB', redirect, days = 90 } = await request.json();
         if (!bank || !redirect) return json({ error: 'bank and redirect are required' }, 400, cors);
-        const state = crypto.randomUUID();
-        await env.STORE.put(`state:${state}`, JSON.stringify({ bank, country, redirect }), { expirationTtl: 3600 });
+        // Only ever send people back to your own app.
+        if (env.ALLOWED_ORIGIN && !redirect.startsWith(env.ALLOWED_ORIGIN)) return json({ error: 'redirect must be your app address' }, 400, cors);
+        const state = await signState(env, { bank, country, redirect });
         const validUntil = new Date(Date.now() + days * 86400000).toISOString();
         const auth = await eb(env, 'POST', '/auth', {
           access: { valid_until: validUntil }, aspsp: { name: bank, country }, state,
@@ -117,8 +133,6 @@ export default {
         });
         return json({ url: auth.url }, 200, cors);
       }
-
-      if (url.pathname === '/accounts') return json(JSON.parse((await env.STORE.get('sessions')) || '[]'), 200, cors);
 
       if (url.pathname === '/transactions') {
         const uid = url.searchParams.get('account');
@@ -140,8 +154,6 @@ export default {
       if (url.pathname.startsWith('/sessions/') && request.method === 'DELETE') {
         const id = decodeURIComponent(url.pathname.slice('/sessions/'.length));
         try { await eb(env, 'DELETE', `/sessions/${encodeURIComponent(id)}`); } catch { /* already gone */ }
-        const sessions = JSON.parse((await env.STORE.get('sessions')) || '[]').filter((s) => s.id !== id);
-        await env.STORE.put('sessions', JSON.stringify(sessions));
         return json({ ok: true }, 200, cors);
       }
 
