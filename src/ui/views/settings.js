@@ -48,16 +48,7 @@ export function render() {
     <div class="row gap"><button class="btn ghost grow" data-action="st-from-all">Use all history</button><button class="btn primary grow" data-action="st-from-save">Save</button></div>
     ${state.hiddenCount ? `<p class="sub">${state.hiddenCount} older transactions are hidden, not deleted. Set an earlier month to bring them back.</p>` : ''}
   </div>
-  <div class="card">
-    <h3>Auto-log Apple Pay ⚡</h3>
-    <p class="muted">Every time you pay with Apple Pay, the purchase is logged here instantly, so fun money and "Can I afford this?" stay up to date between statements. When the real statement or bank sync arrives it replaces the quick entry; nothing doubles up.</p>
-    <ol class="tips">
-      <li>Open <b>Shortcuts</b> → <b>Automation</b> → <b>+</b> → <b>Transaction</b>.</li>
-      <li>Choose your cards (Wallet cards), tick <b>When I tap</b>, choose <b>Run Immediately</b>, then <b>Next</b>.</li>
-      <li>Add the action <b>Open URLs</b> and paste the link below. Then replace the three words in CAPITALS with the variables <b>Amount</b>, <b>Merchant</b> and <b>Card</b> (tap each word, then pick from "Shortcut Input").</li>
-    </ol>
-    <div class="row gap"><input class="url-box grow" id="add-url" readonly value="${esc(location.origin + location.pathname)}#/add?amount=AMOUNT&merchant=MERCHANT&card=CARD"><button class="btn ghost" data-action="copy-add-url">Copy</button></div>
-  </div>
+  ${applePayCard()}
   <div class="card">
     <h3>Bill reminders</h3>
     <p class="muted"><b>Calendar (recommended):</b> adds every regular bill to your iPhone Calendar, with an alert the day before. It works even when this app is closed.</p>
@@ -91,17 +82,44 @@ async function setTrackFrom(value, rerender) {
   await load(); await relinkTransfers(); recompute(); rerender();
 }
 
+function applePayCard() {
+  const bs = state.settings.bankSync || {};
+  const ready = bs.url && bs.token;
+  const url = bs.url || 'https://YOUR-SERVER.workers.dev';
+  const token = bs.token || 'YOUR-APP-TOKEN';
+  const prompt = `When this shortcut runs from a Wallet transaction, send the payment to my budget app without showing anything: use "Get Contents of URL" to make a POST request to ${url}/log with the header "Authorization" set to "Bearer ${token}" and a JSON request body with three text fields: "amount" = the transaction's Amount, "merchant" = the transaction's Merchant, "card" = the transaction's Card or Pass name.`;
+  return `<div class="card" id="applepay">
+    <h3>Auto-log Apple Pay ⚡</h3>
+    <p class="muted">Every Apple Pay payment is sent to your sync server in the background and appears here next time you open the app. Statements or bank sync replace the quick entries, so nothing doubles up.</p>
+    ${ready ? '' : `<div class="alert">First set up your sync server: <b>Accounts → Live bank sync</b>, steps 2–3. For Apple Pay you only need Cloudflare and the app password, not Enable Banking.</div>`}
+    <p class="muted"><b>1. Make the shortcut.</b> In Shortcuts, tap <b>+</b> and paste this into "Describe a shortcut":</p>
+    <textarea class="url-box prompt-box" id="ap-prompt" readonly rows="6">${esc(prompt)}</textarea>
+    <button class="btn ghost full" data-action="copy-ap-prompt">Copy prompt</button>
+    <details class="sub"><summary>Or build it by hand</summary>
+      <ol class="tips"><li>New shortcut → add <b>Get Contents of URL</b>.</li><li>URL: <code>${esc(url)}/log</code>, Method <b>POST</b>.</li>
+      <li>Headers: <code>Authorization</code> = <code>Bearer ${esc(token)}</code>.</li>
+      <li>Request Body <b>JSON</b>: <code>amount</code>, <code>merchant</code>, <code>card</code> → pick <b>Shortcut Input</b> → Amount / Merchant / Card.</li></ol></details>
+    <p class="muted"><b>2. Run it on every tap.</b> Shortcuts → <b>Automation</b> → <b>+</b> → <b>Transaction</b> → choose your cards → <b>Run Immediately</b> → Next → pick the shortcut you just made.</p>
+    ${ready ? '<button class="btn ghost full" data-action="ap-test">Check for new Apple Pay purchases now</button>' : ''}
+  </div>`;
+}
+
 export const actions = {
+  'copy-ap-prompt': async () => {
+    const v = document.getElementById('ap-prompt').value;
+    try { await navigator.clipboard.writeText(v); toast('Prompt copied'); } catch { document.getElementById('ap-prompt').select(); toast('Select and copy the prompt'); }
+  },
+  'ap-test': async (_, rerender) => {
+    try { const { pullApplePay } = await import('./sync.js'); const n = await pullApplePay(); toast(n ? `${n} purchase${n === 1 ? '' : 's'} added` : 'Nothing new yet. Pay with Apple Pay, then check again'); }
+    catch (e) { toast(e.message, { error: true }); }
+    rerender();
+  },
   'remove-demo': async (_, rerender) => {
     const all = await db.all('tx');
     const demoIds = new Set((state.allAccounts || []).filter((a) => a.id.startsWith('demo-')).map((a) => a.id));
     for (const t of all.filter((x) => demoIds.has(x.accountId))) await db.del('tx', t.id);
     for (const id of demoIds) await db.del('accounts', id);
     await load(); await relinkTransfers(); recompute(); rerender(); toast('Sample data removed');
-  },
-  'copy-add-url': async () => {
-    const v = document.getElementById('add-url').value;
-    try { await navigator.clipboard.writeText(v); toast('Link copied'); } catch { document.getElementById('add-url').select(); toast('Select and copy the link'); }
   },
   'copy-due-url': async () => {
     const v = document.getElementById('due-url').value;

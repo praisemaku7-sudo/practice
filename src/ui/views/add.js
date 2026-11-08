@@ -21,6 +21,23 @@ function accountFor(card) {
     || all.find((a) => a.type === 'current');
 }
 
+/** Save one Apple Pay purchase as a quick entry (swapped for the real one when it arrives). */
+export async function logPurchase({ amount, merchant = 'Apple Pay', card = '', date = todayISO(), id = null }) {
+  const pence = parsePrice(String(amount).replace(/[^\d.,-]/g, '').replace(/^-/, ''));
+  if (!pence) return null;
+  const txId = id ? `ap-${id}` : `sc-${Date.now().toString(36)}`;
+  if (state.txs.some((t) => t.id === txId) || (await db.get('tx', txId))) return null;
+  const acc = accountFor(card);
+  const tx = {
+    id: txId, accountId: acc?.id || 'manual', importId: null, source: 'shortcut', manual: true,
+    date, description: merchant.slice(0, 80), merchant: merchantKey(merchant), amount: -pence, balance: null,
+    category: categorize(merchant, -pence, state.settings.userRules),
+  };
+  state.txs.push(tx);
+  await db.put('tx', tx);
+  return { tx, account: acc?.name || 'your account' };
+}
+
 export async function applyParams(params) {
   const raw = params.get('amount');
   if (!raw) return;

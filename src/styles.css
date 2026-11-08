@@ -511,3 +511,5 @@ body.is-locked #main, body.is-locked .tabbar, body.is-locked .topbar { visibilit
 .pin-pad button:active { background: var(--line); }
 .sync-row { padding: 10px 0; border-top: 1px solid var(--line); display: grid; gap: 4px; } .sync-row:first-of-type { border-top: 0; }
 .details-line { font-size: 12px; color: var(--muted); background: var(--track); border-radius: 10px; padding: 6px 9px; }
+.income-box { display: grid; gap: 10px; margin: 8px 0; } .income-person { background: var(--track); border-radius: 14px; padding: 10px 12px; display: grid; gap: 6px; }
+.prompt-box { width: 100%; font-size: 13px; line-height: 1.4; resize: none; font-family: inherit; }

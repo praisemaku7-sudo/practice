@@ -17,6 +17,8 @@ export function client({ url, token }) {
     banks: (country = 'GB') => call(`/banks?country=${country}`),
     connect: (bank, redirect, country = 'GB') => call('/connect', { method: 'POST', body: JSON.stringify({ bank, country, redirect }) }),
     transactions: (uid, from) => call(`/transactions?account=${encodeURIComponent(uid)}${from ? `&from=${from}` : ''}`),
+    inbox: () => call('/inbox'),
+    ack: (ids) => call('/inbox/ack', { method: 'POST', body: JSON.stringify({ ids }) }),
     disconnect: (id) => call(`/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   };
 }

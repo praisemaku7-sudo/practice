@@ -73,3 +73,18 @@ test('full flow (stateless): token check, banks, connect, callback hands the lin
   assert.equal(tx.balance, 84210);
   assert.ok(calls.some((c) => c.includes('continuation_key=k2')));
 });
+
+test('Apple Pay inbox: log, list, acknowledge; token required', async () => {
+  const kv = new Map();
+  const env = { APP_TOKEN: 't', STORE: { get: async (k) => kv.get(k) ?? null, put: async (k, v) => kv.set(k, v) } };
+  const call = (path, opts = {}) => worker.fetch(new Request(`https://sync.test${path}`, { ...opts, headers: { Authorization: 'Bearer t', 'Content-Type': 'application/json' } }), env);
+  assert.equal((await worker.fetch(new Request('https://sync.test/log', { method: 'POST', body: '{"amount":"1"}' }), env)).status, 401);
+  assert.equal((await call('/log', { method: 'POST', body: JSON.stringify({ amount: '£4.50', merchant: 'Pret A Manger', card: 'Amex' }) })).status, 200);
+  const inbox = await (await call('/inbox')).json();
+  assert.equal(inbox.length, 1);
+  assert.equal(inbox[0].merchant, 'Pret A Manger');
+  await call('/inbox/ack', { method: 'POST', body: JSON.stringify({ ids: [inbox[0].id] }) });
+  assert.equal((await (await call('/inbox')).json()).length, 0);
+  const health = await (await call('/health')).json();
+  assert.deepEqual(health, { ok: true, bankSync: false, applePay: true });
+});

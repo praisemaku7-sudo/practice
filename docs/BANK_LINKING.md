@@ -37,6 +37,14 @@ The server stores nothing. Your bank connections are kept in the app on your pho
 
 Prefer a computer? Use `cd server && npx wrangler deploy`, then `npx wrangler secret put EB_APP_ID` (and the same for `EB_PRIVATE_KEY` and `APP_TOKEN`).
 
+## Apple Pay logging (needs only step 2, not Enable Banking)
+The same server also receives Apple Pay purchases from an iPhone Shortcuts automation, so they appear in the app even though it was closed:
+- Deploy the server (step 2). Type `later` for the two Enable Banking secrets if you haven't set that up yet.
+- The Apple Pay inbox uses a small Cloudflare KV store called `STORE`. The deploy flow normally creates it; if not, run `npx wrangler kv namespace create STORE` and add the id to `wrangler.toml`.
+- In the app: **Settings → Auto-log Apple Pay**. Copy the ready-made prompt into Shortcuts ("Describe a shortcut"), then add the **Transaction** automation.
+
+(The earlier "open a link" method can't work on iPhone: a link from Shortcuts opens in Safari, which keeps separate data from the Home Screen app.)
+
 ## Step 3: in the app
 1. **Accounts → Live bank sync**: paste the Worker address and your `APP_TOKEN`, then tap **Save & test**.
 2. Tap **Connect a bank**, pick your bank, approve in your bank's app, and you'll land back in Pocket Ledger.

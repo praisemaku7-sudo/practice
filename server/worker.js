@@ -5,7 +5,10 @@
 // Stateless: nothing is stored here. Your bank connections (session ids) are kept in the app on
 // your phone; this Worker only holds the provider key and signs requests. No database to set up.
 //
-// Secrets: EB_APP_ID, EB_PRIVATE_KEY (PKCS#8 PEM), APP_TOKEN
+// Apple Pay logging (optional KV binding STORE): iPhone Shortcuts POSTs each Apple Pay payment to
+// /log; the app collects them from /inbox next time it opens. Works with only APP_TOKEN set.
+//
+// Secrets: EB_APP_ID, EB_PRIVATE_KEY (PKCS#8 PEM) for bank sync; APP_TOKEN always
 // Vars: ALLOWED_ORIGIN (your app's origin, e.g. https://you.github.io), EB_API (optional)
 
 const EB_API = 'https://api.enablebanking.com';
@@ -112,7 +115,27 @@ export default {
       // Everything else needs your app token.
       if (request.headers.get('Authorization') !== `Bearer ${env.APP_TOKEN}`) return json({ error: 'Wrong or missing app token' }, 401, cors);
 
-      if (url.pathname === '/health') return json({ ok: true }, 200, cors);
+      if (url.pathname === '/health') return json({ ok: true, bankSync: !!(env.EB_APP_ID && /PRIVATE KEY/.test(env.EB_PRIVATE_KEY || '')), applePay: !!env.STORE }, 200, cors);
+
+      // Apple Pay inbox (from an iPhone Shortcuts "Transaction" automation).
+      if (url.pathname === '/log' || url.pathname.startsWith('/inbox')) {
+        if (!env.STORE) return json({ error: 'Apple Pay logging needs a KV namespace bound as STORE (see wrangler.toml).' }, 501, cors);
+        const inbox = JSON.parse((await env.STORE.get('inbox')) || '[]');
+        if (url.pathname === '/log' && request.method === 'POST') {
+          const body = await request.json().catch(() => ({}));
+          const entry = { id: crypto.randomUUID(), at: new Date().toISOString(), amount: String(body.amount ?? ''), merchant: String(body.merchant ?? '').slice(0, 120), card: String(body.card ?? '').slice(0, 80) };
+          if (!entry.amount) return json({ error: 'amount is required' }, 400, cors);
+          await env.STORE.put('inbox', JSON.stringify([...inbox, entry].slice(-500)));
+          return json({ ok: true }, 200, cors);
+        }
+        if (url.pathname === '/inbox' && request.method === 'GET') return json(inbox, 200, cors);
+        if (url.pathname === '/inbox/ack' && request.method === 'POST') {
+          const { ids = [] } = await request.json().catch(() => ({}));
+          const done = new Set(ids);
+          await env.STORE.put('inbox', JSON.stringify(inbox.filter((e) => !done.has(e.id))));
+          return json({ ok: true }, 200, cors);
+        }
+      }
 
       if (url.pathname === '/banks') {
         const country = url.searchParams.get('country') || 'GB';

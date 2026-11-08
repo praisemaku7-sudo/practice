@@ -15,6 +15,7 @@ import { looksLikeCreditText, isCardIssuer } from '../lib/credit.js';
 import { isSummaryLine } from '../lib/parse/junk.js';
 import { classifyDocument } from '../lib/parse/doctype.js';
 import { parsePayslip } from '../lib/payslip.js';
+import { parseSA302, isSA302 } from '../lib/sa302.js';
 import { extractDetails, suggestAccountName } from '../lib/parse/details.js';
 import { personForName } from '../state.js';
 import { saveSettings } from '../state.js';
@@ -65,6 +66,10 @@ async function readPdf(item, buf) {
   const bank = details.bank || guessBank(text);
   const meta = { headText: text.slice(0, 3000), details, bank, accountType: isCardIssuer(bank) && !/current account/i.test(text) ? 'credit' : guessType(text), accountRef: details.last4 || detectAccountRef(text) };
   const { apiKey, model, pdfMode } = state.settings;
+  // Tax calculations and payslips are read on the phone; they never need Claude.
+  if (res.hasText && (isSA302(text) || classifyDocument(text, { transactions: [] }).kind === 'payslip')) {
+    return { ...meta, transactions: [], warnings: [], method: 'on-device', verified: false };
+  }
   const canAI = apiKey && pdfMode !== 'never';
 
   if (res.hasText && pdfMode !== 'always') {
@@ -189,8 +194,11 @@ async function processItem(item) {
     item.include = parsed.transactions.length > 0 && item.doc.isStatement && (!seenBefore || item.replace);
     // A balance-only screenshot is still worth importing: it updates the account's balance.
     if (parsed.screenshot && !parsed.transactions.length && parsed.closingBalance != null) item.include = true;
+    // An HMRC SA302 tax calculation (self-employed income): offer it as that person's usual income.
+    const sa = parsed.headText && parseSA302(parsed.headText);
+    if (sa) { item.sa302 = { ...sa, owner: guessOwner(item, parsed) }; item.include = false; item.doc = { isStatement: false, kind: 'sa302' }; }
     // A payslip: offer to use its take-home pay as that person's monthly income.
-    if (item.doc.kind === 'payslip' || (!parsed.transactions.length && parsed.headText)) {
+    if (!item.sa302 && (item.doc.kind === 'payslip' || (!parsed.transactions.length && parsed.headText))) {
       const slip = parsePayslip(parsed.headText);
       if (slip) { item.payslip = { ...slip, owner: guessOwner(item, parsed) }; item.include = false; }
     }
@@ -264,8 +272,10 @@ export async function commitItem(item) {
     const generic = /^[A-Za-z&' -]+ (Card|Current|Savings)( ••\d{4})?$/.test(account.name) || /^Current( ••\d{4})?$/.test(account.name);
     if (suggested && account.name !== suggested && (account.autoName || generic || (item.accountChoice === '__new' && item.newAccount?.name === account.name))) { account.name = suggested; account.autoName = true; }
   }
-  // An account nobody has been assigned to takes the owner named on the statement.
-  if (!account.owner && item.newAccount?.owner && item.newAccount.owner !== state.settings.people[0]?.id) account.owner = item.newAccount.owner;
+  // Whose account is it? The holder named on the statement decides, unless you've locked the account yourself.
+  const holderOwner = personForName(p.details?.holder);
+  if (holderOwner && !account.typeLocked) account.owner = holderOwner;
+  else if (!account.owner && item.newAccount?.owner && item.newAccount.owner !== state.settings.people[0]?.id) account.owner = item.newAccount.owner;
 
   const importId = 'imp-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
   const rows = item.flip ? p.transactions.map((r) => ({ ...r, amount: -r.amount })) : p.transactions;
@@ -365,6 +375,23 @@ export async function applyPayslip(item) {
   await saveSettings(patch);
   item.status = 'imported';
   item.result = { added: 0, dupes: 0, account: 'income', payslip: true };
+  changed();
+}
+
+/** Use an SA302's take-home (income − tax & NI) as a person's usual monthly income; newest tax year wins. */
+export async function applySA302(item) {
+  const sa = item.sa302;
+  const pid = sa.owner || state.settings.people[0].id;
+  const list = [...((state.settings.sa302s || {})[pid] || []).filter((x) => x.taxYear !== sa.taxYear), { taxYear: sa.taxYear, totalIncome: sa.totalIncome, taxDue: sa.taxDue, net: sa.net, file: item.name }]
+    .sort((a, b) => String(a.taxYear).localeCompare(String(b.taxYear)));
+  const latest = list[list.length - 1];
+  const scoped = { ...(state.settings.scoped || {}) };
+  scoped[pid] = { ...(scoped[pid] || {}), income: Math.round(latest.net / 12) };
+  const patch = { scoped, sa302s: { ...(state.settings.sa302s || {}), [pid]: list } };
+  if (state.settings.people.length === 1) patch.income = Math.round(latest.net / 12);
+  await saveSettings(patch);
+  item.status = 'imported';
+  item.result = { added: 0, dupes: 0, account: 'income', sa302: true };
   changed();
 }
 
