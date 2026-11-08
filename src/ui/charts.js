@@ -10,13 +10,15 @@ export function donut(segments, { size = 168, thickness = 22, center = '', sub =
   const gap = segments.length > 1 ? 2 : 0;
   const arcs = segments.filter((s) => s.value > 0).map((s) => {
     const len = (s.value / total) * c;
-    const el = `<circle r="${r}" cx="${size / 2}" cy="${size / 2}" fill="none" stroke="${s.color}" stroke-width="${thickness}"
+    const tap = s.key ? ` class="donut-seg" data-action="dash-cat" data-cat="${esc(s.key)}" role="button" tabindex="0" aria-label="${esc(s.label)}: ${esc(fmt(s.value))}"` : '';
+    const el = `<circle${tap} r="${r}" cx="${size / 2}" cy="${size / 2}" fill="none" stroke="${s.color}" stroke-width="${thickness}"
       stroke-dasharray="${Math.max(0, len - gap)} ${c}" stroke-dashoffset="${-offset}"><title>${esc(s.label)}: ${fmt(s.value)}</title></circle>`;
     offset += len;
     return el;
   }).join('');
   return `<svg class="donut" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" role="img" aria-label="Spending by category">
     <g transform="rotate(-90 ${size / 2} ${size / 2})"><circle r="${r}" cx="${size / 2}" cy="${size / 2}" fill="none" stroke="var(--track)" stroke-width="${thickness}"/>${arcs}</g>
+    ${segments.some((x) => x.key) ? `<circle r="${r - thickness / 2 - 2}" cx="${size / 2}" cy="${size / 2}" fill="transparent" data-action="dash-open" data-id="spent" class="donut-hole" aria-label="Spent: details"/>` : ''}
     <text x="50%" y="47%" text-anchor="middle" class="donut-center">${esc(center)}</text>
     <text x="50%" y="61%" text-anchor="middle" class="donut-sub">${esc(sub)}</text></svg>`;
 }
@@ -30,7 +32,8 @@ export function trendBars(data, { height = 140 } = {}) {
   const bars = data.map((d, i) => {
     const x = pad + i * step + step / 2;
     const hi = (d.income / max) * h, hs = (d.spend / max) * h;
-    return `<g class="${d.active ? 'active' : ''}">
+    return `<g class="tbar ${d.active ? 'active' : ''}"${d.key ? ` data-action="dash-month" data-month="${esc(d.key)}" role="button" tabindex="0" aria-label="${esc(d.label)}: in ${esc(fmt(d.income))}, spent ${esc(fmt(d.spend))}"` : ''}>
+      <rect x="${x - step / 2}" y="0" width="${step}" height="${height}" class="ihit"/>
       <rect x="${x - bw - 1}" y="${h - hi}" width="${bw}" height="${Math.max(hi, 1)}" rx="3" class="bar-in"><title>Income ${fmt(d.income)}</title></rect>
       <rect x="${x + 1}" y="${h - hs}" width="${bw}" height="${Math.max(hs, 1)}" rx="3" class="bar-out"><title>Spent ${fmt(d.spend)}</title></rect>
       <text x="${x}" y="${height - 6}" text-anchor="middle" class="bar-label">${esc(d.label)}</text></g>`;

@@ -26,6 +26,7 @@ import * as goals from './ui/views/goals.js';
 import { initLock, lockActions } from './ui/lock.js';
 import { enhanceSections, sectionActions } from './ui/sections.js';
 import { insightActions } from './ui/insight-actions.js';
+import { dashActions } from './ui/dashboard.js';
 import { menuActions, menuInputs, closeMenu, menuIsOpen, setMenuCurrent, applyTheme } from './ui/menu.js';
 import * as sync from './ui/views/sync.js';
 import * as add from './ui/views/add.js';
@@ -135,7 +136,7 @@ const globalActions = {
   },
 };
 
-const allActions = Object.assign({}, globalActions, lockActions, sectionActions, insightActions, menuActions, ...Object.values(VIEWS).map((v) => v.actions || {}));
+const allActions = Object.assign({}, globalActions, lockActions, sectionActions, insightActions, menuActions, dashActions, ...Object.values(VIEWS).map((v) => v.actions || {}));
 const allChanges = Object.assign({}, ...Object.values(VIEWS).map((v) => v.changes || {}));
 const allInputs = Object.assign({}, menuInputs, ...Object.values(VIEWS).map((v) => v.inputs || {}));
 

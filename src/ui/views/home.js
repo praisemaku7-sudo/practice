@@ -4,11 +4,12 @@ import { fmt } from '../../lib/money.js';
 import { compareMonths, spendCategoriesOf, summarizeMonth } from '../../lib/analysis.js';
 import { budgetProgress } from '../../lib/budget.js';
 import { catName, catKind } from '../../lib/categories.js';
-import { monthKey, addMonths, monthLabel, prettyDate, nextDayOfMonth, daysBetween, daysInMonth as daysInMonthOf } from '../../lib/dates.js';
+import { monthKey, addMonths, monthLabel, prettyDate, nextDayOfMonth, daysInMonth as daysInMonthOf } from '../../lib/dates.js';
 import { donut, trendBars, progressBar, paceChart } from '../charts.js';
 import { monthSwitcher, catChip, delta, emptyState, hideable } from '../common.js';
 import { checkinStatus } from './checkin.js';
 import { goalPlan } from '../../lib/goals.js';
+import { dashboard } from '../dashboard.js';
 import { monthOutlook, budgetAlerts } from '../../lib/forecast.js';
 
 export function render() {
@@ -24,18 +25,6 @@ export function render() {
   const cats = spendCategoriesOf(s);
   const totalBudget = budget.lines.reduce((a, l) => a + l.budget, 0);
 
-  const funCard = isCurrent ? (() => {
-    const left = prog.personalLeft;
-    const daysLeft = daysBetween(today, `${addMonths(month, 1)}-01`);
-    const perDay = left > 0 ? Math.floor(left / Math.max(daysLeft, 1)) : 0;
-    return `<div class="card fun ${left < 0 ? 'neg' : ''}">
-      <button class="explain" data-action="explain" data-what="fun"><div class="label">Fun money left this month ⓘ</div>
-      <div class="big">${fmt(left)}</div></button>
-      ${progressBar(budget.personalAllowance ? prog.personalSpent / budget.personalAllowance : 1)}
-      <div class="sub">${fmt(prog.personalSpent, { whole: true })} of ${fmt(budget.personalAllowance, { whole: true })} used · ${left > 0 ? `about ${fmt(perDay, { whole: true })}/day for ${daysLeft} days` : 'over for this month'}</div>
-      <button class="btn primary small" data-action="go" data-to="afford">Can I afford…?</button>
-    </div>`;
-  })() : '';
 
   const nextPay = payday ? nextDayOfMonth(today, payday) : null;
   const upcoming = recurring.filter((r) => r.direction === 'out' && r.active && (!nextPay || r.nextDue < nextPay)).sort((a, b) => a.nextDue.localeCompare(b.nextDue));
@@ -57,7 +46,7 @@ export function render() {
 
   const trendData = months.slice(-6).map((m) => {
     const x = summarizeMonth(state.txs, m);
-    return { label: monthLabel(m, { short: true }).split(' ')[0], income: x.income, spend: x.spend, active: m === month };
+    return { key: m, label: monthLabel(m, { short: true }).split(' ')[0], income: x.income, spend: x.spend, active: m === month };
   });
 
   const movers = cmp.hasPrev ? cmp.rows.filter((r) => Math.abs(r.delta) >= 1000 && !['income', 'transfer', 'savings'].includes(r.category)).slice(0, 4) : [];
@@ -106,35 +95,30 @@ export function render() {
       </div>
     </div>
     ${totalBudget ? `${progressBar(s.spend / totalBudget)}<div class="sub">${fmt(s.spend, { whole: true })} of ${fmt(totalBudget, { whole: true })} monthly budget</div>` : ''}
-    ${cmp.hasPrev ? `<div class="pace-wrap">${paceChart(curDaily, prevDaily, daysSoFar)}
+    ${cmp.hasPrev ? `<div class="pace-wrap tap-chart" data-action="dash-pace" role="button" tabindex="0" aria-label="Spending day by day: tap for the numbers">${paceChart(curDaily, prevDaily, daysSoFar)}
       <div class="pace-legend"><span><i class="sw cur"></i>${esc(monthLabel(month, { short: true }))}</span><span><i class="sw prev"></i>${esc(monthLabel(addMonths(month, -1), { short: true }))}</span>
-      <b class="${paceDelta > 0 ? 'neg' : 'pos'}">${paceDelta > 0 ? '▲' : '▼'} ${fmt(Math.abs(paceDelta), { whole: true })} vs same point last month</b></div></div>` : ''}
+      <b class="${paceDelta > 0 ? 'neg' : 'pos'}">${paceDelta > 0 ? '▲' : '▼'} ${fmt(Math.abs(paceDelta), { whole: true })} vs same point last month</b></div><div class="tap-hint">Tap the chart for day-by-day numbers ›</div></div>` : ''}
     <a class="link small-link" href="#/audit">What's counted here? ›</a>
   </div>
-  ${funCard}
+  <section class="card dash">${dashboard()}</section>
   ${(() => {
     const gs = (state.settings.goals || []).filter((g) => !g.owner || g.owner === 'all' || state.settings.scope === 'all' || g.owner === state.settings.scope);
     if (!gs.length) return '';
     const byId = Object.fromEntries((state.allAccounts || state.accounts).map((a) => [a.id, a]));
     return `<a class="card goals-mini" href="#/goals"><div class="label">🎯 Goals</div>${gs.slice(0, 3).map((g) => { const p = goalPlan(g, today, byId); return `<div class="goal-line"><span class="ellipsis">${esc(g.icon || '🎯')} ${esc(g.name)}</span><span class="sub">${Math.round(p.progress * 100)}%</span></div>${progressBar(p.progress, { warnAt: 2 })}`; }).join('')}</a>`;
   })()}
-  ${derived.cards.cards.length || derived.suspects.length ? (() => {
-    const c = derived.cards;
-    return `<a class="card cards-card ${c.monthSpend > 0 ? 'bad' : ''}" href="#/cards">
-      <div class="grow"><div class="label">💳 Credit cards · goal £0</div>
-      <div><b class="${c.totalOwed > 0 ? 'neg' : 'pos'}">${fmt(c.totalOwed, { whole: true })} owed</b> · <span class="${c.monthSpend > 0 ? 'neg' : 'pos'}">${fmt(c.monthSpend, { whole: true })} new spending this month</span></div>
-      ${derived.suspects.length ? `<div class="sub warn-text">${derived.suspects.length} account${derived.suspects.length > 1 ? 's' : ''} may be a credit card. Tap to confirm.</div>` : ''}</div><span class="banner-go">›</span></a>`;
-  })() : ''}
+  ${derived.suspects.length ? `<a class="card banner" href="#/cards"><b>💳 ${derived.suspects.length} account${derived.suspects.length > 1 ? 's' : ''} may be a credit card</b><span class="sub">Tap to confirm.</span><span class="banner-go">›</span></a>` : ''}
   ${movers.length ? `<div class="card"><h3>What changed vs last month</h3>
     ${movers.map((r) => `<div class="list-row">${catChip(r.category)}<div class="grow">${esc(catName(r.category))}<div class="sub">${fmt(r.previous, { whole: true })} → ${fmt(r.current, { whole: true })}</div></div>${delta(r.delta)}</div>`).join('')}
   </div>` : ''}
   <div class="card">
     <h3>Where it went</h3>
-    ${cats.length ? `<div class="donut-wrap">${donut(cats.map((c) => ({ value: c.total, color: c.color, label: c.name })), { center: fmt(s.spend, { whole: true }), sub: 'spent' })}</div>
+    <p class="sub tap-hint">Tap a slice or a category for its trend and transactions.</p>
+    ${cats.length ? `<div class="donut-wrap">${donut(cats.map((c) => ({ key: c.category, value: c.total, color: c.color, label: c.name })), { center: fmt(s.spend, { whole: true }), sub: 'spent' })}</div>
     ${cats.map((c) => {
       const line = budget.byCategory[c.category];
       const row = cmp.rows.find((r) => r.category === c.category);
-      return `<button class="list-row tap" data-action="go" data-to="transactions" data-cat="${c.category}">${catChip(c.category)}
+      return `<button class="list-row tap" data-action="dash-cat" data-cat="${c.category}">${catChip(c.category)}
         <div class="grow"><div class="row between"><span>${esc(c.name)}</span><b>${fmt(c.total)}</b></div>
         ${line?.budget ? progressBar(c.total / line.budget) : ''}
         <div class="sub row between"><span>${line?.budget ? `${fmt(line.budget, { whole: true })} budget` : 'no budget'}</span>${cmp.hasPrev && row ? delta(row.delta) : ''}</div></div></button>`;
@@ -146,7 +130,7 @@ export function render() {
     ${balance != null ? `<p class="sub">Current-account balance ${fmt(balance)} → ${fmt(balance - upcomingTotal)} after these.</p>` : ''}
     <a class="btn ghost full" href="#/bills">Bills calendar &amp; subscriptions</a>
   </div>` : ''}
-  ${trendData.length > 1 ? `<div class="card"><h3>Last ${trendData.length} months</h3>${trendBars(trendData)}
+  ${trendData.length > 1 ? `<div class="card"><h3>Last ${trendData.length} months</h3>${trendBars(trendData)}<p class="sub tap-hint">Tap a month for its breakdown and transactions.</p>
     <div class="legend"><span><i class="sw in"></i>Income</span><span><i class="sw out"></i>Spent</span></div>
     <a class="btn ghost full" href="#/history">Monthly record &amp; trends</a></div>` : ''}
   <div class="card"><h3>Top merchants</h3>
