@@ -48,12 +48,15 @@ export function render() {
     return `<div class="card income-card">
       <div class="row between"><b class="grow">${esc(p.name)}</b><span class="inc-now">${fmt(cur.monthly, { whole: true })}<small>/month</small></span></div>
       <div class="inc-row"><div class="grow"><div>${cur.kind === 'temp' ? 'Usual take-home <span class="muted">(paused)</span>' : 'Take-home pay'}</div>
-        <div class="sub">${usual.kind === 'payslip' && slip ? `From payslip${slip.payDate ? ` paid ${prettyDate(slip.payDate)}` : ''}${slip.employer ? ` · ${esc(slip.employer)}` : ''}${slip.gross ? ` · gross ${fmt(slip.gross, { whole: true })}` : ''}${slip.frequency && slip.frequency !== 'monthly' ? ` · paid ${esc(slip.frequency)}` : ''}`
+        <div class="sub">${usual.kind === 'payslip' && slip ? `${slip.count > 1 ? `Average of your last ${slip.usedDates?.length || 1} normal payslips` : `From payslip${slip.payDate ? ` paid ${prettyDate(slip.payDate)}` : ''}`}${slip.employer ? ` · ${esc(slip.employer)}` : ''}${slip.frequency && slip.frequency !== 'monthly' ? ` · paid ${esc(slip.frequency)}` : ''}`
           : usual.kind === 'sa302' && sa ? `From SA302 ${esc(sa.taxYear || '')}: ${fmt(sa.net || 0, { whole: true })} a year after tax`
           : usual.kind === 'estimate' ? 'Average of what arrived in their accounts over the last 3 months. Import a payslip for the exact figure.'
           : usual.kind === 'typed' ? 'Typed in' : 'Import a payslip, or type it in.'}</div>
-        ${stale ? '<div class="sub warn-text">Payslip is over 6 weeks old: import the latest one.</div>' : ''}</div>
+        ${stale ? '<div class="sub warn-text">Latest payslip is over 6 weeks old: import the newest one.</div>' : ''}</div>
         <div class="inc-amt"><b>${fmt(usual.monthly, { whole: true })}</b><span class="pill ${pcls}">${pill}</span></div></div>
+      ${(s.payslipHistory?.[p.id] || []).length ? `<details class="slip-hist"><summary class="sub">${s.payslipHistory[p.id].length} payslip${s.payslipHistory[p.id].length === 1 ? '' : 's'} · see each month</summary>
+        ${s.payslipHistory[p.id].map((x) => `<div class="slip-row ${slip?.oneOffs?.includes(x.payDate) ? 'oneoff' : ''}"><span>${x.payDate ? `${prettyDate(x.payDate)} ${x.payDate.slice(0, 4)}` : esc(x.file || 'Payslip')}</span><span class="muted">${x.gross ? `gross ${fmt(x.gross, { whole: true })}` : ''}</span><b>${fmt(x.net)}</b>${slip?.oneOffs?.includes(x.payDate) ? '<small class="pill warn">one-off, not used</small>' : slip?.usedDates?.includes(x.payDate) ? '<small class="pill ok">used</small>' : '<small class="pill">older</small>'}</div>`).join('')}
+      </details>` : ''}
       ${temp ? `<div class="inc-row ${cur.kind === 'temp' ? 'active' : 'muted'}"><div class="grow"><div>${esc(temp.label)}</div>
         <div class="sub">${temp.weekly ? `${fmt(temp.weekly)} a week · ` : ''}${temp.from ? `from ${esc(monthLabel(temp.from))} ` : ''}${temp.until ? `until ${esc(monthLabel(temp.until))}` : 'no end date set'}${cur.kind === 'temp' ? ' · replaces usual pay now' : temp.until && temp.until < month ? ' · ended' : ''}</div></div>
         <div class="inc-amt"><b>${fmt(temp.monthly, { whole: true })}</b></div></div>` : ''}

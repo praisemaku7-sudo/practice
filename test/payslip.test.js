@@ -26,3 +26,24 @@ Tax code 1257L   NI number AB123456C`;
   assert.equal(p.net, 260340);
   assert.equal(p.gross, 345000);
 });
+
+import { typicalPay } from '../src/lib/payslip.js';
+test('table payslips (heading row, amounts underneath in the same order) and the payment date', () => {
+  const t = [
+    'Name          Company        Employee ID     Pay Period Begin    Pay Period End    Payment Date    Payroll ID',
+    'Alex Doe      Acme LLP       12345           01/10/2026          31/10/2026        28/10/2026      PR1',
+    '',
+    '              Gross Pay      GBR Employer Taxes    GBR Employee Taxes    GBR Deductions    Net Pay',
+    'Current       4,627.77       631.61                1,232.65              0.00              3,395.12',
+    'YTD           23,660.89      3,173.83              5,625.23              0.00              18,035.66',
+  ].join('\n');
+  const p = parsePayslip(t);
+  assert.deepEqual([p.net, p.gross, p.payDate], [339512, 462777, '2026-10-28']);
+});
+
+test('typical take-home: latest normal months, one-off correction month left out', () => {
+  const r = typicalPay([{ payDate: '2026-06-26', monthlyNet: 356260 }, { payDate: '2026-07-28', monthlyNet: 218504 }, { payDate: '2026-08-28', monthlyNet: 336399 }, { payDate: '2026-09-28', monthlyNet: 336419 }, { payDate: '2026-10-28', monthlyNet: 339512 }]);
+  assert.equal(r.monthly, 337443);
+  assert.deepEqual(r.oneOffs.map((x) => x.payDate), ['2026-07-28']);
+  assert.equal(typicalPay([{ payDate: '2026-10-28', monthlyNet: 339512 }]).monthly, 339512);
+});

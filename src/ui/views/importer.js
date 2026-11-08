@@ -147,6 +147,7 @@ export function render() {
     <div class="row gap"><button class="btn ghost grow" data-action="import">Add more</button><a class="btn primary grow" href="#/home" data-action="imp-done">Done</a></div></div>` : ''}
   ${failed.length ? `<div class="card banner bad"><b>${failed.length} file${failed.length > 1 ? 's' : ''} couldn't be read</b><span class="sub">${esc(failed[0].error)}</span><button class="btn primary full" data-action="imp-retry">Retry ${failed.length > 1 ? 'all' : ''}</button></div>` : ''}
   ${dupes.length ? `<div class="card banner"><b>${dupes.length} file${dupes.length > 1 ? 's were' : ' was'} imported before</b><span class="sub">Skipped so nothing doubles up. If those earlier imports came out wrong (before the AI key was added), re-import them: the old transactions for those dates are replaced.</span><button class="btn primary full" data-action="imp-reimport-all">Re-import ${dupes.length} &amp; replace old data</button></div>` : ''}
+  ${(() => { const slips = items.filter((i) => i.payslip && i.status === 'ready'); return slips.length > 1 ? `<div class="card banner"><b>${slips.length} payslips</b><span class="sub">Use them together: your income becomes your typical take-home from the latest normal months, and one-off months (corrections, back pay) are left out.</span><button class="btn primary full" data-action="imp-payslips-all">Use all ${slips.length} payslips</button></div>` : ''; })()}
   ${sorted.map(itemCard).join('')}
   ${!ready.length && !busy && items.some((i) => i.status === 'ready') ? `<div class="card banner bad"><b>None of these files will be imported yet</b>
     ${items.filter((i) => i.status === 'ready' && !i.include).map((i) => `<div class="sub">• <b>${esc(i.name)}</b>: ${esc(i.sa302 || i.payslip ? 'income document: use its button above' : i.doc && !i.doc.isStatement ? (i.doc.kind === 'investment' ? 'investment statement, not counted' : 'doesn\'t look like a bank statement') : !i.parsed?.transactions?.length ? 'no transactions found in it' : (i.prior || i.overlap?.likelyDuplicate) ? 'already imported' : 'Import is unticked')}</div>`).join('')}
@@ -176,6 +177,12 @@ export const actions = {
   'imp-retry': (el, rerender) => { retryFailed(el.dataset.id); rerender(); },
   'imp-clean': async (_, rerender) => { const n = await removeEmptyAccounts(); rerender(); toast(`Removed ${n} empty account${n === 1 ? '' : 's'}`); },
   'imp-payslip': async (el, rerender) => { await applyPayslip(find(el)); rerender(); },
+  'imp-payslips-all': async (_, rerender) => {
+    const slips = queue.items.filter((i) => i.payslip && i.status === 'ready');
+    for (const it of slips) await applyPayslip(it);
+    const p = state.settings.payslips?.[slips[0].payslip.owner || state.settings.people[0].id];
+    toast(p ? `Income set to ${fmt(p.monthlyNet, { whole: true })}/month from ${p.count} payslips` : 'Payslips saved'); rerender();
+  },
   'imp-credit-save': async (el, rerender) => { const it = find(el); await saveCreditReport(it.creditReport); it.status = 'imported'; toast('Saved to credit health'); rerender(); },
   'imp-plan-use': async (el, rerender) => {
     const it = find(el);
