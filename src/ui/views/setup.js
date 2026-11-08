@@ -6,6 +6,7 @@ import { esc, toast, confirmSheet } from '../dom.js';
 import { fmt, parsePrice } from '../../lib/money.js';
 import { prettyDate } from '../../lib/dates.js';
 import { mergePlan } from '../../lib/duplicates.js';
+import { suggestAccountName } from '../../lib/parse/details.js';
 
 const TYPES = [['current', 'Current / debit card'], ['credit', 'Credit card'], ['savings', 'Savings']];
 const draft = {}; // accountId -> { type, balance (string), name, mergeInto }
@@ -40,10 +41,15 @@ export function render() {
   ${state.accounts.map((a) => {
     const x = d(a);
     const shown = a.balance == null ? null : a.type === 'credit' ? Math.max(0, -a.balance) : a.balance;
+    const det = a.details || {};
+    const suggested = a.details ? suggestAccountName(det, x.type) : null;
+    const detailsLine = a.details ? `<div class="details-line">🏦 ${esc([det.bank, det.product].filter(Boolean).join(' · ') || 'bank unknown')}${det.sortCode ? ` · ${esc(det.sortCode)}${det.bankFromSort ? ` (${esc(det.bankFromSort)}${det.bankFromSort === det.bank ? ' ✓' : ' ⚠︎'})` : ''}` : ''}${det.last4 ? ` · ••${esc(det.last4)}` : ''}${det.holder ? ` · 👤 ${esc(det.holder)}` : ''}</div>` : '';
+    const suggestBtn = suggested && suggested !== x.name ? `<button class="chip" data-action="su-suggest" data-id="${esc(a.id)}" data-name="${esc(suggested)}">✨ Use "${esc(suggested)}"</button>` : '';
     if (a.typeLocked && !x.editing) {
       // Confirmed accounts stay locked: just a quick balance update, or Edit to change anything.
       return `<div class="card acct-fix locked">
-        <div class="row between"><b class="ellipsis grow">🔒 ${esc(a.name)}</b><button class="link" data-action="su-edit" data-id="${esc(a.id)}">Edit</button></div>
+        <div class="row between"><b class="ellipsis grow">🔒 ${esc(x.name)}</b><button class="link" data-action="su-edit" data-id="${esc(a.id)}">Edit</button></div>
+        ${detailsLine}${suggestBtn}
         <div class="sub">${esc(TYPES.find(([k]) => k === a.type)?.[1] || a.type)} · ${shown == null ? 'no balance' : `${fmt(shown)}${a.type === 'credit' ? ' owed' : ''}`}${a.balanceDate ? ` on ${prettyDate(a.balanceDate)}` : ''}</div>
         <label class="field slim"><span>${a.type === 'credit' ? 'Owed today £' : 'Balance today £'}</span>
           <input inputmode="decimal" placeholder="update from the bank app" value="${esc(x.balance)}" data-input="su-bal" data-id="${esc(a.id)}"></label>
@@ -53,6 +59,7 @@ export function render() {
     return `<div class="card acct-fix ${x.mergeInto ? 'merging' : ''}">
       <div class="row between"><input class="name-input" value="${esc(x.name)}" data-input="su-name" data-id="${esc(a.id)}" aria-label="Account name">
         ${suspects.has(a.id) ? '<span class="pill warn">looks like a card</span>' : ''}</div>
+      ${detailsLine}${suggestBtn}
       <div class="sub">${esc(a.bank || '')} · ${counts[a.id] || 0} transactions · statement says ${shown == null ? 'no balance' : `${fmt(shown)}${a.type === 'credit' ? ' owed' : ''}`}${a.balanceDate ? ` on ${prettyDate(a.balanceDate)}` : ''}</div>
       <div class="seg three">${TYPES.map(([k, l]) => `<button class="${x.type === k ? 'on' : ''}" data-action="su-type" data-id="${esc(a.id)}" data-type="${k}">${l}</button>`).join('')}</div>
       <label class="field slim"><span>${x.type === 'credit' ? 'Owed today £' : 'Balance today £'}</span>
@@ -87,6 +94,7 @@ async function mergeAccount(from, to) {
 }
 
 export const actions = {
+  'su-suggest': (el, rerender) => { const a = state.accounts.find((x) => x.id === el.dataset.id); d(a).name = el.dataset.name; d(a).renamed = true; rerender(); },
   'su-edit': (el, rerender) => { const a = state.accounts.find((x) => x.id === el.dataset.id); d(a).editing = true; rerender(); },
   'su-type': (el, rerender) => { const a = state.accounts.find((x) => x.id === el.dataset.id); d(a).type = el.dataset.type; rerender(); },
   'su-save': async (_, rerender) => {
@@ -96,7 +104,7 @@ export const actions = {
     for (const a of state.accounts) {
       const x = draft[a.id];
       if (!x) continue;
-      a.name = x.name.trim() || a.name;
+      if (x.name.trim() && x.name.trim() !== a.name) { a.name = x.name.trim(); a.autoName = false; }
       const wasCredit = a.type === 'credit';
       a.type = x.type;
       a.owner = x.owner || a.owner;

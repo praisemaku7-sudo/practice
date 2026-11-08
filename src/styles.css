@@ -510,3 +510,4 @@ body.is-locked #main, body.is-locked .tabbar, body.is-locked .topbar { visibilit
 .pin-pad button:disabled { visibility: hidden; }
 .pin-pad button:active { background: var(--line); }
 .sync-row { padding: 10px 0; border-top: 1px solid var(--line); display: grid; gap: 4px; } .sync-row:first-of-type { border-top: 0; }
+.details-line { font-size: 12px; color: var(--muted); background: var(--track); border-radius: 10px; padding: 6px 9px; }
