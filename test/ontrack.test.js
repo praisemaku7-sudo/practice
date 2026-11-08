@@ -77,3 +77,21 @@ test('credit report: score, accounts, late payments, over limit, hard searches',
   assert.ok(titles.some((x) => /over its limit/.test(x)));
   assert.ok(titles.some((x) => /2 credit applications in 6 months/.test(x)));
 });
+
+import { realityCheck, isTemporary, debtOrder, planStage, targetFor } from '../src/lib/plan.js';
+test('better plan maths: reality check, temporary relief, over-limit first, stepped targets', () => {
+  const sheets = [{ name: 'Budget', rows: [['Category', 'Now (£)', 'Month 1', 'Month 2', 'Month 3'], ['Eating out', 883, 450, 300, 200], ['Groceries', 300, 400, 400, 375]] }];
+  const p = extractPlan(sheets);
+  assert.deepEqual(p.budget[0].stages, [45000, 30000, 20000]);
+  assert.equal(planStage({ ...p, startMonth: '2026-11' }, '2027-01'), 2);
+  assert.equal(planStage({ ...p, startMonth: '2026-11' }, '2027-06'), 2);
+  assert.equal(targetFor(p.budget[0], 1), 30000);
+  // £50 eating out against £883 actual is flagged; £450 isn't.
+  const flat = { budget: [{ label: 'Eating out', category: 'eating_out', now: 88300, suggested: 5000 }] };
+  assert.equal(realityCheck(flat, { eating_out: 88300 })[0].cut, 94);
+  assert.equal(realityCheck(p, { eating_out: 88300 }, 0).length, 0);
+  assert.ok(isTemporary({ action: 'Request a payment holiday', note: '' }));
+  assert.ok(!isTemporary({ action: 'Cancel', note: 'You have Bupa via work' }));
+  const order = debtOrder([{ name: 'Aqua', balance: 144610, apr: 0.4095, limit: 145000 }, { name: 'CapOne', balance: 53323, apr: 0.2569, limit: 50000 }, { name: 'Gold', balance: 277609, apr: 0.291, limit: 530000 }]);
+  assert.deepEqual(order.map((d) => d.name), ['CapOne', 'Aqua', 'Gold']);
+});

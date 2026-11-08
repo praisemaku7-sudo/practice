@@ -22,14 +22,17 @@ const tokens = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').
  * amounts, and give matching credit cards their APR and limit. Returns how many budgets were set.
  */
 export async function usePlan(plan, { budgets = true } = {}) {
-  const patch = { plan: { ...plan, importedAt: Date.now() } };
+  const startMonth = new Date().toISOString().slice(0, 7);
+  const patch = { plan: { ...plan, importedAt: Date.now(), startMonth } };
   let n = 0;
   if (budgets) {
     const b = {};
     for (const l of plan.budget) {
-      if (l.category) { b[l.category] = (b[l.category] || 0) + l.suggested; continue; }
-      if (/^savings?\b/i.test(l.label)) patch.savingsTarget = l.suggested;
-      else if (/card repay/i.test(l.label)) patch.cardPayoff = l.suggested;
+      // Stepped plans start on their Month 1 targets.
+      const amount = l.stages ? l.stages[0] : l.suggested;
+      if (l.category) { b[l.category] = (b[l.category] || 0) + amount; continue; }
+      if (/^savings?\b/i.test(l.label)) patch.savingsTarget = amount;
+      else if (/card repay/i.test(l.label)) patch.cardPayoff = amount;
     }
     n = Object.keys(b).length;
     if (n) patch.budgets = { ...(state.settings.budgets || {}), ...b };
@@ -63,4 +66,16 @@ export async function togglePlanItem(kind, i, j) {
   if (kind === 'step') plan.steps[i].items[j].done = !plan.steps[i].items[j].done;
   else if (kind === 'saving') plan.savings[i].done = !plan.savings[i].done;
   await saveSettings({ plan });
+}
+
+/** Move the budgets on to a stepped plan's targets for this month. */
+export async function applyStage(stage) {
+  const plan = state.settings.plan;
+  if (!plan) return 0;
+  const b = { ...(state.settings.budgets || {}) }, sums = {};
+  for (const l of plan.budget) if (l.category) sums[l.category] = (sums[l.category] || 0) + (l.stages ? l.stages[Math.min(stage, l.stages.length - 1)] : l.suggested);
+  Object.assign(b, sums);
+  await saveSettings({ budgets: b, plan: { ...plan, appliedStage: stage } });
+  recompute();
+  return Object.keys(sums).length;
 }

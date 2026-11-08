@@ -63,13 +63,17 @@ export function extractPlan(sheets) {
     }
   }
 
-  const bud = findTable(sheets, [/^category$/, /^suggested/], { prefer: /suggest/i }) || findTable(sheets, [/^category$/, /^planned/]);
+  const bud = findTable(sheets, [/^category$/, /^month\s*1/]) || findTable(sheets, [/^category$/, /^suggested/], { prefer: /suggest/i }) || findTable(sheets, [/^category$/, /^planned/]);
   if (bud) {
-    const c = { cat: bud.col(/^category$/), now: bud.col(/^now|^planned/), sug: bud.col(/^suggested|^planned/), note: bud.col(/note/) };
+    const c = { cat: bud.col(/^category$/), now: bud.col(/^now|^actual|^planned/), sug: bud.col(/^suggested|^planned|^month 1/), note: bud.col(/note/) };
+    // Optional stepped targets: "Month 1", "Month 2", "Month 3"… (big cuts made gradually).
+    const header = sheets.find((sh) => sh.name === bud.sheet).rows.find((r) => r.some((v) => /^category$/i.test(str(v)))) || [];
+    const stageCols = header.map((v, i) => [str(v), i]).filter(([v]) => /^month\s*\d+/i.test(v)).map(([, i]) => i);
     for (const r of bud.rows) {
       const label = str(r[c.cat]);
       if (!label || pence(r[c.sug]) == null) continue;
-      plan.budget.push({ label, category: mapCategory(label), now: pence(r[c.now]), suggested: pence(r[c.sug]), note: c.note >= 0 ? str(r[c.note]).slice(0, 200) : '' });
+      const stages = stageCols.map((i) => pence(r[i])).filter((v) => v != null);
+      plan.budget.push({ label, category: mapCategory(label), now: pence(r[c.now]), suggested: pence(r[c.sug]), ...(stages.length > 1 ? { stages } : {}), note: c.note >= 0 ? str(r[c.note]).slice(0, 200) : '' });
     }
   }
 
@@ -107,6 +111,41 @@ export function extractPlan(sheets) {
     if (plan.steps.length) break;
   }
   return plan;
+}
+
+/** Savings actions that only defer a cost (payment holidays, lowered plans, pauses): they come back. */
+export const isTemporary = (x) => /holiday|pause(?! non)|lower|defer|freeze|temporar|reduce .*during|break/i.test(`${x.action} ${x.note}`) && !/non.?essential/i.test(x.action || '');
+
+/** Which stage of a stepped plan applies this month (0 = first month), counted from when it was imported. */
+export function planStage(plan, month) {
+  if (!plan?.startMonth) return 0;
+  const [y0, m0] = plan.startMonth.split('-').map(Number), [y, m] = month.split('-').map(Number);
+  const max = Math.max(0, ...plan.budget.map((l) => (l.stages?.length || 1) - 1));
+  return Math.max(0, Math.min(max, (y - y0) * 12 + (m - m0)));
+}
+export const targetFor = (line, stage) => (line.stages ? line.stages[Math.min(stage, line.stages.length - 1)] : line.suggested);
+
+/**
+ * Plan lines that are far below what you actually spend (from your statements): a cut of more than
+ * 60% (and £100+) in one go rarely sticks.
+ */
+export function realityCheck(plan, actualByCategory, stage = 0) {
+  const out = [];
+  for (const l of plan.budget) {
+    if (!l.category) continue;
+    // What you really spend: your statements, or the spreadsheet's own "Now" figure if that's higher.
+    const actual = Math.max(actualByCategory[l.category] || 0, l.now || 0), target = targetFor(l, stage);
+    if (actual > 0 && actual - target >= 10000 && target < actual * 0.4) out.push({ label: l.label, category: l.category, actual, target, cut: Math.round((1 - target / actual) * 100) });
+  }
+  return out.sort((a, b) => (b.actual - b.target) - (a.actual - a.target));
+}
+
+/** Debts in the order to pay: anything over its limit first (it's reported every month), then highest interest. */
+export function debtOrder(debts) {
+  return [...debts].filter((d) => d.balance > 0).sort((a, b) => {
+    const oa = a.limit && a.balance > a.limit ? 1 : 0, ob = b.limit && b.balance > b.limit ? 1 : 0;
+    return ob - oa || (b.apr || 0) - (a.apr || 0);
+  });
 }
 
 export const hasPlan = (p) => !!(p && (p.debts.length || p.budget.length || p.savings.length || p.steps.length));

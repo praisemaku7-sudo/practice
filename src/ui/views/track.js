@@ -6,9 +6,9 @@ import { fmt } from '../../lib/money.js';
 import { CAT, catName, catKind } from '../../lib/categories.js';
 import { monthKey, monthLabel, prettyDate, daysBetween } from '../../lib/dates.js';
 import { monthOutlook, budgetAlerts, history, outlook } from '../../lib/forecast.js';
-import { suggestBudget } from '../../lib/plan.js';
+import { suggestBudget, isTemporary, planStage, targetFor, realityCheck, debtOrder } from '../../lib/plan.js';
 import { creditChecks } from '../../lib/creditreport.js';
-import { creditReports, togglePlanItem } from '../../lib/ontrack-store.js';
+import { creditReports, togglePlanItem, applyStage } from '../../lib/ontrack-store.js';
 import { saveSettings, recompute } from '../../state.js';
 import { checkinStatus, targetMonth } from './checkin.js';
 import { catChip } from '../common.js';
@@ -56,19 +56,29 @@ export function render() {
   let planHtml;
   if (plan) {
     const income = plan.income.reduce((a, x) => a + x.monthly, 0) || budget.income;
-    const nowTotal = plan.budget.reduce((a, l) => a + (l.now || 0), 0), sugTotal = plan.budget.reduce((a, l) => a + (l.suggested || 0), 0);
+    const stage = planStage(plan, monthKey(today));
+    const staged = plan.budget.some((l) => l.stages);
+    const nowTotal = plan.budget.reduce((a, l) => a + (l.now || 0), 0), sugTotal = plan.budget.reduce((a, l) => a + (targetFor(l, stage) || 0), 0);
     const doneSave = plan.savings.filter((x) => x.done).reduce((a, x) => a + (x.saving || 0), 0), allSave = plan.savings.reduce((a, x) => a + (x.saving || 0), 0);
+    const tempRelief = plan.savings.filter(isTemporary).reduce((a, x) => a + (x.saving || 0), 0);
     const steps = plan.steps.flatMap((st) => st.items), stepsDone = steps.filter((x) => x.done).length;
-    const debts = [...plan.debts].filter((d) => d.balance > 0).sort((a, b) => (b.apr || 0) - (a.apr || 0));
+    const debts = debtOrder(plan.debts);
+    // Reality check against what you actually spend (from your statements).
+    const actual = {};
+    for (const l of budget.lines) actual[l.category] = l.hist;
+    const unreal = realityCheck(plan, actual, stage);
     const flagged = plan.regular.filter((r) => /CANCEL|REVIEW|BOUNC/.test(r.status));
     const savings = ui.showAllSavings ? plan.savings : plan.savings.slice(0, 8);
     planHtml = `
     <div class="card">
       <h3>Back-on-track plan</h3>
       <div class="stat-grid"><div><span class="label">Each month now</span><b class="${income - nowTotal < 0 ? 'neg' : 'pos'}">${fmt(income - nowTotal, { whole: true, sign: true })}</b></div>
-        <div><span class="label">On the suggested budget</span><b class="${income - sugTotal < 0 ? 'neg' : 'pos'}">${fmt(income - sugTotal, { whole: true, sign: true })}</b></div>
+        <div><span class="label">${staged ? `On month ${stage + 1} targets` : 'On the suggested budget'}</span><b class="${income - sugTotal < 0 ? 'neg' : 'pos'}">${fmt(income - sugTotal, { whole: true, sign: true })}</b></div>
         <div><span class="label">Savings actions done</span><b>${fmt(doneSave, { whole: true })} <small class="muted">of ${fmt(allSave, { whole: true })}/mo</small></b></div>
         <div><span class="label">Steps done</span><b>${stepsDone}/${steps.length}</b></div></div>
+      ${tempRelief ? `<div class="alert"><b>${fmt(tempRelief, { whole: true })}/month of this is temporary relief</b> (payment holidays, lowered or paused payments). When it ends you'd be at <b>${fmt(income - sugTotal - tempRelief, { whole: true, sign: true })}</b> a month: plan for that date now.</div>` : ''}
+      ${unreal.length ? `<div class="tip-box"><b>Reality check</b>${unreal.map((u) => `<div class="sub">• ${esc(u.label)}: you actually spend ${fmt(u.actual, { whole: true })}/month; ${fmt(u.target, { whole: true })} is a ${u.cut}% cut in one go. Step it down over 2–3 months instead.</div>`).join('')}</div>` : ''}
+      ${staged ? `<p class="sub">Stepped plan: month ${stage + 1} targets now${(plan.appliedStage || 0) !== stage ? '.' : ' (in your budgets).'}</p>${(plan.appliedStage || 0) !== stage ? `<button class="btn primary full" data-action="tr-stage" data-stage="${stage}">Use month ${stage + 1} targets as my budgets</button>` : ''}` : ''}
       <p class="sub">From your spreadsheet (imported ${new Date(plan.importedAt).toLocaleDateString('en-GB')}). Import it again any time to update.</p>
     </div>
     ${plan.steps.length ? `<div class="card"><h3>Action plan <small class="muted">${stepsDone}/${steps.length}</small></h3>
@@ -78,8 +88,8 @@ export function render() {
       ${savings.map((x) => { const i = plan.savings.indexOf(x); return `<label class="check-row"><input type="checkbox" data-change="tr-save" data-i="${i}" ${x.done ? 'checked' : ''}><span class="grow ${x.done ? 'done-text' : ''}"><b>${esc(x.item)}</b>: ${esc(x.action)}<br><small class="sub">${x.now != null ? `${fmt(x.now)} → ${fmt(x.after || 0)}` : ''}${x.note ? ` · ${esc(x.note)}` : ''}</small></span><b class="pos">${fmt(x.saving || 0, { whole: true })}</b></label>`; }).join('')}
       ${plan.savings.length > 8 && !ui.showAllSavings ? `<button class="btn ghost full" data-action="tr-more">Show all ${plan.savings.length}</button>` : ''}</div>` : ''}
     ${debts.length ? `<div class="card"><h3>Debts: clear in this order</h3>
-      <p class="sub">Highest interest first (avalanche): every £ there saves the most.</p>
-      ${debts.map((d, i) => `<div class="list-row"><span class="bank-badge">${i + 1}</span><div class="grow"><div>${esc(d.name)}</div><div class="sub one-line">${d.apr ? `${(d.apr * 100).toFixed(1)}% APR · ` : ''}${d.min ? `min ${fmt(d.min, { whole: true })}/mo` : ''}${d.limit ? ` · limit ${fmt(d.limit, { whole: true })}` : ''}</div></div><b>${fmt(d.balance, { whole: true })}</b></div>`).join('')}
+      <p class="sub">Anything over its limit first (it's reported to the credit agencies every month), then highest interest (every £ there saves the most). Always pay every minimum.</p>
+      ${debts.map((d, i) => `<div class="list-row"><span class="bank-badge">${i + 1}</span><div class="grow"><div>${esc(d.name)}</div><div class="sub one-line">${d.apr ? `${(d.apr * 100).toFixed(1)}% APR · ` : ''}${d.min ? `min ${fmt(d.min, { whole: true })}/mo` : ''}${d.limit ? ` · limit ${fmt(d.limit, { whole: true })}` : ''}${d.limit && d.balance > d.limit ? ' · <span class="neg">over limit</span>' : ''}</div></div><b>${fmt(d.balance, { whole: true })}</b></div>`).join('')}
       <a class="link small-link" href="#/cards">Card payoff calculator ›</a></div>` : ''}
     ${flagged.length ? `<div class="card"><h3>Regular payments to sort <small class="muted">${fmt(flagged.reduce((a, r) => a + r.monthly, 0), { whole: true })}/mo</small></h3>
       ${flagged.map((r) => `<div class="list-row"><span class="pill ${/BOUNC|CANCEL/.test(r.status) ? 'warn' : ''}">${esc(r.status.toLowerCase())}</span><div class="grow"><div>${esc(r.item)}</div><div class="sub one-line">${esc(r.account || r.category)}</div></div><b>${fmt(r.monthly)}</b></div>`).join('')}</div>` : ''}`;
@@ -181,6 +191,7 @@ export function render() {
 
 export const actions = {
   'tr-more': (_, rerender) => { ui.showAllSavings = true; rerender(); },
+  'tr-stage': async (el, rerender) => { const n = await applyStage(+el.dataset.stage); toast(`${n} budgets moved to month ${+el.dataset.stage + 1} targets`); rerender(); },
   'tr-apply': async (_, rerender) => {
     const { budget } = state.derived;
     const avg = {};

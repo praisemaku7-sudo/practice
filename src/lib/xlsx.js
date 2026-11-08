@@ -47,8 +47,10 @@ export async function readXlsx(buf) {
     .map((m) => unesc([...m[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((t) => t[1]).join('')));
   const wb = text(files['xl/workbook.xml']);
   const rels = text(files['xl/_rels/workbook.xml.rels']);
-  const target = Object.fromEntries([...rels.matchAll(/<Relationship\b[^>]*?Id="([^"]+)"[^>]*?Target="([^"]+)"/g)].map((m) => [m[1], m[2]]));
-  const sheets = [...wb.matchAll(/<sheet\b[^>]*?name="([^"]+)"[^>]*?r:id="([^"]+)"/g)].map((m) => ({ name: unesc(m[1]), path: 'xl/' + String(target[m[2]] || '').replace(/^\/?xl\//, '') }));
+  // Attributes in any order: Excel, Numbers, Google Sheets and LibreOffice each write them differently.
+  const attr = (tag, name) => (tag.match(new RegExp(`\\b${name}="([^"]*)"`)) || [])[1];
+  const target = Object.fromEntries([...rels.matchAll(/<Relationship\b[^>]*>/g)].map((m) => [attr(m[0], 'Id'), attr(m[0], 'Target')]));
+  const sheets = [...wb.matchAll(/<sheet\b[^>]*>/g)].map((m) => ({ name: unesc(attr(m[0], 'name') || ''), path: 'xl/' + String(target[attr(m[0], 'r:id')] || '').replace(/^\/?xl\//, '') }));
   return sheets.map(({ name, path }) => {
     const xml = text(files[path]);
     const rows = [];
