@@ -33,6 +33,7 @@ export function render() {
       <option value="never" ${s.pdfMode === 'never' ? 'selected' : ''}>Never send PDFs to Claude</option></select></label>
     <p class="sub">"Only if needed" means a statement's printed balances didn't add up on the phone, or it's a scan. Claude gets the statement's text, not the PDF file, split into parts read in parallel. For the quickest reads choose Haiku 5.5 above.</p>
     <div class="row gap"><button class="btn ghost grow" data-action="st-test">Test key</button><button class="btn primary grow" data-action="st-save-key">Save key</button></div>
+    <div class="tip-box"><b>Out of credit?</b> Claude API usage is prepaid, and it can't be charged to a bank account from here. In your Claude Console go to <b>Settings → Billing</b>, add credit with a card, and turn on <b>auto-reload</b> so it tops itself up (e.g. add £10 when it drops below £5). Statements whose balances add up, including American Express, are read on your phone for free.</div>
     <p class="sub">Your key is stored only on this device and sent only to api.anthropic.com. Statement text goes to Anthropic only when a PDF needs Claude (see PDFs above). Monthly reviews send totals, not transactions.</p>
   </div>
   <div class="card">

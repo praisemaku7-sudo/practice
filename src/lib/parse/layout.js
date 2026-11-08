@@ -45,6 +45,11 @@ export function chunkPages(pageTexts, { maxChars = 7000, maxChunks = 6 } = {}) {
 /** Last 4 digits of the account / card number printed on a statement, if found. */
 export function detectAccountRef(text) {
   const s = String(text);
+  // Card/membership numbers first; never the bank details in a "how to pay us" box.
+  const card = s.match(/(?:membership|card)\s*(?:number|no\.?)[^\n]{0,80}?(?:x{2,}|\*{2,}|•{2,})[-\s]?x*[-\s]?\*?(\d{4,5})\b/i)
+    || s.match(/\b(?:x{4}|\*{4})[-\s]?(?:x{4,6}|\*{4,6})[-\s]?(\d{4,5})\b/i);
+  if (card) return card[1].slice(-4);
+  const cleaned = s.replace(/(please use|pay (?:us|by)|internet banking|chaps|international payment)[^\n]*\n?[^\n]*/gi, ' ');
   const patterns = [
     /account\s*(?:number|no\.?|#)?\s*[:\-]?\s*(?:\d{2}[- ]?\d{2}[- ]?\d{2}\s+)?(\d{8})\b/i,
     /\b\d{2}-\d{2}-\d{2}\s+(\d{8})\b/,
@@ -52,7 +57,7 @@ export function detectAccountRef(text) {
     /ending\s+(?:in\s+)?(\d{4})\b/i,
   ];
   for (const re of patterns) {
-    const m = s.match(re);
+    const m = cleaned.match(re);
     if (m) return m[1].slice(-4);
   }
   return null;

@@ -13,6 +13,7 @@ import { overlapReport, fileHash } from '../lib/coverage.js';
 import { matchIncoming } from '../lib/duplicates.js';
 import { looksLikeCreditText, isCardIssuer } from '../lib/credit.js';
 import { isSummaryLine } from '../lib/parse/junk.js';
+import { classifyDocument } from '../lib/parse/doctype.js';
 
 /** The live import queue, shown by the Import page. */
 export const queue = { items: [], summary: null };
@@ -144,6 +145,10 @@ async function processItem(item) {
   try {
     const parsed = applyTrackFrom(await readFile(item));
     item.parsed = parsed;
+    // Not a statement (payslip, receipt, invoice, bill...)? Say so and don't import it by default.
+    item.doc = parsed.documentType && parsed.isStatement === false
+      ? { isStatement: false, kind: parsed.documentType, reason: `Claude says this is a ${parsed.documentType}, not a bank or card statement.` }
+      : parsed.headText ? classifyDocument(parsed.headText, parsed) : { isStatement: true };
     item.ms = Math.round(performance.now() - t0);
     const withMerchant = parsed.transactions.map((t) => ({ ...t, merchant: merchantKey(t.description) }));
     item.overlap = overlapReport(withMerchant, state.txs);
@@ -151,7 +156,7 @@ async function processItem(item) {
     const match = ovAcc || matchAccount(parsed);
     item.accountChoice = match ? match.id : '__new';
     item.newAccount = { name: defaultName(parsed), bank: parsed.bank || '', type: parsed.accountType || 'current', owner: guessOwner(item, parsed) };
-    item.include = parsed.transactions.length > 0 && !item.prior && !item.overlap.likelyDuplicate;
+    item.include = parsed.transactions.length > 0 && !item.prior && !item.overlap.likelyDuplicate && item.doc.isStatement;
     item.status = 'ready';
   } catch (e) {
     console.error(e);

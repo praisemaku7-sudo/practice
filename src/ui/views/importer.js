@@ -36,6 +36,7 @@ function itemCard(it) {
       ? `<span class="pill ok">✓ Balances check out</span>`
       : p.method === 'Claude' ? '<span class="pill">Read by Claude</span>' : txs.length ? `<span class="pill warn">Check the amounts</span>` : '';
     body = `
+      ${it.doc && !it.doc.isStatement ? `<div class="alert"><b>Not a statement?</b> ${esc(it.doc.reason)} It won't be imported unless you tick Import.</div>` : ''}
       ${it.prior ? `<div class="tip-box">Imported before on ${new Date(it.prior.at).toLocaleDateString('en-GB')} (${it.prior.count} transactions${it.prior.method ? `, read ${esc(it.prior.method)}` : ''}). Tick <b>Import</b> to read it again and <b>replace</b> what was saved.</div>` : ''}
       ${!it.prior && it.overlap?.likelyDuplicate ? `<div class="tip-box">Already imported: ${it.overlap.matched} of ${it.overlap.total} transactions are saved${ovAcc ? ` in ${esc(ovAcc.name)}` : ''}. Tick <b>Import</b> to replace them with this read.</div>` : ''}
       ${it.include && it.replace && txs.length ? `<div class="sub warn-text">Will replace the saved transactions for this account from ${prettyDate(dates[0])} to ${prettyDate(dates[dates.length - 1])}.</div>` : ''}
