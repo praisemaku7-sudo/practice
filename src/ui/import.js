@@ -86,8 +86,22 @@ async function readPdf(item, buf) {
 
 const isCsv = (f) => /\.(csv|txt)$/i.test(f.name) || /csv|comma-separated|text\/plain/.test(f.type);
 
+const isImage = (f) => /^image\//.test(f.type) || /\.(png|jpe?g|heic|webp)$/i.test(f.name);
+
+/** A screenshot of a banking app: Claude reads its transactions and/or balance. */
+async function readScreenshot(item) {
+  const { apiKey, model } = state.settings;
+  if (!apiKey) throw new Error('Reading screenshots needs Claude. Add your API key (and credit) in Settings.');
+  const { imageForUpload } = await import('./dom.js');
+  const img = await imageForUpload(item.file);
+  item.status = 'ai'; item.aiReason = "it's a screenshot"; changed();
+  const r = await aiReadStatementImages({ apiKey, model, images: [img.base64], screenshot: true, today: state.derived.today });
+  return { ...r, headText: '', method: 'Claude (screenshot)', verified: false, screenshot: true };
+}
+
 async function readFile(item) {
-  if (!isPdf(item.file) && !isCsv(item.file)) throw new Error('Not a PDF or CSV statement, so it was skipped.');
+  if (isImage(item.file)) return readScreenshot(item);
+  if (!isPdf(item.file) && !isCsv(item.file)) throw new Error('Not a statement, CSV or screenshot, so it was skipped.');
   const buf = await item.file.arrayBuffer();
   try { item.hash = await fileHash(buf); } catch { item.hash = null; }
   const prior = item.hash && state.imports.find((i) => i.fileHash === item.hash);
@@ -158,7 +172,13 @@ async function processItem(item) {
     const match = ovAcc || matchAccount(parsed);
     item.accountChoice = match ? match.id : '__new';
     item.newAccount = { name: defaultName(parsed), bank: parsed.bank || '', type: parsed.accountType || 'current', owner: guessOwner(item, parsed) };
-    item.include = parsed.transactions.length > 0 && !item.prior && !item.overlap.likelyDuplicate && item.doc.isStatement;
+    const seenBefore = !!item.prior || item.overlap.likelyDuplicate;
+    // Seen before? If this read is verified against the statement's own balances, replace the old
+    // copy (it may be an earlier bad read); otherwise leave it unticked so nothing doubles up.
+    item.replace = seenBefore && !!parsed.verified;
+    item.include = parsed.transactions.length > 0 && item.doc.isStatement && (!seenBefore || item.replace);
+    // A balance-only screenshot is still worth importing: it updates the account's balance.
+    if (parsed.screenshot && !parsed.transactions.length && parsed.closingBalance != null) item.include = true;
     // A payslip: offer to use its take-home pay as that person's monthly income.
     if (item.doc.kind === 'payslip' || (!parsed.transactions.length && parsed.headText)) {
       const slip = parsePayslip(parsed.headText);
@@ -203,7 +223,7 @@ export function pickFiles() {
   const input = document.createElement('input');
   input.type = 'file';
   input.multiple = true;
-  input.accept = '.pdf,.csv,application/pdf,text/csv,text/comma-separated-values';
+  input.accept = '.pdf,.csv,application/pdf,text/csv,text/comma-separated-values,image/*';
   input.onchange = () => addFiles([...input.files]);
   input.click();
 }
@@ -222,6 +242,8 @@ export async function commitItem(item) {
     }
   } else account = state.accounts.find((a) => a.id === item.accountChoice);
   if (p.accountRef && !account.ref) account.ref = p.accountRef;
+  // An account nobody has been assigned to takes the owner named on the statement.
+  if (!account.owner && item.newAccount?.owner && item.newAccount.owner !== state.settings.people[0]?.id) account.owner = item.newAccount.owner;
 
   const importId = 'imp-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
   const rows = item.flip ? p.transactions.map((r) => ({ ...r, amount: -r.amount })) : p.transactions;
@@ -255,11 +277,13 @@ export async function commitItem(item) {
   state.txs = state.txs.filter((t) => !replaced.includes(t)).concat(fresh);
 
   const dates = rows.map((r) => r.date).sort();
-  const lastDate = dates[dates.length - 1];
+  const lastDate = dates[dates.length - 1] || (p.screenshot ? state.derived.today : undefined);
   const closing = p.closingBalance ?? [...rows].reverse().find((r) => r.balance != null)?.balance ?? null;
-  if (closing != null && lastDate && (!account.balanceDate || lastDate >= account.balanceDate)) {
+  // A screenshot shows the balance right now; a statement shows it on its last day.
+  const balDate = p.screenshot ? state.derived.today : lastDate;
+  if (closing != null && balDate && (!account.balanceDate || balDate >= account.balanceDate)) {
     account.balance = account.type === 'credit' ? -Math.abs(closing) : closing;
-    account.balanceDate = lastDate;
+    account.balanceDate = balDate;
   }
   account.lastImport = state.derived.today;
   let periodStart = dates[0], periodEnd = lastDate;
@@ -296,7 +320,7 @@ export async function commitAll() {
 
 /** Read failed files again. */
 export function retryFailed(id) {
-  for (const i of queue.items) if (i.status === 'error' && (!id || i.id === id) && !/Not a PDF or CSV/.test(i.error || '')) { i.status = 'queued'; i.error = null; i.progress = null; }
+  for (const i of queue.items) if (i.status === 'error' && (!id || i.id === id) && !/Not a (PDF or CSV|statement)/.test(i.error || '')) { i.status = 'queued'; i.error = null; i.progress = null; }
   changed();
   drain();
 }

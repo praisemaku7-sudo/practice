@@ -24,9 +24,10 @@ import * as due from './ui/views/due.js';
 import * as goals from './ui/views/goals.js';
 import { initLock, lockActions } from './ui/lock.js';
 import * as sync from './ui/views/sync.js';
+import * as add from './ui/views/add.js';
 
-const VIEWS = { home, budget, afford, insights, accounts, transactions, settings, history, import: importer, checkin, bills, cards, setup, audit, due, goals, sync };
-const TITLES = { home: 'Overview', budget: 'Budget', afford: 'Afford?', insights: 'Insights', accounts: 'Accounts', transactions: 'Transactions', settings: 'Settings', history: 'Monthly record', import: 'Import', checkin: 'Monthly check-in', bills: 'Bills & subscriptions', cards: 'Credit cards', setup: 'Fix accounts', audit: 'Check my numbers', due: 'Due soon', goals: 'Savings goals', sync: 'Bank sync' };
+const VIEWS = { home, budget, afford, insights, accounts, transactions, settings, history, import: importer, checkin, bills, cards, setup, audit, due, goals, sync, add };
+const TITLES = { home: 'Overview', budget: 'Budget', afford: 'Afford?', insights: 'Insights', accounts: 'Accounts', transactions: 'Transactions', settings: 'Settings', history: 'Monthly record', import: 'Import', checkin: 'Monthly check-in', bills: 'Bills & subscriptions', cards: 'Credit cards', setup: 'Fix accounts', audit: 'Check my numbers', due: 'Due soon', goals: 'Savings goals', sync: 'Bank sync', add: 'Quick add' };
 let current = 'home';
 
 function parseHash() {
@@ -59,7 +60,7 @@ async function route() {
   const { view, params } = parseHash();
   const changed = view !== current;
   current = view;
-  VIEWS[view].applyParams?.(params);
+  await VIEWS[view].applyParams?.(params);
   closeSheet();
   // Importing and fixing accounts always work on the whole household, so nothing is hidden.
   if (['import', 'setup'].includes(view) && state.settings.scope !== 'all') {

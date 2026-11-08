@@ -98,6 +98,8 @@ export async function load() {
   if (settings.useAIForPDF === false && !settings.pdfMode) state.settings.pdfMode = 'never';
   state.settings.wishlist = state.settings.wishlist || [];
   if (!state.settings.people?.length) state.settings.people = [...DEFAULT_SETTINGS.people];
+  // Always open on the whole household; a person's view is something you pick each time.
+  if (!state.scopeChosen) state.settings.scope = 'all';
   const scope = state.settings.scope;
   if (scope !== 'all' && scope !== 'joint' && !state.settings.people.some((p) => p.id === scope)) state.settings.scope = 'all';
   // Older transactions stay stored (so changing the date back restores them) but are hidden everywhere.
@@ -159,6 +161,7 @@ export async function saveSettings(patch) {
 
 /** Switch whose money you're looking at. */
 export async function setScope(scope) {
+  state.scopeChosen = true;
   await saveSettings({ scope });
   await load();
 }

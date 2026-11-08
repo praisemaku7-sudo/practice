@@ -6,11 +6,9 @@ async function makeEnv() {
   const kp = await crypto.subtle.generateKey({ name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }, true, ['sign', 'verify']);
   const der = new Uint8Array(await crypto.subtle.exportKey('pkcs8', kp.privateKey));
   const pem = `-----BEGIN PRIVATE KEY-----\n${btoa(String.fromCharCode(...der))}\n-----END PRIVATE KEY-----`;
-  const kv = new Map();
   return {
     pub: kp.publicKey,
-    env: { EB_APP_ID: 'app-123', EB_PRIVATE_KEY: pem, APP_TOKEN: 'secret-token', ALLOWED_ORIGIN: 'https://me.github.io', EB_API: 'https://eb.test',
-      STORE: { get: async (k) => kv.get(k) ?? null, put: async (k, v) => kv.set(k, v), delete: async (k) => kv.delete(k) } },
+    env: { EB_APP_ID: 'app-123', EB_PRIVATE_KEY: pem, APP_TOKEN: 'secret-token', ALLOWED_ORIGIN: 'https://me.github.io', EB_API: 'https://eb.test' },
   };
 }
 
@@ -33,7 +31,7 @@ test('mapping provider transactions and balances', () => {
   assert.equal(pickBalance([{ balance_type: 'CLBD', balance_amount: { amount: '10.00' } }, { balance_type: 'ITAV', balance_amount: { amount: '12.34' } }]), 1234);
 });
 
-test('full flow: token check, banks, connect, callback, accounts, paged transactions', async () => {
+test('full flow (stateless): token check, banks, connect, callback hands the link to the app, paged transactions', async () => {
   const { env } = await makeEnv();
   const calls = [];
   globalThis.fetch = async (u, opts = {}) => {
@@ -62,13 +60,16 @@ test('full flow: token check, banks, connect, callback, accounts, paged transact
   const state = new URL(url).searchParams.get('state');
   const cb = await worker.fetch(new Request(`https://sync.test/callback?code=abc&state=${state}`), env);
   assert.equal(cb.status, 302);
-  assert.equal(cb.headers.get('Location'), 'https://me.github.io/practice/#/sync?connected=1');
-  const sessions = await (await call('/accounts')).json();
-  assert.equal(sessions[0].accounts[0].uid, 'acc-uid-1');
+  const loc = new URL(cb.headers.get('Location'));
+  assert.equal(loc.origin + loc.pathname, 'https://me.github.io/practice/');
+  const link = JSON.parse(Buffer.from(loc.hash.split('link=')[1], 'base64url').toString());
+  assert.equal(link.id, 'sess1');
+  assert.equal(link.accounts[0].uid, 'acc-uid-1');
+  // Tampered state is refused; redirect must be your own app.
+  assert.equal((await worker.fetch(new Request(`https://sync.test/callback?code=abc&state=${state}x`), env)).status, 400);
+  assert.equal((await call('/connect', { method: 'POST', body: JSON.stringify({ bank: 'Monzo', redirect: 'https://evil.example/' }) })).status, 400);
   const tx = await (await call('/transactions?account=acc-uid-1&from=2026-10-01')).json();
   assert.deepEqual(tx.transactions.map((t) => [t.description, t.amount]), [['PRET', -420]], 'pending skipped, both pages read');
   assert.equal(tx.balance, 84210);
   assert.ok(calls.some((c) => c.includes('continuation_key=k2')));
-  // Expired/unknown state is refused.
-  assert.equal((await worker.fetch(new Request(`https://sync.test/callback?code=abc&state=${state}`), env)).status, 400);
 });

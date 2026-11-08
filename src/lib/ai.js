@@ -163,7 +163,7 @@ export async function aiReadStatementText({ apiKey, model, pageTexts, onProgress
 }
 
 /** Scanned statement: send page images, two pages per request, in parallel. */
-export async function aiReadStatementImages({ apiKey, model, images, onProgress }) {
+export async function aiReadStatementImages({ apiKey, model, images, onProgress, screenshot = false, today = new Date().toISOString().slice(0, 10) }) {
   const chunks = [];
   for (let i = 0; i < images.length; i += 2) chunks.push({ from: i + 1, imgs: images.slice(i, i + 2) });
   let done = 0;
@@ -174,7 +174,9 @@ export async function aiReadStatementImages({ apiKey, model, images, onProgress 
       system: STATEMENT_SYSTEM,
       content: [
         ...c.imgs.map((data) => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } })),
-        { type: 'text', text: `These are pages ${c.from}-${c.from + c.imgs.length - 1} of ${images.length} of a bank statement. Extract the transactions.` },
+        { type: 'text', text: screenshot
+          ? `This is a screenshot from a banking or card app, taken on ${today}. Extract every transaction visible (resolve "Today"/"Yesterday"/weekday labels to dates using ${today}). Put the current or available balance shown in closing_balance (for a credit card, the amount owed as a positive number). If only a balance is visible, return an empty tx list with the balance. Set is_statement true for any bank/card app screen.`
+          : `These are pages ${c.from}-${c.from + c.imgs.length - 1} of ${images.length} of a bank statement. Extract the transactions.` },
       ],
       schema: CHUNK_SCHEMA,
     });

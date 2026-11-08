@@ -16,7 +16,6 @@ export function client({ url, token }) {
     health: () => call('/health'),
     banks: (country = 'GB') => call(`/banks?country=${country}`),
     connect: (bank, redirect, country = 'GB') => call('/connect', { method: 'POST', body: JSON.stringify({ bank, country, redirect }) }),
-    sessions: () => call('/accounts'),
     transactions: (uid, from) => call(`/transactions?account=${encodeURIComponent(uid)}${from ? `&from=${from}` : ''}`),
     disconnect: (id) => call(`/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   };

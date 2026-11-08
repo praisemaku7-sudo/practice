@@ -1,0 +1,7 @@
+# Secrets for your sync server. The Cloudflare deploy screen asks for these.
+# EB_APP_ID: your Enable Banking application ID
+EB_APP_ID=
+# EB_PRIVATE_KEY: the full contents of the .pem file Enable Banking gave you
+EB_PRIVATE_KEY=
+# APP_TOKEN: a long random password; paste the same one into the app (Bank sync screen)
+APP_TOKEN=

@@ -49,6 +49,16 @@ export function render() {
     ${state.hiddenCount ? `<p class="sub">${state.hiddenCount} older transactions are hidden, not deleted. Set an earlier month to bring them back.</p>` : ''}
   </div>
   <div class="card">
+    <h3>Auto-log Apple Pay ⚡</h3>
+    <p class="muted">Every time you pay with Apple Pay, the purchase is logged here instantly, so fun money and "Can I afford this?" stay up to date between statements. When the real statement or bank sync arrives it replaces the quick entry; nothing doubles up.</p>
+    <ol class="tips">
+      <li>Open <b>Shortcuts</b> → <b>Automation</b> → <b>+</b> → <b>Transaction</b>.</li>
+      <li>Choose your cards (Wallet cards), tick <b>When I tap</b>, choose <b>Run Immediately</b>, then <b>Next</b>.</li>
+      <li>Add the action <b>Open URLs</b> and paste the link below. Then replace the three words in CAPITALS with the variables <b>Amount</b>, <b>Merchant</b> and <b>Card</b> (tap each word, then pick from "Shortcut Input").</li>
+    </ol>
+    <div class="row gap"><input class="url-box grow" id="add-url" readonly value="${esc(location.origin + location.pathname)}#/add?amount=AMOUNT&merchant=MERCHANT&card=CARD"><button class="btn ghost" data-action="copy-add-url">Copy</button></div>
+  </div>
+  <div class="card">
     <h3>Bill reminders</h3>
     <p class="muted"><b>Calendar (recommended):</b> adds every regular bill to your iPhone Calendar, with an alert the day before. It works even when this app is closed.</p>
     <button class="btn primary full" data-action="due-calendar">📅 Add bills to Calendar</button>
@@ -67,7 +77,9 @@ export function render() {
     <p class="muted">${state.txs.length} transactions · ${state.accounts.length} accounts · ${Object.keys(s.userRules).length} category rules. Stored in this browser only. Back up regularly: iOS can clear website data if you don't open the app for weeks.</p>
     <div class="row gap"><button class="btn ghost grow" data-action="st-export">Export backup</button>
     <label class="btn ghost grow">Restore backup<input type="file" accept="application/json,.json" data-change="st-restore" hidden></label></div>
-    <button class="btn ghost full" data-action="load-demo">Load sample data</button>
+    ${(state.allAccounts || []).some((a) => a.id.startsWith('demo-'))
+      ? '<button class="btn danger full" data-action="remove-demo">Remove sample data</button>'
+      : `<button class="btn ghost full" data-action="load-demo" ${(state.allAccounts || []).length ? 'hidden' : ''}>Load sample data</button>`}
     <button class="btn danger full" data-action="st-wipe">Delete everything</button>
   </div>
   <p class="sub center">Pocket Ledger · runs on your phone · no account, no tracking</p>`;
@@ -80,6 +92,17 @@ async function setTrackFrom(value, rerender) {
 }
 
 export const actions = {
+  'remove-demo': async (_, rerender) => {
+    const all = await db.all('tx');
+    const demoIds = new Set((state.allAccounts || []).filter((a) => a.id.startsWith('demo-')).map((a) => a.id));
+    for (const t of all.filter((x) => demoIds.has(x.accountId))) await db.del('tx', t.id);
+    for (const id of demoIds) await db.del('accounts', id);
+    await load(); await relinkTransfers(); recompute(); rerender(); toast('Sample data removed');
+  },
+  'copy-add-url': async () => {
+    const v = document.getElementById('add-url').value;
+    try { await navigator.clipboard.writeText(v); toast('Link copied'); } catch { document.getElementById('add-url').select(); toast('Select and copy the link'); }
+  },
   'copy-due-url': async () => {
     const v = document.getElementById('due-url').value;
     try { await navigator.clipboard.writeText(v); toast('Link copied'); } catch { document.getElementById('due-url').select(); toast('Select and copy the link'); }
