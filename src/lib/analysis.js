@@ -136,11 +136,6 @@ function summarizeMonthUncached(txs, key) {
   };
 }
 
-/** Whether a month looks fully covered by imported data (so it's fair to compare). */
-export function monthCoverage(txs, key) {
-  const days = new Set(txs.filter((t) => monthKey(t.date) === key).map((t) => t.date.slice(8)));
-  return days.size;
-}
 
 /** Changes vs previous month and vs trailing 3-month average, per category. */
 export function compareMonths(txs, key) {

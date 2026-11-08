@@ -14,7 +14,15 @@ const SUMMARY = new RegExp([
 ].map((p) => `(?:${p})\\b`).join('|'));
 const ANCHORED = new RegExp(`^(?:YOUR |THE |TOTAL |EST\\.? )?(?:${SUMMARY.source})`);
 
+const summaryCache = new Map();
 export function isSummaryLine(description) {
+  const key = String(description || '');
+  let hit = summaryCache.get(key);
+  if (hit === undefined) { if (summaryCache.size > 20000) summaryCache.clear(); hit = summaryTest(key); summaryCache.set(key, hit); }
+  return hit;
+}
+
+function summaryTest(description) {
   let d = String(description || '').toUpperCase().replace(/[’‘`]/g, "'").replace(/\s+/g, ' ').trim();
   // Ignore leading dates ("07 Nov", "07/11/2026") and punctuation.
   d = d.replace(/^((\d{1,2}[ /.-](\d{1,2}|[A-Z]{3,9})([ /.-]\d{2,4})?|\d{4}-\d{2}-\d{2})\s*){1,2}/, '').replace(/^[^A-Z0-9]+/, '');

@@ -60,7 +60,7 @@ export function render() {
       <div class="row between"><input class="name-input" value="${esc(x.name)}" data-input="su-name" data-id="${esc(a.id)}" aria-label="Account name">
         ${suspects.has(a.id) ? '<span class="pill warn">looks like a card</span>' : ''}</div>
       ${detailsLine}${suggestBtn}
-      <div class="sub">${esc(a.bank || '')} · ${counts[a.id] || 0} transactions · statement says ${shown == null ? 'no balance' : `${fmt(shown)}${a.type === 'credit' ? ' owed' : ''}`}${a.balanceDate ? ` on ${prettyDate(a.balanceDate)}` : ''}</div>
+      <div class="sub">${esc(a.bank || '')} · ${counts[a.id] || 0} transaction${(counts[a.id] || 0) === 1 ? "" : "s"} · statement says ${shown == null ? 'no balance' : `${fmt(shown)}${a.type === 'credit' ? ' owed' : ''}`}${a.balanceDate ? ` on ${prettyDate(a.balanceDate)}` : ''}</div>
       <div class="seg three">${TYPES.map(([k, l]) => `<button class="${x.type === k ? 'on' : ''}" data-action="su-type" data-id="${esc(a.id)}" data-type="${k}">${l}</button>`).join('')}</div>
       <label class="field slim"><span>${x.type === 'credit' ? 'Owed today £' : 'Balance today £'}</span>
         <input inputmode="decimal" placeholder="${shown == null ? 'from the bank app' : (shown / 100).toFixed(2)}" value="${esc(x.balance)}" data-input="su-bal" data-id="${esc(a.id)}"></label>
