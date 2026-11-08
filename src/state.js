@@ -1,9 +1,9 @@
 // In-memory app state, loaded from IndexedDB, with derived values recomputed on change.
 import { db } from './lib/db.js';
-import { markTransfers, detectRecurring, detectPayday, monthsPresent } from './lib/analysis.js';
+import { markTransfers, detectRecurring, detectPayday, monthsPresent, clearAnalysisCache } from './lib/analysis.js';
 import { buildBudget } from './lib/budget.js';
 import { monthKey, todayISO, daysBetween } from './lib/dates.js';
-import { DEFAULT_MODEL } from './lib/ai.js';
+import { DEFAULT_MODEL } from './lib/models.js';
 import { categorize } from './lib/categorize.js';
 import { statementCoverage } from './lib/coverage.js';
 import { cardSummary, suspectedCreditCards } from './lib/credit.js';
@@ -56,12 +56,31 @@ export const scopeLabel = () => (state.settings.scope === 'all' ? 'Household' : 
 /** Household member whose name matches a cardholder printed on a statement (words unique to one person). */
 export function personForName(name) {
   if (!name) return null;
-  const hay = ` ${String(name).toUpperCase().replace(/[^A-Z]+/g, ' ')} `;
-  const people = state.settings.people.filter((p) => p.name && p.name !== 'Me');
-  const words = (n) => n.toUpperCase().replace(/[^A-Z ]/g, ' ').split(/\s+/).filter((w) => w.length >= 3);
-  const all = people.flatMap((p) => words(p.name));
-  const hits = people.filter((p) => words(p.name).some((w) => all.filter((v) => v === w).length === 1 && hay.includes(` ${w} `)));
+  const TITLES = ['MR', 'MRS', 'MS', 'MISS', 'DR', 'MX'];
+  const words = (n) => String(n).toUpperCase().replace(/[^A-Z ]/g, ' ').split(/\s+/).filter((w) => w && !TITLES.includes(w));
+  const hay = words(name);
+  if (!hay.length) return null;
+  // Each person's names: what you typed plus names seen on their statements (e.g. a maiden name).
+  const people = state.settings.people.map((p) => ({ id: p.id, names: [p.name, ...(p.aliases || [])].filter((n) => n && n !== 'Me').map(words).filter((w) => w.length) })).filter((p) => p.names.length);
+  // 1) Exact full name.
+  const full = people.find((p) => p.names.some((n) => n.join(' ') === hay.join(' ')));
+  if (full) return full.id;
+  // 2) First name (a shared surname says nothing about whose it is), unique to one person.
+  const firsts = people.map((p) => ({ id: p.id, firsts: new Set(p.names.map((n) => n[0]).filter((w) => w.length >= 3)) }));
+  const hits = firsts.filter((p) => [...p.firsts].some((f) => hay.includes(f) && firsts.filter((o) => o.firsts.has(f)).length === 1));
   return hits.length === 1 ? hits[0].id : null;
+}
+
+/** Every name you and your partner appear under on statements (used to spot transfers between you). */
+export function allPeopleNames() {
+  const full = state.settings.people.flatMap((p) => [p.name, ...(p.aliases || [])]).filter((n) => n && n !== 'Me' && /\s/.test(n.trim()));
+  const variants = full.flatMap((n) => {
+    const w = n.toUpperCase().replace(/[^A-Z ]/g, ' ').split(/\s+/).filter((x) => x.length > 1 && !['MR', 'MRS', 'MS', 'MISS', 'DR'].includes(x));
+    if (w.length < 2) return [];
+    const first = w[0], last = w[w.length - 1];
+    return [`${first} ${last}`, `${last} ${first}`, `${first[0]} ${last}`, `${last} ${first[0]}`];
+  });
+  return [...new Set([...full, ...variants])];
 }
 
 /** Whose spending is this? The cardholder named on the statement, else the account's owner. */
@@ -156,6 +175,7 @@ function effectiveSettings() {
 }
 
 export function recompute() {
+  clearAnalysisCache(); // data may have changed (categories, imports…)
   const today = todayISO();
   state.eff = effectiveSettings();
   const recurring = detectRecurring(state.txs, { today });
@@ -211,7 +231,7 @@ export async function relinkTransfers() {
     }
   }
   const byAcc = Object.fromEntries(allAccounts.map((a) => [a.id, a]));
-  const names = [...(state.settings.ownNames || []), ...state.settings.people.map((p) => p.name).filter((n) => n && /\s/.test(n.trim()))];
+  const names = [...(state.settings.ownNames || []), ...allPeopleNames()];
   markTransfers(all, byAcc, { ownNames: names });
   const changed = all.filter((t) => before.get(t.id) !== t.category + '|' + (t.pairId || '') + '|' + (t.autoTransfer ? 1 : 0));
   if (changed.length) await db.putMany('tx', changed);

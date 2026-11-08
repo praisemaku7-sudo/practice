@@ -79,7 +79,7 @@ const titleCase = (s) => s.toLowerCase().replace(/\b([a-z])/g, (c) => c.toUpperC
  * @param {string} text  statement text (layout-preserving, as from linesToPageTexts)
  * @returns {{ bank, bankFromSort, bankMismatch, sortCode, last4, holder, postcode, product }}
  */
-export function extractDetails(text) {
+export function extractDetails(text, fileName = '') {
   const t = String(text || '');
   const clean = t.replace(NOISE, ' ');
   const lines = clean.split('\n');
@@ -101,8 +101,15 @@ export function extractDetails(text) {
   const near = holderLine >= 0 ? lines.slice(holderLine, holderLine + 8).join('\n') : '';
   const pc = near.match(/\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b/);
   const product = PRODUCTS.find((p) => new RegExp(`\\b${p.replace(/[|]/g, '\\|').replace(/ /g, '\\s+')}\\b`, 'i').test(clean.slice(0, 4000))) || null;
-  const bankText = bankFromText(t);
+  let bankText = bankFromText(t) || bankFromText(fileName.replace(/[_-]+/g, ' '));
   const bankSort = bankFromSortCode(sortCode);
+  // A transaction mentioning another bank ("To Revolut") can appear before the issuer's own name.
+  // If the sort code's bank is also named on the statement, it's that bank's statement.
+  if (bankSort && bankText && bankSort !== bankText && new RegExp(`\\b${bankSort.replace(/ /g, '\\s+')}\\b`, 'i').test(clean)) bankText = bankSort;
+  // A product name tells you the bank too (FlexAccount is Nationwide, Club Lloyds is Lloyds…).
+  const PRODUCT_BANK = { Flex: 'Nationwide', 'Club Lloyds': 'Lloyds', 'Preferred Rewards': 'American Express', 'Platinum Card': 'American Express' };
+  const pb = Object.entries(PRODUCT_BANK).find(([k]) => new RegExp(`\\b${k}`, 'i').test(clean.slice(0, 4000)));
+  if (pb && bankSort === pb[1]) bankText = pb[1];
   return {
     bank: bankText || bankSort || null,
     bankFromSort: bankSort,

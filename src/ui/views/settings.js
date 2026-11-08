@@ -2,7 +2,8 @@ import { state, saveSettings, wipeAll, load, relinkTransfers, recompute, PERSON_
 import { db } from '../../lib/db.js';
 import { esc, toast, confirmSheet, busy } from '../dom.js';
 import { fmt, parsePrice } from '../../lib/money.js';
-import { MODELS, testKey } from '../../lib/ai.js';
+import { MODELS } from '../../lib/models.js';
+const testKey = async (...a) => (await import('../../lib/ai.js')).testKey(...a);
 import { lockSettingsCard } from '../lock.js';
 
 let lockCard = '';

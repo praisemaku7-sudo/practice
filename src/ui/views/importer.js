@@ -1,8 +1,8 @@
 import { state, personName, ownerOf } from '../../state.js';
-import { esc } from '../dom.js';
+import { esc, toast } from '../dom.js';
 import { fmt } from '../../lib/money.js';
 import { prettyDate, monthLabel } from '../../lib/dates.js';
-import { queue, commitAll, clearQueue, pickFiles, busyCount, retryFailed, reimportAllDuplicates, applyPayslip, applySA302 } from '../import.js';
+import { queue, commitAll, clearQueue, pickFiles, busyCount, retryFailed, reimportAllDuplicates, applyPayslip, applySA302, emptyAccounts, removeEmptyAccounts } from '../import.js';
 
 const STATUS = {
   queued: ['Waiting', ''],
@@ -47,12 +47,13 @@ function itemCard(it) {
       ${state.settings.people.length > 1 ? `<label class="field select slim"><span>Whose pay</span><select data-change="imp-slip-owner" data-id="${it.id}">${state.settings.people.map((pp) => `<option value="${pp.id}" ${sl.owner === pp.id ? 'selected' : ''}>${esc(pp.name)}</option>`).join('')}</select></label>` : ''}
       <button class="btn primary full" data-action="imp-payslip" data-id="${it.id}">Use as monthly income</button>`;
   } else if (it.status === 'imported') {
-    body = `<div class="sub">${it.result.added} transaction${it.result.added === 1 ? '' : 's'} → ${esc(it.result.account)}${it.result.replaced ? ` · replaced ${it.result.replaced} saved before` : ''}${it.result.dupes ? ` · ${it.result.dupes} already there` : ''}</div>`;
+    body = `<div class="sub">${it.result.added} transaction${it.result.added === 1 ? '' : 's'} → ${esc(it.result.account)}${it.result.replaced ? ` · replaced ${it.result.replaced} saved before` : ''}${it.result.moved ? ` · moved ${it.result.moved} out of the wrong account` : ''}${it.result.dupes ? ` · ${it.result.dupes} already there` : ''}</div>`;
   } else if (p) {
     const badge = p.verified
       ? `<span class="pill ok">✓ Balances check out</span>`
       : p.method === 'Claude' ? '<span class="pill">Read by Claude</span>' : txs.length ? `<span class="pill warn">Check the amounts</span>` : '';
     body = `
+      ${it.misfiledIn ? `<div class="tip-box">These payments were saved in <b>${esc(it.misfiledIn.name)}</b>, but this is a ${esc(p.bank || 'different')} statement. They'll be moved to the account below.</div>` : ''}
       ${it.doc && !it.doc.isStatement ? `<div class="alert"><b>Not a statement?</b> ${esc(it.doc.reason)} It won't be imported unless you tick Import.</div>` : ''}
       ${(it.prior || it.overlap?.likelyDuplicate) ? `<div class="tip-box">${it.prior ? `Imported before on ${new Date(it.prior.at).toLocaleDateString('en-GB')}.` : `Already saved${ovAcc ? ` in ${esc(ovAcc.name)}` : ''}.`} ${it.include ? 'This read checks out, so it will <b>replace</b> the saved copy (nothing doubles up).' : 'Tick <b>Import</b> to replace the saved copy with this read.'}</div>` : ''}
       ${it.include && it.replace && txs.length ? `<div class="sub warn-text">Will replace the saved transactions for this account from ${prettyDate(dates[0])} to ${prettyDate(dates[dates.length - 1])}.</div>` : ''}
@@ -111,6 +112,7 @@ export function render() {
   return `<h1 class="page-title">Import <small>${done}/${items.length} read</small></h1>
   ${queue.summary ? `<div class="card verdict yes"><div class="verdict-head"><span class="verdict-icon">✓</span><div><div class="verdict-word">${queue.summary.added} transactions added</div><div>from ${queue.summary.files} file${queue.summary.files === 1 ? '' : 's'}${busy ? ` · ${busy} still reading` : ''}</div></div></div>
     ${!busy ? (missing.length ? `<h4>Still missing</h4>${missing.slice(0, 8).map((m) => `<div class="list-row"><span class="bank-badge warn">!</span><div class="grow"><b>${esc(m.accountName)}</b><div class="sub">${esc(monthLabel(m.month))}</div></div></div>`).join('')}` : '<p class="good-note">No statements missing ✓</p>') : ''}
+    ${!busy && emptyAccounts().length ? `<div class="tip-box">${emptyAccounts().length} account${emptyAccounts().length > 1 ? 's are' : ' is'} now empty: ${emptyAccounts().map((a) => esc(a.name)).join(', ')}. Usually leftovers from earlier wrong imports.<button class="btn ghost full" data-action="imp-clean">Remove empty accounts</button></div>` : ''}
     <div class="row gap"><button class="btn ghost grow" data-action="import">Add more</button><a class="btn primary grow" href="#/home" data-action="imp-done">Done</a></div></div>` : ''}
   ${failed.length ? `<div class="card banner bad"><b>${failed.length} file${failed.length > 1 ? 's' : ''} couldn't be read</b><span class="sub">${esc(failed[0].error)}</span><button class="btn primary full" data-action="imp-retry">Retry ${failed.length > 1 ? 'all' : ''}</button></div>` : ''}
   ${dupes.length ? `<div class="card banner"><b>${dupes.length} file${dupes.length > 1 ? 's were' : ' was'} imported before</b><span class="sub">Skipped so nothing doubles up. If those earlier imports came out wrong (before the AI key was added), re-import them: the old transactions for those dates are replaced.</span><button class="btn primary full" data-action="imp-reimport-all">Re-import ${dupes.length} &amp; replace old data</button></div>` : ''}
@@ -138,6 +140,7 @@ export const actions = {
   'imp-preview': (el, rerender) => { const it = find(el); it.showPreview = !it.showPreview; rerender(); },
   'imp-done': () => { clearQueue(); location.hash = '#/home'; },
   'imp-retry': (el, rerender) => { retryFailed(el.dataset.id); rerender(); },
+  'imp-clean': async (_, rerender) => { const n = await removeEmptyAccounts(); rerender(); toast(`Removed ${n} empty account${n === 1 ? '' : 's'}`); },
   'imp-payslip': async (el, rerender) => { await applyPayslip(find(el)); rerender(); },
   'imp-sa302': async (el, rerender) => { await applySA302(find(el)); rerender(); },
   'imp-reimport-all': (_, rerender) => { reimportAllDuplicates(); rerender(); },

@@ -6,7 +6,17 @@ import { parseCSVStatement } from '../lib/parse/csv.js';
 import { parseStatementLines } from '../lib/parse/statementText.js';
 import { linesToPageTexts, detectAccountRef, reconcile } from '../lib/parse/layout.js';
 import { toTransactions, dedupe, guessBank } from '../lib/importer.js';
-import { aiReadStatementText, aiReadStatementImages } from '../lib/ai.js';
+// The Claude library loads only when a file actually needs it.
+const ai = () => import('../lib/ai.js');
+const aiReadStatementImages = async (...a) => (await ai()).aiReadStatementImages(...a);
+
+/** Reads by Claude are cached by file fingerprint: the same file never costs or waits twice. */
+async function cachedAI(hash, run) {
+  if (hash) { const hit = await db.kvGet(`ai:${hash}`, null); if (hit) return { ...hit, cached: true }; }
+  const r = await run();
+  if (hash && r?.transactions) await db.kvSet(`ai:${hash}`, r);
+  return r;
+}
 import { prettyDate, monthKey, daysBetween } from '../lib/dates.js';
 import { merchantKey } from '../lib/categorize.js';
 import { overlapReport, fileHash } from '../lib/coverage.js';
@@ -62,7 +72,7 @@ async function readPdf(item, buf) {
   const pageTexts = res.hasText ? linesToPageTexts(res.lines) : [];
   const text = pageTexts.join('\n');
   // Bank from the statement header (cross-checked with the sort code), product, holder, last 4 digits.
-  const details = extractDetails(text);
+  const details = extractDetails(text, item.name);
   const bank = details.bank || guessBank(text);
   const meta = { headText: text.slice(0, 3000), details, bank, accountType: isCardIssuer(bank) && !/current account/i.test(text) ? 'credit' : guessType(text), accountRef: details.last4 || detectAccountRef(text) };
   const { apiKey, model, pdfMode } = state.settings;
@@ -86,9 +96,9 @@ async function readPdf(item, buf) {
   item.aiReason = !res.hasText ? "it's a scanned PDF" : pdfMode === 'always' ? 'you chose to always check with Claude' : "the balances didn't add up on your phone";
   changed();
   const onProgress = (done, total) => { item.progress = { done, total }; changed(); };
-  const r = res.hasText
-    ? await aiReadStatementText({ apiKey, model, pageTexts, onProgress })
-    : await aiReadStatementImages({ apiKey, model, images: await renderPageImages(buf, { password }), onProgress });
+  const r = await cachedAI(item.hash, async () => (res.hasText
+    ? (await ai()).aiReadStatementText({ apiKey, model, pageTexts, onProgress })
+    : (await ai()).aiReadStatementImages({ apiKey, model, images: await renderPageImages(buf, { password }), onProgress })));
   const check = reconcile({ transactions: r.transactions, closingBalance: r.closingBalance });
   return { ...meta, ...r, bank: r.bank || meta.bank, accountRef: r.accountRef || meta.accountRef, method: 'Claude', verified: check.confident, check };
 }
@@ -119,7 +129,7 @@ async function readFile(item) {
     const text = new TextDecoder().decode(buf);
     const r = parseCSVStatement(text);
     const head = item.name + ' ' + text.slice(0, 600);
-    const details = extractDetails(text.slice(0, 3000) + ' ' + item.name);
+    const details = extractDetails(text.slice(0, 3000), item.name);
     const bank = details.bank || guessBank(head);
     const cardRows = r.transactions.filter((t) => /PAYMENT RECEIVED|THANK YOU|INTEREST CHARGED|MINIMUM PAYMENT/i.test(t.description)).length;
     const type = isCardIssuer(head) || (cardRows && isCardIssuer(bank)) ? 'credit' : guessType(head);
@@ -134,6 +144,25 @@ export function defaultName(p) {
   const base = p.accountName || [p.bank, p.accountType === 'credit' ? 'Card' : p.accountType === 'savings' ? 'Savings' : 'Current'].filter(Boolean).join(' ') || 'Current';
   // Two cards from the same bank need different names: add the last 4 digits.
   return p.accountRef && !base.includes(p.accountRef) ? `${base} ••${p.accountRef}` : base;
+}
+
+/**
+ * Learn names from statements: if you're still called "Me", take the holder's name; if a holder is
+ * clearly one of you under another name (e.g. "Sarah MacPhail" for Sarah Maku), remember it.
+ */
+async function learnHolder(holder) {
+  if (!holder) return;
+  const clean = holder.replace(/^(mr|mrs|ms|miss|dr|mx)\.?\s+/i, '').trim();
+  if (clean.split(/\s+/).length < 2) return;
+  const people = state.settings.people;
+  const pid = personForName(clean);
+  if (pid) {
+    const p = people.find((x) => x.id === pid);
+    const known = [p.name, ...(p.aliases || [])].map((n) => n.toUpperCase());
+    if (!known.includes(clean.toUpperCase())) await saveSettings({ people: people.map((x) => (x.id === pid ? { ...x, aliases: [...(x.aliases || []), clean] } : x)) });
+  } else if (people[0]?.name === 'Me') {
+    await saveSettings({ people: people.map((x, i) => (i === 0 ? { ...x, name: clean } : x)) });
+  }
 }
 
 /** Can this statement belong to this account? Never if both have different account numbers. */
@@ -159,14 +188,11 @@ function guessOwner(item, p) {
   // The account holder printed on the statement is the best evidence.
   const byHolder = personForName(p.details?.holder);
   if (byHolder) return byHolder;
+  // Otherwise a person's FIRST name in the file name or header (e.g. "Sarah - Monzo.csv").
   const hay = ` ${item.name} ${p.headText || ''} `.toUpperCase().replace(/[^A-Z]+/g, ' ');
-  const people = state.settings.people.filter((x) => x.name && x.name !== 'Me');
-  const words = (n) => n.toUpperCase().replace(/[^A-Z ]/g, ' ').split(/\s+/).filter((w) => w.length >= 3);
-  // Only words unique to one person count (a shared surname says nothing about whose it is).
-  const all = people.flatMap((x) => words(x.name));
-  const unique = (w) => all.filter((v) => v === w).length === 1;
-  const scored = people.map((x) => ({ id: x.id, score: words(x.name).filter((w) => unique(w) && hay.includes(` ${w} `)).length })).filter((x) => x.score > 0);
-  return scored.length === 1 ? scored[0].id : state.settings.people[0]?.id;
+  const firsts = state.settings.people.filter((x) => x.name && x.name !== 'Me').map((x) => ({ id: x.id, first: x.name.toUpperCase().replace(/[^A-Z ]/g, ' ').trim().split(/\s+/)[0] })).filter((x) => x.first.length >= 3);
+  const hits = firsts.filter((x) => hay.includes(` ${x.first} `));
+  return hits.length === 1 ? hits[0].id : state.settings.people[0]?.id;
 }
 
 async function processItem(item) {
@@ -183,15 +209,24 @@ async function processItem(item) {
     item.ms = Math.round(performance.now() - t0);
     const withMerchant = parsed.transactions.map((t) => ({ ...t, merchant: merchantKey(t.description) }));
     item.overlap = overlapReport(withMerchant, state.txs);
-    const ovAcc = item.overlap.matchedAccountId && state.accounts.find((a) => a.id === item.overlap.matchedAccountId);
-    const match = ovAcc || matchAccount(parsed);
+    // Where does it go? Card/account number and bank first. An account that merely holds the same
+    // payments is only used if its bank fits: otherwise an earlier misfiled import would repeat forever.
+    const ovAccRaw = item.overlap.matchedAccountId && state.accounts.find((a) => a.id === item.overlap.matchedAccountId);
+    const bankOf = (a) => (a.details?.bank || a.bank || '').toLowerCase();
+    const pBank = (parsed.bank || '').toLowerCase();
+    const typeFits = (a) => !parsed.accountType || a.type === parsed.accountType;
+    const ovAcc = ovAccRaw && (!pBank || !bankOf(ovAccRaw) || bankOf(ovAccRaw) === pBank) && refOk(ovAccRaw, parsed) && typeFits(ovAccRaw) ? ovAccRaw : null;
+    item.misfiledIn = ovAccRaw && !ovAcc ? ovAccRaw : null;
+    const byDetails = parsed.accountRef && state.accounts.find((a) => (a.details?.last4 === parsed.accountRef || a.ref === parsed.accountRef) && (!pBank || !bankOf(a) || bankOf(a) === pBank) && typeFits(a));
+    const match = byDetails || ovAcc || matchAccount(parsed);
     item.accountChoice = match ? match.id : '__new';
     item.newAccount = { name: defaultName(parsed), bank: parsed.bank || '', type: parsed.accountType || 'current', owner: guessOwner(item, parsed) };
     const seenBefore = !!item.prior || item.overlap.likelyDuplicate;
     // Seen before? If this read is verified against the statement's own balances, replace the old
     // copy (it may be an earlier bad read); otherwise leave it unticked so nothing doubles up.
-    item.replace = seenBefore && !!parsed.verified;
-    item.include = parsed.transactions.length > 0 && item.doc.isStatement && (!seenBefore || item.replace);
+    // Seen before (maybe misfiled or read badly the first time): replace the old copy by default.
+    item.replace = seenBefore && parsed.transactions.length > 0;
+    item.include = parsed.transactions.length > 0 && item.doc.isStatement;
     // A balance-only screenshot is still worth importing: it updates the account's balance.
     if (parsed.screenshot && !parsed.transactions.length && parsed.closingBalance != null) item.include = true;
     // An HMRC SA302 tax calculation (self-employed income): offer it as that person's usual income.
@@ -272,6 +307,7 @@ export async function commitItem(item) {
     const generic = /^[A-Za-z&' -]+ (Card|Current|Savings)( ••\d{4})?$/.test(account.name) || /^Current( ••\d{4})?$/.test(account.name);
     if (suggested && account.name !== suggested && (account.autoName || generic || (item.accountChoice === '__new' && item.newAccount?.name === account.name))) { account.name = suggested; account.autoName = true; }
   }
+  await learnHolder(p.details?.holder);
   // Whose account is it? The holder named on the statement decides, unless you've locked the account yourself.
   const holderOwner = personForName(p.details?.holder);
   if (holderOwner && !account.typeLocked) account.owner = holderOwner;
@@ -294,6 +330,15 @@ export async function commitItem(item) {
     state.imports = state.imports.filter((x) => !(item.hash && x.fileHash === item.hash));
   }
   const txs = toTransactions(rows, { accountId: account.id, importId, source: p.method, userRules: state.settings.userRules });
+  // The same payments saved in a DIFFERENT account (an earlier misfiled import) are removed from there.
+  if (item.replace || item.misfiledIn) {
+    const { matches } = matchIncoming(txs, state.txs.filter((t) => t.accountId !== account.id));
+    const stray = [...matches.values()];
+    for (const t of stray) await db.del('tx', t.id);
+    const strayIds = new Set(stray.map((t) => t.id));
+    state.txs = state.txs.filter((t) => !strayIds.has(t.id));
+    item.movedFrom = stray.length;
+  }
   const exact = dedupe(txs, new Set(state.txs.map((t) => t.id)));
   // Also skip payments already saved on this account with a slightly different date or wording.
   const { matches } = matchIncoming(exact.fresh, state.txs, { sameAccountId: account.id });
@@ -328,7 +373,7 @@ export async function commitItem(item) {
   state.imports.push(rec);
   await db.put('imports', rec);
   item.status = 'imported';
-  item.result = { added: fresh.length, dupes: dupes.length, account: account.name, replaced: replacedOld };
+  item.result = { added: fresh.length, dupes: dupes.length, account: account.name, replaced: replacedOld, moved: item.movedFrom || 0 };
   return { added: fresh.length, lastDate };
 }
 
@@ -393,6 +438,24 @@ export async function applySA302(item) {
   item.status = 'imported';
   item.result = { added: 0, dupes: 0, account: 'income', sa302: true };
   changed();
+}
+
+/** Accounts with no transactions left (e.g. after misfiled payments were moved out). */
+export function emptyAccounts() {
+  const used = new Set((state.allTxs || state.txs).map((t) => t.accountId));
+  for (const t of state.txs) used.add(t.accountId);
+  return state.accounts.filter((a) => !used.has(a.id) && !(state.settings.bankSync?.links && Object.values(state.settings.bankSync.links).includes(a.id)));
+}
+
+export async function removeEmptyAccounts() {
+  const gone = emptyAccounts();
+  for (const a of gone) await db.del('accounts', a.id);
+  const ids = new Set(gone.map((a) => a.id));
+  state.accounts = state.accounts.filter((a) => !ids.has(a.id));
+  state.allAccounts = (state.allAccounts || []).filter((a) => !ids.has(a.id));
+  recompute();
+  changed();
+  return gone.length;
 }
 
 export function clearQueue() { queue.items = []; queue.summary = null; changed(); }

@@ -6,7 +6,8 @@ import { canIAfford } from '../../lib/afford.js';
 import { goalPlan, goalInScope } from '../../lib/goals.js';
 import { categorize, merchantKey } from '../../lib/categorize.js';
 import { CATEGORIES, catName } from '../../lib/categories.js';
-import { aiReadPrice } from '../../lib/ai.js';
+// The Claude library is loaded only when a photo needs reading.
+const aiReadPrice = async (...a) => (await import('../../lib/ai.js')).aiReadPrice(...a);
 import { todayISO, prettyDate } from '../../lib/dates.js';
 import { emptyState } from '../common.js';
 

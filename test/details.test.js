@@ -56,3 +56,13 @@ test('holder on the same line as the card number', () => {
   assert.equal(d.holder, 'Sarah MacPhail');
   assert.equal(d.last4, '7777');
 });
+
+test('whose name is it: first names decide, a shared surname does not', async () => {
+  const { state, personForName } = await import('../src/state.js');
+  state.settings.people = [{ id: 'p1', name: 'Me' }, { id: 'p2', name: 'Sarah Maku', aliases: ['Sarah MacPhail'] }];
+  assert.equal(personForName('MR PRAISE MAKU'), null, 'not Sarah just because of "Maku"');
+  assert.equal(personForName('SARAH MACPHAIL'), 'p2');
+  assert.equal(personForName('Mrs S. Maku'), null, 'initial only: not certain');
+  state.settings.people[0].name = 'Praise Maku';
+  assert.equal(personForName('Mr Praise Maku'), 'p1');
+});
