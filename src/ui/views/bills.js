@@ -64,6 +64,7 @@ export function render() {
     <div class="cal"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>${cells.join('')}</div>
     <div class="legend"><span><i class="sw due-sw"></i>Due</span><span><i class="sw paid-sw"></i>Paid</span></div>
   </div>
+  <div class="row gap"><a class="btn ghost grow" href="#/due">Due soon</a><button class="btn primary grow" data-action="due-calendar">📅 Add to Calendar</button></div>
   ${section('Bills', bills)}${section('Subscriptions', subs)}${section('Saving', saving)}${section('Income', income)}`;
 }
 

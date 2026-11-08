@@ -1,38 +1,46 @@
-# Live bank linking (Open Banking): design notes
+# Live bank sync: setup guide
 
-**Status: not built yet.** Pocket Ledger currently imports PDF/CSV statements. This is the plan for adding live, automatic syncing.
+Pocket Ledger can pull transactions straight from your banks with UK **Open Banking**, so you no longer download statements. You approve **read-only** access in each bank's own app (Face ID). Access lasts up to 90 days, then you reconnect with one tap. Nobody ever sees your banking password.
 
-## Why not just give the app my bank logins?
+Two things are needed. Both are under your control:
 
-- Sharing your online banking password with a third party usually breaks your bank's terms, and can weaken your protection if fraud happens.
-- Screen-scraping with stored passwords breaks whenever a bank changes its login or 2FA.
-- UK Open Banking exists to solve this. You approve **read-only** access inside your bank's own app (Face ID), the access is time-limited (re-confirm every 90 days), and you can revoke it at any time. The app never sees your password.
+1. **Enable Banking**: a regulated Open Banking provider. It offers a free *restricted* mode for linking **your own** accounts.
+2. **Your sync server**: a small Cloudflare Worker (free plan). It holds Enable Banking's private key and your bank sessions. These must never sit inside a web app on your phone.
 
-## What's needed
+> ⚠️ Check before you start:
+> - GoCardless Bank Account Data, which most older guides use, stopped taking new sign-ups in 2025.
+> - Enable Banking's free restricted mode is described by third-party projects as working for your own accounts. Confirm in their control panel that **your UK banks** are listed, and read their current terms.
+> - The API calls follow Enable Banking's documented flow (`/aspsps`, `/auth`, `/sessions`, `/accounts/{uid}/transactions`, `/accounts/{uid}/balances`). They were tested against a simulated server, not live, so test with one bank first.
 
-1. **An FCA-regulated aggregator (AISP)**, for example TrueLayer (Data API), GoCardless Bank Account Data, or Yapily. They cover essentially every UK bank and fintech (Monzo, Starling, Revolut, Barclays, Lloyds, HSBC, NatWest, Santander, Nationwide, Amex, and others). Check current pricing and sign-up terms yourself: some offer free personal/dev tiers, others are business-only.
-2. **A tiny server** (for example a Cloudflare Worker or Vercel function). The aggregator gives you a client secret that must not live in a web app. The server:
-   - `POST /link`: creates an auth link for the chosen bank and returns the URL; the phone opens it, and the bank app handles approval
-   - `GET /callback`: swaps the code for tokens and stores them encrypted
-   - `GET /transactions?since=…`: returns new transactions as JSON
+## Step 1: Enable Banking (about 10 minutes)
+1. Sign up at **enablebanking.com** and open the Control Panel.
+2. **Create an application.** Choose *production*, and use it for yourself only.
+3. **Redirect URL:** enter `https://pocket-ledger-sync.<your-subdomain>.workers.dev/callback`. You'll know the exact address after step 2; you can come back and edit it.
+4. Download the **private key** (`.pem`) and note the **application ID**.
+5. Click **Activate by linking accounts** and link each bank account you want to sync (restricted mode only allows accounts linked here).
 
-## How it plugs into this app
-
-The import pipeline already takes `{ date, description, amount (pence), balance }` rows. A sync adapter maps provider JSON into that shape and calls the same `toTransactions → dedupe → relinkTransfers` path as a statement import, so categories, transfer matching, budgets and affordability all work unchanged.
-
-```js
-// src/lib/banks/provider.js (future)
-export async function syncAccount(account) {
-  const res = await fetch(`${SERVER}/transactions?account=${account.providerId}&since=${account.syncedTo}`, { headers: { Authorization: `Bearer ${userToken}` } });
-  const { transactions, balance } = await res.json();
-  return { rows: transactions.map((t) => ({ date: t.date, description: t.description, amount: Math.round(t.amount * 100), balance: null })), balance };
-}
+## Step 2: deploy your sync server (about 10 minutes, on a computer)
+```bash
+cd server
+npm install -g wrangler            # or use npx wrangler …
+wrangler login                     # free Cloudflare account
+wrangler kv namespace create STORE # paste the id into wrangler.toml
+wrangler secret put EB_APP_ID      # your Enable Banking application ID
+wrangler secret put EB_PRIVATE_KEY # paste the whole .pem contents
+wrangler secret put APP_TOKEN      # make up a long random password; the app uses it
+wrangler deploy                    # prints your https://…workers.dev address
 ```
+Make sure `ALLOWED_ORIGIN` in `wrangler.toml` is your app's address (`https://praisemaku7-sudo.github.io`), and that the redirect URL in Enable Banking ends in `/callback` on that Worker address.
 
-## Apple Wallet / FinanceKit
+## Step 3: in the app
+1. **Accounts → Live bank sync**: paste the Worker address and your `APP_TOKEN`, then tap **Save & test**.
+2. Tap **Connect a bank**, pick your bank, approve in your bank's app, and you'll land back in Pocket Ledger.
+3. For each bank account, choose which Pocket Ledger account it **fills** (or + New account), then tap **Sync now**.
+4. After that, the app syncs on its own whenever you open it, at most every 6 hours.
 
-Apple's FinanceKit gives native iOS apps transaction data for accounts in Apple Wallet. Its coverage is limited, and it needs a native Swift app with an Apple entitlement, so it doesn't replace Open Banking for 5 to 8 UK banks. It's worth revisiting only if this becomes a native app.
+Synced transactions go through the same duplicate-safe import as statements, so overlapping with statements you already imported is fine.
 
-## Consolidating to one account
-
-Moving money between banks (payment initiation, PISP) is a separate permission and a heavier regulatory lift. For consolidation, the in-app **Consolidation plan** plus the UK **Current Account Switch Service** (moves all Direct Debits, standing orders and incoming payments in 7 working days, guaranteed) is the safer route.
+## Security notes
+- The provider's private key and your bank sessions live only in your Cloudflare account.
+- The app talks only to your Worker, with your `APP_TOKEN`. Requests without it are refused, and browser calls are only allowed from your app's address.
+- To revoke access, use **Disconnect** in the app, revoke it in your bank's app, or delete the Worker.

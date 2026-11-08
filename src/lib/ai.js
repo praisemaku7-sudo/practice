@@ -95,12 +95,13 @@ const CHUNK_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['d', 't', 'a', 'b'],
+        required: ['d', 't', 'a', 'b', 'h'],
         properties: {
           d: { type: 'string', description: 'date YYYY-MM-DD' },
           t: { type: 'string', description: 'description, as printed' },
           a: { type: 'number', description: 'GBP; negative = money out, positive = money in' },
           b: { type: ['number', 'null'], description: 'running balance if printed on that row' },
+          h: { type: ['string', 'null'], description: 'cardholder name if the statement groups spending by cardholder (e.g. supplementary cards), else null' },
         },
       },
     },
@@ -126,7 +127,7 @@ function mergeChunks(results) {
   const closing = [...results].reverse().map((r) => r.closing_balance).find((v) => v != null);
   const txs = results.flatMap((r) => r.tx)
     .filter((t) => /^\d{4}-\d{2}-\d{2}$/.test(t.d) && t.a)
-    .map((t) => ({ date: t.d, description: t.t, amount: p(t.a), balance: p(t.b) }));
+    .map((t) => ({ date: t.d, description: t.t, amount: p(t.a), balance: p(t.b), ...(t.h ? { cardholder: t.h } : {}) }));
   return {
     isStatement: results.some((r) => r.is_statement !== false),
     documentType: results.map((r) => r.document_type).find(Boolean) || null,

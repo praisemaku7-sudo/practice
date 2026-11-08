@@ -20,9 +20,13 @@ import * as bills from './ui/views/bills.js';
 import * as cards from './ui/views/cards.js';
 import * as setup from './ui/views/setup.js';
 import * as audit from './ui/views/audit.js';
+import * as due from './ui/views/due.js';
+import * as goals from './ui/views/goals.js';
+import { initLock, lockActions } from './ui/lock.js';
+import * as sync from './ui/views/sync.js';
 
-const VIEWS = { home, budget, afford, insights, accounts, transactions, settings, history, import: importer, checkin, bills, cards, setup, audit };
-const TITLES = { home: 'Overview', budget: 'Budget', afford: 'Afford?', insights: 'Insights', accounts: 'Accounts', transactions: 'Transactions', settings: 'Settings', history: 'Monthly record', import: 'Import', checkin: 'Monthly check-in', bills: 'Bills & subscriptions', cards: 'Credit cards', setup: 'Fix accounts', audit: 'Check my numbers' };
+const VIEWS = { home, budget, afford, insights, accounts, transactions, settings, history, import: importer, checkin, bills, cards, setup, audit, due, goals, sync };
+const TITLES = { home: 'Overview', budget: 'Budget', afford: 'Afford?', insights: 'Insights', accounts: 'Accounts', transactions: 'Transactions', settings: 'Settings', history: 'Monthly record', import: 'Import', checkin: 'Monthly check-in', bills: 'Bills & subscriptions', cards: 'Credit cards', setup: 'Fix accounts', audit: 'Check my numbers', due: 'Due soon', goals: 'Savings goals', sync: 'Bank sync' };
 let current = 'home';
 
 function parseHash() {
@@ -46,7 +50,9 @@ async function render() {
   }
   main.dataset.view = current;
   document.title = `${TITLES[current]} · Pocket Ledger`;
-  document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.view === current || (['transactions', 'history', 'checkin', 'bills', 'import', 'cards', 'audit'].includes(current) && a.dataset.view === 'home') || (current === 'setup' && a.dataset.view === 'accounts')));
+  // Which tab is highlighted for pages that aren't tabs themselves.
+  const PARENT = { transactions: 'home', history: 'home', checkin: 'home', bills: 'home', import: 'home', cards: 'home', audit: 'home', due: 'home', goals: 'home', setup: 'accounts', sync: 'accounts' };
+  document.querySelectorAll('.tabbar a').forEach((a) => a.classList.toggle('active', a.dataset.view === (PARENT[current] || current)));
 }
 
 async function route() {
@@ -107,7 +113,7 @@ const globalActions = {
   },
 };
 
-const allActions = Object.assign({}, globalActions, ...Object.values(VIEWS).map((v) => v.actions || {}));
+const allActions = Object.assign({}, globalActions, lockActions, ...Object.values(VIEWS).map((v) => v.actions || {}));
 const allChanges = Object.assign({}, ...Object.values(VIEWS).map((v) => v.changes || {}));
 const allInputs = Object.assign({}, ...Object.values(VIEWS).map((v) => v.inputs || {}));
 
@@ -164,6 +170,7 @@ document.addEventListener('focusout', () => { if (pendingRender) { pendingRender
     $('#main').innerHTML = `<div class="card alert">Storage is unavailable (${e.message}). Private Browsing blocks it. Open in normal Safari.</div>`;
     return;
   }
+  await initLock();
   requestPersistence();
   // One-off: re-run transfer detection on existing data when the rules improve.
   if ((state.settings.junkCleanVersion || 0) < 1) {
@@ -179,6 +186,7 @@ document.addEventListener('focusout', () => { if (pendingRender) { pendingRender
     await saveSettings({ transferRulesVersion: 2 });
   }
   await route();
+  sync.autoSync().then(() => render());
   // Warm up the PDF engine in the background so the first import starts instantly.
   (window.requestIdleCallback || ((f) => setTimeout(f, 1500)))(() => import('./lib/parse/pdf.js'));
   if ('serviceWorker' in navigator && import.meta.env.PROD) {

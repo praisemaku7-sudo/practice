@@ -8,6 +8,7 @@ import { monthKey, addMonths, monthLabel, prettyDate, nextDayOfMonth, daysBetwee
 import { donut, trendBars, progressBar, paceChart } from '../charts.js';
 import { monthSwitcher, catChip, delta, emptyState, hideable } from '../common.js';
 import { checkinStatus } from './checkin.js';
+import { goalPlan } from '../../lib/goals.js';
 
 export function render() {
   const { derived, month } = state;
@@ -100,6 +101,12 @@ export function render() {
     <a class="link small-link" href="#/audit">What's counted here? ›</a>
   </div>
   ${funCard}
+  ${(() => {
+    const gs = (state.settings.goals || []).filter((g) => !g.owner || g.owner === 'all' || state.settings.scope === 'all' || g.owner === state.settings.scope);
+    if (!gs.length) return '';
+    const byId = Object.fromEntries((state.allAccounts || state.accounts).map((a) => [a.id, a]));
+    return `<a class="card goals-mini" href="#/goals"><div class="label">🎯 Goals</div>${gs.slice(0, 3).map((g) => { const p = goalPlan(g, today, byId); return `<div class="goal-line"><span class="ellipsis">${esc(g.icon || '🎯')} ${esc(g.name)}</span><span class="sub">${Math.round(p.progress * 100)}%</span></div>${progressBar(p.progress, { warnAt: 2 })}`; }).join('')}</a>`;
+  })()}
   ${derived.cards.cards.length || derived.suspects.length ? (() => {
     const c = derived.cards;
     return `<a class="card cards-card ${c.monthSpend > 0 ? 'bad' : ''}" href="#/cards">
