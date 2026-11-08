@@ -4,7 +4,7 @@ import { markTransfers, detectRecurring, detectPayday, monthsPresent, clearAnaly
 import { buildBudget } from './lib/budget.js';
 import { monthKey, todayISO, daysBetween } from './lib/dates.js';
 import { DEFAULT_MODEL } from './lib/models.js';
-import { categorize } from './lib/categorize.js';
+import { categorize, merchantKey } from './lib/categorize.js';
 import { statementCoverage } from './lib/coverage.js';
 import { cardSummary, suspectedCreditCards } from './lib/credit.js';
 import { findStoredDuplicates } from './lib/duplicates.js';
@@ -271,3 +271,17 @@ export async function wipeAll() {
 }
 
 export const accountName = (id) => state.accounts.find((a) => a.id === id)?.name ?? 'Unknown account';
+
+/**
+ * Put every payment from a merchant (all months, everyone's accounts) in a category, and remember it
+ * so future imports use it too. Money in and money out are kept apart unless `bothWays`.
+ */
+export async function applyMerchantCategory(merchant, category, { direction = null } = {}) {
+  const all = state.allTxs || state.txs;
+  const targets = all.filter((t) => (t.merchant || merchantKey(t.description)) === merchant && (!direction || (direction === 'out' ? t.amount < 0 : t.amount > 0)));
+  for (const t of targets) { t.category = category; t.userCategory = true; delete t.autoTransfer; delete t.pairId; }
+  await db.putMany('tx', targets);
+  await saveSettings({ userRules: { ...state.settings.userRules, [merchant]: category } });
+  recompute();
+  return targets.length;
+}
