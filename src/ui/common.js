@@ -72,5 +72,6 @@ export function checksBox({ only = null, title = 'Sense checks' } = {}) {
   const icon = { bad: '⚠️', warn: '❓', info: 'ℹ️' };
   return `<div class="card banner"><b>${esc(title)}</b>
     ${all.map((c) => `<div class="list-row"><div class="grow"><div>${icon[c.level]} <b>${esc(c.account.name)}</b>: ${esc(c.title)}</div><div class="sub">${esc(c.detail)}</div>
+      ${c.exclude ? `<div class="chip-grid"><button class="chip" data-action="chk-exclude" data-id="${esc(c.accountId)}">Don't count this account</button><button class="chip" data-action="edit-account" data-id="${esc(c.accountId)}">Edit balance</button></div>` : ''}
       ${c.fix ? `<div class="chip-grid"><button class="chip" data-action="chk-use" data-id="${esc(c.accountId)}">Use the statement's ${fmt(Math.abs(c.fix.amount))}</button></div>` : ''}</div></div>`).join('')}</div>`;
 }

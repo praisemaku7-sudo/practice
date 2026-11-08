@@ -43,7 +43,7 @@ export function accountChecks({ accounts, txs, today }) {
       if (card && now > 5000) out.push({ accountId: a.id, level: 'warn', title: 'Card shows money in credit', detail: `The app works out you're ${gbp(now)} in credit. That's unusual: often a payment counted twice or a missing statement.` });
       if (!card && a.type !== 'savings' && now < -500000) out.push({ accountId: a.id, level: 'warn', title: 'Very overdrawn?', detail: `The app works out ${gbp(now)}. Check the balance on the latest statement.` });
       const turnover = mine.reduce((s, t) => s + Math.abs(t.amount), 0);
-      if (!card && Math.abs(now) > 2000000 && turnover && Math.abs(now) > turnover * 20) out.push({ accountId: a.id, level: 'warn', title: 'Balance looks very high', detail: `${gbp(now)} is far more than ever moves through this account. If that's wrong, edit it.` });
+      if (!card && Math.abs(now) > 2000000 && Math.abs(now) > Math.max(turnover, 1) * 20) out.push({ accountId: a.id, level: 'bad', title: 'Balance looks wrong', detail: `${gbp(now)} is far more than ever moves through this account. If it's an investment, a deposit pot or not yours, don't count it; if the figure was misread, edit it.`, exclude: true });
     }
     const summaryLines = mine.filter((t) => t.fromSummary);
     if (summaryLines.length) out.push({ accountId: a.id, level: 'info', title: 'Interest/fees from the statement summary', detail: `${summaryLines.length} charge${summaryLines.length > 1 ? 's' : ''} (${gbp(summaryLines.reduce((s, t) => s - t.amount, 0))}) added from the summary box, because they weren't listed as transactions.` });

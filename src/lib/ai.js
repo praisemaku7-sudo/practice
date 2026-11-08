@@ -77,8 +77,8 @@ const CHUNK_SCHEMA = {
   additionalProperties: false,
   required: ['is_statement', 'document_type', 'bank', 'account_name', 'account_holder', 'account_type', 'account_last4', 'period_start', 'period_end', 'opening_balance', 'closing_balance', 'tx'],
   properties: {
-    is_statement: { type: 'boolean', description: 'true only for a bank, card or savings account statement' },
-    document_type: { type: 'string', description: 'e.g. bank statement, credit card statement, payslip, receipt, invoice, bill' },
+    is_statement: { type: 'boolean', description: 'true only for a bank, card or savings account statement or banking app screen. false for investment, ISA platform, share dealing and pension statements or apps (Quilter, Hargreaves Lansdown, Vanguard, pensions...)' },
+    document_type: { type: 'string', description: 'e.g. bank statement, credit card statement, investment statement, pension statement, payslip, receipt, invoice, bill' },
     bank: { type: ['string', 'null'] },
     account_name: { type: ['string', 'null'], description: 'product name, e.g. FlexDirect, Club M Saver, Platinum Card. Never a person\'s name' },
     account_holder: { type: ['string', 'null'], description: 'name of the account holder printed on the statement' },

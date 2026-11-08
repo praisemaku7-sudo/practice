@@ -23,8 +23,9 @@ import { overlapReport, fileHash } from '../lib/coverage.js';
 import { matchIncoming } from '../lib/duplicates.js';
 import { looksLikeCreditText, isCardIssuer } from '../lib/credit.js';
 import { cardSummaryFields, applyCardSummary } from '../lib/parse/cardSummary.js';
+import { printedTotals, validateStatement } from '../lib/validate.js';
 import { isSummaryLine } from '../lib/parse/junk.js';
-import { classifyDocument } from '../lib/parse/doctype.js';
+import { classifyDocument, isInvestmentDocument } from '../lib/parse/doctype.js';
 import { parsePayslip } from '../lib/payslip.js';
 import { parseSA302, isSA302 } from '../lib/sa302.js';
 import { extractDetails, suggestAccountName, canonicalBank } from '../lib/parse/details.js';
@@ -82,6 +83,12 @@ async function readPdf(item, buf) {
   const bank = details.bank || guessBank(text);
   const meta = { headText: text.slice(0, 3000), details, bank, accountType: isCardIssuer(bank) && !/current account/i.test(text) ? 'credit' : guessType(text), accountRef: details.last4 || detectAccountRef(text) };
   const { apiKey, model, pdfMode } = state.settings;
+  const printed = res.hasText ? printedTotals(text) : { in: [], out: [] };
+  // Investment and pension statements (Quilter, Hargreaves Lansdown, pensions…) are never bank accounts:
+  // recognised on the phone and skipped, without spending Claude credit.
+  if (res.hasText && isInvestmentDocument(text.slice(0, 20000))) {
+    return { ...meta, headText: text.slice(0, 3000), accountType: 'investment', transactions: [], closingBalance: null, warnings: [], method: 'on-device', verified: false, isStatement: false, documentType: 'investment' };
+  }
   // Tax calculations and payslips are read on the phone; they never need Claude.
   if (res.hasText && (isSA302(text, item.name) || /payslip|pay slip/i.test(item.name) || classifyDocument(text, { transactions: [] }).kind === 'payslip')) {
     return { ...meta, transactions: [], warnings: [], method: 'on-device', verified: false };
@@ -92,7 +99,7 @@ async function readPdf(item, buf) {
     const local = parseStatementLines(res.lines);
     const check = reconcile(local);
     if (check.confident || !canAI) {
-      return { ...meta, ...local, method: 'on-device', verified: check.confident, check };
+      return { ...meta, ...local, printed, method: 'on-device', verified: check.confident, check };
     }
   }
   if (!canAI) {
@@ -121,7 +128,7 @@ async function readPdf(item, buf) {
   }
   const mergedDetails = { ...meta.details, holder: meta.details?.holder || r.holder || null };
   return { ...meta, ...r, details: mergedDetails, bank: meta.bank || r.bank, accountType: meta.accountType === 'credit' || r.accountType === 'credit' ? 'credit' : (r.accountType || meta.accountType),
-    accountRef: meta.accountRef || r.accountRef, method: 'Claude', verified: check.confident, balanceProven, check };
+    accountRef: meta.accountRef || r.accountRef, method: 'Claude', verified: check.confident, balanceProven, check, printed };
 }
 
 const isCsv = (f) => /\.(csv|txt|tsv|ofx|qfx|qif)$/i.test(f.name) || /csv|comma-separated|text\/plain|ofx|qif/.test(f.type);
@@ -242,9 +249,12 @@ async function processItem(item) {
     if (isCardIssuer(parsed.bank || '') && parsed.accountType !== 'savings') parsed.accountType = 'credit';
     item.parsed = parsed;
     // Not a statement (payslip, receipt, invoice, bill...)? Say so and don't import it by default.
-    item.doc = parsed.documentType && parsed.isStatement === false
-      ? { isStatement: false, kind: parsed.documentType, reason: `Claude says this is a ${parsed.documentType}, not a bank or card statement.` }
-      : parsed.headText ? classifyDocument(parsed.headText, parsed) : { isStatement: true };
+    const investDoc = parsed.documentType === 'investment' || /invest|pension|portfolio|\bisa\b|valuation|shares|fund/i.test(parsed.documentType || '') || (parsed.headText && isInvestmentDocument(parsed.headText));
+    item.doc = investDoc
+      ? { isStatement: false, kind: 'investment', reason: (parsed.headText && classifyDocument(parsed.headText).kind === 'investment' ? classifyDocument(parsed.headText).reason : "This is an investment or pension statement. It isn't a bank account, so it's not counted in your spending, income or balances.") }
+      : parsed.documentType && parsed.isStatement === false
+        ? { isStatement: false, kind: parsed.documentType, reason: `Claude says this is a ${parsed.documentType}, not a bank or card statement.` }
+        : parsed.headText ? classifyDocument(parsed.headText, parsed) : { isStatement: true };
     item.ms = Math.round(performance.now() - t0);
     const withMerchant = parsed.transactions.map((t) => ({ ...t, merchant: merchantKey(t.description) }));
     item.overlap = overlapReport(withMerchant, state.txs);
@@ -267,7 +277,7 @@ async function processItem(item) {
     item.replace = seenBefore && parsed.transactions.length > 0;
     item.include = parsed.transactions.length > 0 && item.doc.isStatement;
     // A balance-only screenshot is still worth importing: it updates the account's balance.
-    if (parsed.screenshot && !parsed.transactions.length && parsed.closingBalance != null) item.include = true;
+    if (parsed.screenshot && !parsed.transactions.length && parsed.closingBalance != null && item.doc.isStatement) item.include = true;
     // An HMRC SA302 tax calculation (self-employed income): offer it as that person's usual income.
     const sa = parsed.headText != null && parseSA302(parsed.headText, item.name);
     if (sa) { item.sa302 = { ...sa, owner: guessOwner(item, parsed) }; item.include = false; item.doc = { isStatement: false, kind: 'sa302' }; }
@@ -429,7 +439,8 @@ export async function commitItem(item) {
   if (pe && periodEnd && pe > periodEnd && daysBetween(periodEnd, pe) <= 35) periodEnd = pe;
   await db.put('accounts', account);
   await db.putMany('tx', fresh);
-  const rec = { id: importId, fileName: item.name, fileHash: item.hash, accountId: account.id, at: Date.now(), count: fresh.length, dupes: dupes.length, method: p.method, periodStart, periodEnd };
+  const v = validateStatement({ ...p, accountType: account.type });
+  const rec = { id: importId, fileName: item.name, fileHash: item.hash, accountId: account.id, at: Date.now(), count: fresh.length, dupes: dupes.length, method: p.method, periodStart, periodEnd, validation: { level: v.level, summary: v.summary, checks: v.checks } };
   state.imports.push(rec);
   await db.put('imports', rec);
   item.status = 'imported';

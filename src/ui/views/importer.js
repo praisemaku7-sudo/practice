@@ -1,3 +1,4 @@
+import { validateStatement } from '../../lib/validate.js';
 import { state, personName, ownerOf } from '../../state.js';
 import { esc, toast } from '../dom.js';
 import { fmt } from '../../lib/money.js';
@@ -60,9 +61,9 @@ function itemCard(it) {
   } else if (it.status === 'imported') {
     body = `<div class="sub">${it.result.added} transaction${it.result.added === 1 ? '' : 's'} → ${esc(it.result.account)}${it.result.replaced ? ` · replaced ${it.result.replaced} saved before` : ''}${it.result.moved ? ` · moved ${it.result.moved} out of the wrong account` : ''}${it.result.dupes ? ` · ${it.result.dupes} already there` : ''}</div>`;
   } else if (p) {
-    const badge = p.verified
-      ? `<span class="pill ok">✓ Balances check out</span>`
-      : p.method === 'Claude' ? '<span class="pill">Read by Claude</span>' : txs.length ? `<span class="pill warn">Check the amounts</span>` : '';
+    const v = txs.length || p.screenshot ? validateStatement({ ...p, accountType: it.accountChoice === '__new' ? it.newAccount.type : (state.allAccounts || state.accounts).find((a) => a.id === it.accountChoice)?.type || p.accountType }) : null;
+    const badge = !v ? '' : v.level === 'ok' ? `<span class="pill ok">✓ Balances check out</span>` : v.level === 'fail' ? `<span class="pill warn">Check the amounts</span>` : `<span class="pill">${v.level === 'partial' ? 'Partly checked' : 'Not checkable'}</span>`;
+    const checksHtml = v && it.doc?.isStatement !== false ? `<details class="checks ${v.level}" ${v.level === 'fail' ? 'open' : ''}><summary>${v.level === 'ok' ? '✅' : v.level === 'fail' ? '⚠️' : 'ℹ️'} ${esc(v.summary)}</summary>${v.checks.map((c) => `<div class="check-line ${c.ok === true ? 'ok' : c.ok === false ? 'bad' : ''}">${c.ok === true ? '✓' : c.ok === false ? '✗' : '–'} ${esc(c.text.replace(/ ?✓/g, ''))}</div>`).join('')}</details>` : '';
     body = `
       ${it.misfiledIn ? `<div class="tip-box">These payments were saved in <b>${esc(it.misfiledIn.name)}</b>, but this is a ${esc(p.bank || 'different')} statement. They'll be moved to the account below.</div>` : ''}
       ${it.doc && !it.doc.isStatement ? `<div class="alert"><b>Not a statement?</b> ${esc(it.doc.reason)} It won't be imported unless you tick Import.</div>` : ''}
@@ -71,6 +72,7 @@ function itemCard(it) {
       ${!it.prior && it.overlap?.partialOverlap ? `<div class="tip-box">${it.overlap.matched} overlap an earlier statement. Only ${it.overlap.total - it.overlap.matched} new will be added.</div>` : ''}
       ${p.details?.bankMismatch ? `<div class="alert">The sort code ${esc(p.details.sortCode)} belongs to <b>${esc(p.details.bankFromSort)}</b>, but the statement says <b>${esc(p.details.bank)}</b>. Check this is the right file and account.</div>` : ''}
       ${p.details && (p.details.holder || p.details.sortCode || p.details.product) ? `<div class="details-line">🏦 ${esc([p.details.bank, p.details.product].filter(Boolean).join(' · '))}${p.details.sortCode ? ` · ${esc(p.details.sortCode)}${p.details.bankFromSort ? (p.details.bankMismatch ? ' ⚠︎' : ' ✓') : ''}` : ''}${p.details.last4 ? ` · ••${esc(p.details.last4)}` : ''}${p.details.holder ? ` · 👤 ${esc(p.details.holder)}` : ''}</div>` : ''}
+      ${checksHtml}
       ${(p.warnings || []).map((w) => `<div class="sub warn-text">• ${esc(w)}</div>`).join('')}
       ${p.screenshot && p.closingBalance != null ? `<div class="tip-box">📸 Balance shown: <b>${fmt(Math.abs(p.closingBalance))}</b>${p.accountType === 'credit' ? ' owed' : ''}. It will update the account you choose.</div>` : ''}
       ${!txs.length && p.screenshot ? `<label class="field select slim grow"><select data-change="imp-acc" data-id="${it.id}">${state.accounts.map((a) => `<option value="${esc(a.id)}" ${it.accountChoice === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}<option value="__new" ${it.accountChoice === '__new' ? 'selected' : ''}>+ New: ${esc(it.newAccount.name)}</option></select></label>` : ''}
