@@ -582,3 +582,19 @@ body.is-locked #main, body.is-locked .tabbar, body.is-locked .topbar { visibilit
 .plan-grid .field, #main [id^="pl-"] { min-width: 0; }
 .plan-grid .field, .card .field.slim:has(> input[id^="pl-"]) { display: grid; gap: 4px; }
 .plan-grid .field input, .plan-grid .field select, .field input[id^="pl-"] { width: 100%; min-width: 0; }
+
+/* ───────────── Everything fits the screen ─────────────
+   Long names (e.g. "American Express Preferred Rewards Gold ••1009") wrap instead of pushing the
+   page wider, and grid/flex children may shrink below their text width. Amounts stay on one line. */
+.main, .card, .sheet-panel { overflow-wrap: anywhere; }
+.main > *, .row > *, .list-row > *, .audit-row > *, .stat-grid > *, .plan-table > *, .pt-row > *, .seg > *, .goal > *, .chip-grid > * { min-width: 0; }
+.list-row .grow b, .list-row .grow > div, .row.between > b { white-space: normal; }
+.list-row > b, .bal b, .list-row > .bal { white-space: nowrap; flex: none; }
+.field > span { white-space: normal; flex: 0 1 auto; max-width: 58%; line-height: 1.25; }
+.chip { max-width: 100%; white-space: normal; text-align: left; }
+.plan-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.seg button { overflow-wrap: anywhere; }
+.sheet-panel { max-width: 100vw; box-sizing: border-box; }
+.details-line { overflow-wrap: anywhere; }
+.card > *, .sheet-panel > * { min-width: 0; }
+.field select { max-width: 100%; text-overflow: ellipsis; }

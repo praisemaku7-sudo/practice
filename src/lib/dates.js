@@ -78,10 +78,22 @@ export function addMonths(key, n) {
   return `${Math.floor(t / 12)}-${pad((t % 12) + 1)}`;
 }
 
+// Date labels are formatted thousands of times per screen, and Intl formatting is slow:
+// reuse one formatter each and remember every label already made.
+const FMT_LONG = new Intl.DateTimeFormat('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+const FMT_SHORT = new Intl.DateTimeFormat('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' });
+const FMT_DAY = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+const labelCache = new Map();
+function cached(key, make) {
+  let v = labelCache.get(key);
+  if (v === undefined) { if (labelCache.size > 5000) labelCache.clear(); v = make(); labelCache.set(key, v); }
+  return v;
+}
+
 export function monthLabel(key, { short = false } = {}) {
-  const [y, m] = key.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('en-GB', {
-    month: short ? 'short' : 'long', year: short ? '2-digit' : 'numeric', timeZone: 'UTC',
+  return cached((short ? 's' : 'l') + key, () => {
+    const [y, m] = key.split('-').map(Number);
+    return (short ? FMT_SHORT : FMT_LONG).format(new Date(Date.UTC(y, m - 1, 1)));
   });
 }
 
@@ -104,7 +116,7 @@ export function todayISO(now = new Date()) {
 }
 
 export function prettyDate(isoDate) {
-  return new Date(isoDate + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+  return cached('d' + isoDate, () => FMT_DAY.format(new Date(isoDate + 'T00:00:00Z')));
 }
 
 /** Next date (>= from) that falls on day-of-month `day`, clamped to month length. */
