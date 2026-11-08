@@ -57,6 +57,7 @@ export function render() {
   return `
   <h1 class="page-title">Budget <small>${esc(monthLabel(key))}</small></h1>
   <a class="card setup-cta" href="#/plan"><div><b>🏠 Future planning</b><div class="sub">${state.settings.mortgage?.principal || state.settings.mortgage?.price ? `Mortgage from ${esc(monthLabel(state.settings.mortgage.startMonth))}: see your months ahead` : 'Add your mortgage (amount, rate, start date) and see how your months will look'}</div></div><span class="banner-go">›</span></a>
+  <a class="link small-link" href="#/categories">📊 Category breakdown &amp; sort out "Other" ›</a>
   <div class="card">
     <div class="row between"><span class="label">Monthly income</span>
       <button class="link" data-action="edit-income">${fmt(budget.income, { whole: true })} ${budget.incomeIsEstimate ? '<small class="pill">estimated</small>' : incomeSource()} ✎</button></div>

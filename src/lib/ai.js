@@ -244,3 +244,49 @@ export async function testKey(apiKey, model = DEFAULT_MODEL) {
     return true;
   } catch (e) { throw friendlyError(e); }
 }
+
+/**
+ * Categorise merchants, searching the web for ones Claude doesn't recognise (small local shops,
+ * company names on statements). Only merchant names, an example statement line, money in/out and a
+ * typical amount are sent. Returns [{merchant, category, business, confidence}].
+ */
+export async function aiCategorizeMerchants({ apiKey, model = DEFAULT_MODEL, merchants, current = {} }) {
+  return limited(async () => {
+    const c = client(apiKey);
+    const cats = CATEGORIES.filter((x) => x.id !== 'transfer' && x.id !== 'excluded').map((x) => `${x.id} (${x.name})`).join(', ');
+    const save = {
+      name: 'save_categories',
+      description: 'Save the category for every merchant in the list. Call this exactly once, at the end, with one entry per merchant.',
+      strict: true,
+      input_schema: {
+        type: 'object', additionalProperties: false, required: ['results'],
+        properties: { results: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['merchant', 'category', 'business', 'confidence'],
+          properties: {
+            merchant: { type: 'string', description: 'exactly as given' },
+            category: { type: 'string', enum: CAT_IDS.filter((id) => id !== 'transfer' && id !== 'excluded') },
+            business: { type: 'string', description: 'what the business is, in a few words, e.g. "Butcher in Kirkwall" or "Energy supplier"' },
+            confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+          } } } },
+      },
+    };
+    const list = merchants.map((m, i) => `${i + 1}. ${m.merchant} | statement: "${m.sample}" | ${m.direction} | typical £${m.typical} | ${m.count}×${current[m.merchant] ? ` | currently: ${current[m.merchant]}` : ''}`).join('\n');
+    const messages = [{ role: 'user', content: `These are merchants from a UK household's bank statements. For each, decide the best spending category from: ${cats}.\n\nUse web search only for names you don't recognise (local shops, limited companies, abbreviations). Card-reader prefixes like SQ *, SUMUP *, ZETTLE_, PAYPAL * hide the real shop name after them. Rent paid to letting agents is housing; energy, water, council tax, phone and broadband are bills; supermarkets and food shops are groceries. If "currently" is given, say whether it is right by returning the correct category.\n\n${list}\n\nWhen you're done, call save_categories once with every merchant.` }];
+    for (let turn = 0; turn < 6; turn++) {
+      let msg;
+      try {
+        msg = await c.messages.stream({
+          model, max_tokens: 16000, output_config: { effort: 'medium' }, messages,
+          tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 10, user_location: { type: 'approximate', country: 'GB' } }, save],
+        }).finalMessage();
+      } catch (err) { throw friendlyError(err); }
+      if (msg.stop_reason === 'refusal') throw new Error('Claude declined this request.');
+      const call = msg.content.find((b) => b.type === 'tool_use' && b.name === 'save_categories');
+      if (call) return Array.isArray(call.input?.results) ? call.input.results : [];
+      messages.push({ role: 'assistant', content: msg.content });
+      // A long search pauses the turn: send it back unchanged and the server carries on.
+      if (msg.stop_reason === 'pause_turn') continue;
+      messages.push({ role: 'user', content: 'Please call save_categories now with every merchant.' });
+    }
+    throw new Error("Claude didn't return the categories. Try again with fewer merchants.");
+  });
+}
