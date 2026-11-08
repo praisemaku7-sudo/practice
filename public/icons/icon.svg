@@ -1,20 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#23a06f"/><stop offset="1" stop-color="#0b4a33"/></linearGradient>
-    <linearGradient id="coin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd978"/><stop offset="1" stop-color="#e9a93a"/></linearGradient>
-    <linearGradient id="pocket" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#dff3e8"/></linearGradient>
+    <linearGradient id="fBg" x1="0" y1="0" x2="0.4" y2="1"><stop offset="0" stop-color="#f7fffb"/><stop offset="1" stop-color="#cff4e3"/></linearGradient>
+    <linearGradient id="f1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#bbf7d0"/><stop offset="1" stop-color="#86efac"/></linearGradient>
+    <linearGradient id="f2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5eead4"/><stop offset="1" stop-color="#2dd4a4"/></linearGradient>
+    <linearGradient id="f3" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#22c55e"/><stop offset="1" stop-color="#059669"/></linearGradient>
   </defs>
-  <rect width="1024" height="1024" rx="230" fill="url(#bg)"/>
-  
-  <!-- coin dropping into the pocket -->
-  <circle cx="618" cy="298" r="104" fill="url(#coin)"/>
-  <circle cx="618" cy="298" r="76" fill="none" stroke="#c98a22" stroke-width="14" opacity="0.55"/>
-  <!-- pocket -->
-  <path d="M252 352 H772 V578 C772 728 652 820 512 820 C372 820 252 728 252 578 Z" fill="url(#pocket)"/>
-  <path d="M252 352 H772 V420 H252 Z" fill="#c7ead7"/>
-  <path d="M300 456 V578 C300 700 398 772 512 772 C626 772 724 700 724 578 V456" fill="none" stroke="#1d7a55" stroke-width="10" stroke-dasharray="26 20" stroke-linecap="round" opacity="0.35"/>
-  <!-- rising bars -->
-  <rect x="392" y="574" width="64" height="120" rx="18" fill="#1d7a55" opacity="0.55"/>
-  <rect x="480" y="516" width="64" height="178" rx="18" fill="#1d7a55" opacity="0.78"/>
-  <rect x="568" y="452" width="64" height="242" rx="18" fill="#1d7a55"/>
+  <rect width="1024" height="1024" rx="230" fill="url(#fBg)"/>
+  <rect x="242" y="560" width="148" height="224" rx="74" fill="url(#f1)"/>
+  <rect x="438" y="420" width="148" height="364" rx="74" fill="url(#f2)"/>
+  <rect x="634" y="240" width="148" height="544" rx="74" fill="url(#f3)"/>
 </svg>
