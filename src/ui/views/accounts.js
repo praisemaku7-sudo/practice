@@ -7,6 +7,7 @@ import { prettyDate, monthLabel } from '../../lib/dates.js';
 import { canonicalBank } from '../../lib/parse/details.js';
 import { catChip, emptyState } from '../common.js';
 
+const SHORT_TYPE = { current: 'Current', savings: 'Savings', credit: 'Card', investment: 'Investment' };
 const TYPE_LABEL = { current: 'Current / debit', savings: 'Savings', credit: 'Credit card', investment: 'Investment / pension (not counted)' };
 
 export function render() {
@@ -38,7 +39,7 @@ export function render() {
     ${state.accounts.map((a) => `<button class="list-row tap" data-action="edit-account" data-id="${esc(a.id)}">
       <span class="bank-badge" style="${state.settings.people.length > 1 ? `box-shadow: inset 0 -3px 0 ${state.settings.people.find((p) => p.id === ownerOf(a))?.color || 'var(--muted)'}` : ''}">${a.type === 'credit' ? '💳' : esc((a.bank || a.name).slice(0, 2).toUpperCase())}</span>
       <div class="grow"><div>${esc(a.name)} ${a.id === mainId ? '<small class="pill">main</small>' : ''}</div>
-      <div class="sub">${state.settings.people.length > 1 ? `<b>${esc(personName(ownerOf(a)))}</b> · ` : ''}${a.typeLocked ? '🔒 ' : ''}${[a.bank, TYPE_LABEL[a.type] || a.type].filter(Boolean).map(esc).join(' · ')} · ${counts[a.id] || 0} transaction${(counts[a.id] || 0) === 1 ? "" : "s"}${a.lastImport ? ' · updated ' + prettyDate(a.lastImport) : ''}</div></div>
+      <div class="sub one-line">${state.settings.people.length > 1 ? `<b>${esc(personName(ownerOf(a)).split(' ')[0])}</b> · ` : ''}${a.typeLocked ? '🔒 ' : ''}${[a.bank, SHORT_TYPE[a.type] || a.type].filter(Boolean).map(esc).join(' · ')} · ${counts[a.id] || 0} tx</div></div>
       <div class="bal"><b class="${a.balance < 0 ? 'neg' : ''}">${a.balance != null ? (a.type === 'credit' ? `${fmt(Math.max(0, -a.balance))} owed` : fmt(a.balance)) : a.balanceUnverified ? `<span class="muted">${fmt(Math.abs(a.balanceUnverified.amount))}?</span>` : '—'}</b>${a.balanceUnverified && a.balance == null ? '<small class="sub warn-text">unverified</small>' : ''}${a.balanceDate ? `<small class="sub">${a.balanceDate === state.derived.today ? 'today' : 'on ' + prettyDate(a.balanceDate)}</small>` : ''}</div></button>`).join('')}
     ${(state.excludedAccounts || []).length ? `<h4 class="muted">Not counted</h4>${state.excludedAccounts.map((a) => `<button class="list-row tap muted" data-action="edit-account" data-id="${esc(a.id)}"><span class="bank-badge">⏸</span><div class="grow"><div>${esc(a.name)}</div><div class="sub">${esc([a.bank, TYPE_LABEL[a.type] || a.type].filter(Boolean).join(' · '))} · left out of all totals · tap to change</div></div><div class="bal"><b>${a.balance != null ? fmt(Math.abs(a.balance)) : '—'}</b></div></button>`).join('')}` : ''}
     <div class="row gap"><button class="btn primary grow" data-action="import">Import</button><button class="btn ghost grow" data-action="go" data-to="transactions">Transactions</button><a class="btn ghost grow" href="#/cards">💳 Cards</a></div>

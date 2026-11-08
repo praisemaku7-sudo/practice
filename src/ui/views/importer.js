@@ -82,8 +82,8 @@ function itemCard(it) {
           ${state.accounts.map((a) => `<option value="${esc(a.id)}" ${it.accountChoice === a.id ? 'selected' : ''}>${esc(a.name)}${a.type === 'credit' ? ' 💳' : ''}${state.settings.people.length > 1 ? ` · ${esc(personName(ownerOf(a)))}` : ''}</option>`).join('')}
           <option value="__new" ${it.accountChoice === '__new' ? 'selected' : ''}>+ New: ${esc(it.newAccount.name)}</option></select></label>
       </div>
-      ${it.accountChoice === '__new' ? `<div class="row gap wrap-sm">
-        <label class="field slim grow"><input value="${esc(it.newAccount.name)}" placeholder="Account name" data-input="imp-name" data-id="${it.id}"></label>
+      ${it.accountChoice === '__new' ? `<div class="imp-new">
+        <label class="field slim imp-new-name"><span>Name</span><input value="${esc(it.newAccount.name)}" placeholder="Account name" data-input="imp-name" data-id="${it.id}"></label>
         <label class="field select slim"><select data-change="imp-type" data-id="${it.id}">
           ${['current', 'credit', 'savings'].map((t) => `<option value="${t}" ${it.newAccount.type === t ? 'selected' : ''}>${{ current: 'Current', credit: 'Credit card', savings: 'Savings' }[t]}</option>`).join('')}</select></label>
         ${state.settings.people.length > 1 ? `<label class="field select slim"><select data-change="imp-owner" data-id="${it.id}">${[...state.settings.people.map((pp) => [pp.id, pp.name]), ['joint', 'Joint']].map(([id, n]) => `<option value="${id}" ${it.newAccount.owner === id ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label>` : ''}</div>` : ''}

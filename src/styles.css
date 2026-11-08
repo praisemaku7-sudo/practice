@@ -354,7 +354,7 @@ a { color: var(--accent); }
 .cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; text-align: center; }
 .cal > span:not(.cal-cell) { font-size: 11px; color: var(--muted); font-weight: 700; padding-bottom: 2px; }
 .cal-cell { aspect-ratio: 1; min-width: 0; overflow: hidden; border-radius: 9px; display: grid; align-content: center; justify-items: center; background: var(--track); font-size: 12px; }
-.cal-cell.empty { background: none; }
+.cal-cell.cal-blank { background: none; }
 .cal-cell i { font-style: normal; font-weight: 600; }
 .cal-cell small { font-size: 8.5px; font-weight: 700; letter-spacing: -.3px; white-space: nowrap; }
 .cal-cell.due { background: var(--warn-soft); color: var(--warn); }
@@ -620,3 +620,29 @@ body.is-locked #main, body.is-locked .tabbar, body.is-locked .topbar { visibilit
 .sug.high { background: var(--accent-soft); }
 .sug .cat-dot { width: 22px; height: 22px; font-size: 12px; display: inline-grid; vertical-align: middle; }
 .cat-select { flex: 1; min-width: 0; border: 0; border-radius: 12px; background: var(--track); padding: 11px 12px; font-size: 15px; color: var(--ink); }
+
+/* iPhones zoom into any text box or dropdown with text under 16px, and stay zoomed (sideways
+   scrolling). Every form control is at least 16px. */
+input, select, textarea, .field.slim input, .field.slim select, .filters select, .cat-select, .url-box { font-size: 16px; }
+
+/* New account on an import card: name on its own line, type and owner side by side, equal sizes. */
+.imp-new { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 8px; }
+.imp-new .imp-new-name { grid-column: 1 / -1; }
+.imp-new .field { margin: 4px 0; }
+.imp-new .field select, .imp-new .field input { width: 100%; }
+/* Boxes in a row never squash to nothing. */
+.row > .field { min-width: 96px; }
+.imp-new > .field:last-child:nth-child(2) { grid-column: 1 / -1; }
+
+/* Buttons, chips and labels never break mid-word ("Transacti / ons"); rows of buttons wrap instead. */
+.btn, .chip, .pill, .status, .seg button, .tabbar a, .scope-btn, .icon-btn { overflow-wrap: normal; word-break: normal; }
+.row.gap { flex-wrap: wrap; }
+.row.gap > .btn { flex: 1 1 auto; white-space: nowrap; }
+/* One-line summaries keep every row in a list the same height. */
+.one-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.list-row .grow > div:first-child { overflow: hidden; text-overflow: ellipsis; }
+
+/* Long file names: at most two lines on an import card. */
+.imp-card > .row > b { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; white-space: normal; }
+/* Smallest phones: logo only in the header so the buttons fit on one line. */
+@media (max-width: 370px) { .brand-name { display: none; } }
