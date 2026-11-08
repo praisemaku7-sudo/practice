@@ -40,10 +40,11 @@ export function render() {
 }
 
 function renderReport(r) {
-  const sec = (title, items) => (items?.length ? `<h4>${title}</h4><ul>${items.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : '');
+  const list = (v) => (Array.isArray(v) ? v : v ? [v] : []);
+  const sec = (title, items) => (list(items).length ? `<h4>${title}</h4><ul>${list(items).map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : '');
   return `<p class="report-headline">${esc(r.headline)}</p>
     ${sec('What changed', r.what_changed)}${sec('Wins', r.wins)}${sec('Concerns', r.concerns)}
-    ${r.actions?.length ? `<h4>Do this next month</h4><ol class="actions">${r.actions.map((a) => `<li><b>${esc(a.title)}</b>${a.monthly_saving_gbp > 0 ? ` <span class="pill save">~£${Math.round(a.monthly_saving_gbp)}/mo</span>` : ''}<div class="sub">${esc(a.detail)}</div></li>`).join('')}</ol>` : ''}
+    ${list(r.actions).length ? `<h4>Do this next month</h4><ol class="actions">${list(r.actions).map((a) => `<li><b>${esc(a.title)}</b>${a.monthly_saving_gbp > 0 ? ` <span class="pill save">~£${Math.round(a.monthly_saving_gbp)}/mo</span>` : ''}<div class="sub">${esc(a.detail)}</div></li>`).join('')}</ol>` : ''}
     ${r.next_month_focus ? `<div class="focus">🎯 ${esc(r.next_month_focus)}</div>` : ''}`;
 }
 

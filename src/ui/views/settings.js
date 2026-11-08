@@ -158,7 +158,19 @@ export const actions = {
     toast(`Tracking from ${new Date(v + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })}`);
   },
   'st-from-all': async (_, rerender) => { await setTrackFrom(null, rerender); toast('Using all history'); },
-  'st-save-key': async () => { await saveSettings({ apiKey: document.getElementById('st-key').value.trim() }); toast('Key saved'); },
+  // Saving always checks the key first, so a typo or a key with no credit shows up now, not mid-import.
+  'st-save-key': async (_, rerender) => {
+    const key = document.getElementById('st-key').value.trim();
+    if (!key) { await saveSettings({ apiKey: '' }); rerender(); return toast('Key removed'); }
+    if (!/^sk-ant-/.test(key)) return toast('That doesn\'t look like a Claude API key (they start with sk-ant-). Copy it again from console.anthropic.com → API keys.', { error: true });
+    const done = busy('Checking key…');
+    try { await testKey(key, state.settings.model); done(); await saveSettings({ apiKey: key }); rerender(); toast('Key works and is saved ✓'); }
+    catch (e) {
+      done();
+      if (/reach|online/i.test(e.message)) { await saveSettings({ apiKey: key }); rerender(); return toast('Saved, but couldn\'t check it: you seem to be offline.'); }
+      toast(e.message, { error: true });
+    }
+  },
   'st-test': async () => {
     const key = document.getElementById('st-key').value.trim();
     if (!key) return toast('Paste a key first', { error: true });
@@ -172,7 +184,8 @@ export const actions = {
     await saveSettings({ bufferPence: v }); toast(`Keeping ${fmt(v, { whole: true })} cushion`);
   },
   'st-export': async () => {
-    const data = { app: 'pocket-ledger', version: 1, exportedAt: new Date().toISOString(), txs: state.txs, accounts: state.accounts, imports: state.imports, checks: state.checks, settings: { ...state.settings, apiKey: '' } };
+    const data = { app: 'pocket-ledger', version: 1, exportedAt: new Date().toISOString(), txs: state.allTxs || state.txs, accounts: state.allAccounts || state.accounts, imports: state.imports, checks: state.checks, settings: { ...state.settings, apiKey: '', scope: 'all' } };
+    // Everything, whoever's view you're on and including months before tracking starts. The API key is never in the file.
     const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
     const name = `pocket-ledger-backup-${state.derived.today}.json`;
     const file = new File([blob], name, { type: 'application/json' });
