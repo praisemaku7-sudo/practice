@@ -28,7 +28,7 @@ function itemCard(it) {
     body = `<div class="pbar ${it.status === 'ai' ? '' : 'indeterminate'}"><span style="width:${pct ?? 35}%"></span></div>
       <div class="sub">${it.status === 'ai' ? `Claude is reading it because ${esc(it.aiReason || 'it needs checking')}${it.progress?.total > 1 ? ` · part ${it.progress.done}/${it.progress.total}` : ''}. If your account's limit is reached it waits and retries automatically.` : it.status === 'queued' ? 'Waiting for a free slot' : 'Reading on your phone'}</div>`;
   } else if (it.status === 'error') {
-    body = `<div class="alert">${esc(it.error)}</div>${/Not a (PDF or CSV|statement)/.test(it.error) ? '' : `<button class="btn ghost full" data-action="imp-retry" data-id="${it.id}">Retry</button>`}`;
+    body = `<div class="alert">${esc(it.error)}</div>${/Not a (PDF or CSV|statement)|Spreadsheet files/.test(it.error) ? '' : `<button class="btn ghost full" data-action="imp-retry" data-id="${it.id}">Retry</button>`}`;
   } else if (it.status === 'ready' && (it.payslipManual || it.sa302Manual)) {
     const kind = it.payslipManual ? 'payslip' : 'sa302';
     const owner = (it.payslipManual || it.sa302Manual).owner;
@@ -74,7 +74,7 @@ function itemCard(it) {
       ${(p.warnings || []).map((w) => `<div class="sub warn-text">• ${esc(w)}</div>`).join('')}
       ${p.screenshot && p.closingBalance != null ? `<div class="tip-box">📸 Balance shown: <b>${fmt(Math.abs(p.closingBalance))}</b>${p.accountType === 'credit' ? ' owed' : ''}. It will update the account you choose.</div>` : ''}
       ${!txs.length && p.screenshot ? `<label class="field select slim grow"><select data-change="imp-acc" data-id="${it.id}">${state.accounts.map((a) => `<option value="${esc(a.id)}" ${it.accountChoice === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}<option value="__new" ${it.accountChoice === '__new' ? 'selected' : ''}>+ New: ${esc(it.newAccount.name)}</option></select></label>` : ''}
-      ${txs.length ? `<div class="imp-stats"><b>${txs.length}</b> transactions · ${prettyDate(dates[0])}–${prettyDate(dates[dates.length - 1])} · <span class="pos">${fmt(inSum, { whole: true })} in</span> · ${fmt(outSum, { whole: true })} out</div>
+      ${txs.length ? `<div class="imp-stats"><b>${txs.length}</b> transaction${txs.length === 1 ? "" : "s"} · ${prettyDate(dates[0])}–${prettyDate(dates[dates.length - 1])} · <span class="pos">${fmt(inSum, { whole: true })} in</span> · ${fmt(outSum, { whole: true })} out</div>
       <div class="row gap wrap-sm">
         <label class="field select slim grow"><select data-change="imp-acc" data-id="${it.id}">
           ${state.accounts.map((a) => `<option value="${esc(a.id)}" ${it.accountChoice === a.id ? 'selected' : ''}>${esc(a.name)}${a.type === 'credit' ? ' 💳' : ''}${state.settings.people.length > 1 ? ` · ${esc(personName(ownerOf(a)))}` : ''}</option>`).join('')}
@@ -106,7 +106,7 @@ export function render() {
     <div class="card empty">
       <div class="empty-art">📥</div>
       <h2>Add your statements</h2>
-      <p class="muted">Pick every PDF or CSV at once, all banks and all months. They're read at the same time, checked against the printed balances, and duplicates are caught.</p>
+      <p class="muted">Pick everything at once: PDF statements, CSV/OFX/QIF exports and screenshots from any bank or card app, all months. They're read at the same time, checked against the printed balances, and duplicates are caught.</p>
       <button class="btn primary" data-action="import">Choose files</button>
     </div>
     ${tips()}`;
@@ -115,7 +115,7 @@ export function render() {
   const ready = items.filter((i) => i.status === 'ready' && i.include);
   const txCount = ready.reduce((a, i) => a + i.parsed.transactions.length - (i.replace ? 0 : (i.overlap?.matched || 0)), 0);
   const done = items.filter((i) => ['ready', 'imported', 'skipped', 'error'].includes(i.status)).length;
-  const failed = items.filter((i) => i.status === 'error' && !/Not a (PDF or CSV|statement)/.test(i.error || ''));
+  const failed = items.filter((i) => i.status === 'error' && !/Not a (PDF or CSV|statement)|Spreadsheet files/.test(i.error || ''));
   const dupes = items.filter((i) => i.status === 'ready' && !i.include && i.parsed?.transactions.length && (i.prior || i.overlap?.likelyDuplicate));
   const missing = state.derived.coverage.missing;
   const order = { error: 0, ready: 1, ai: 2, reading: 3, queued: 4, imported: 5, skipped: 6 };

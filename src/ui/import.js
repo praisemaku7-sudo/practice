@@ -2,7 +2,7 @@
 // and only calls Claude when the on-device read can't be verified against the balances.
 import { state, recompute, relinkTransfers, ownerOf } from '../state.js';
 import { db } from '../lib/db.js';
-import { parseCSVStatement } from '../lib/parse/csv.js';
+import { parseTextStatement, decodeText } from '../lib/parse/formats.js';
 import { parseStatementLines } from '../lib/parse/statementText.js';
 import { linesToPageTexts, detectAccountRef, reconcile } from '../lib/parse/layout.js';
 import { toTransactions, dedupe, guessBank } from '../lib/importer.js';
@@ -42,7 +42,12 @@ const pdfLib = () => import('../lib/parse/pdf.js');
 
 function guessType(text) {
   if (/credit card|card statement/i.test(text) || looksLikeCreditText(text)) return 'credit';
-  return /\bsaver\b|savings|\bisa\b/i.test(text) ? 'savings' : 'current';
+  // Only the statement's header says what the account is: a "Round up to Chase Saver" row doesn't.
+  const lines = String(text).split('\n');
+  const tableAt = lines.findIndex((l) => /\bdate\b/i.test(l) && /\b(balance|amount|paid|money|in|out)\b/i.test(l));
+  const head = (tableAt > 0 ? lines.slice(0, tableAt) : lines.slice(0, 12)).join('\n');
+  if (/current account|personal account|everyday|classic|flex|club lloyds|joint account|select account/i.test(head)) return 'current';
+  return /\bsaver\b|savings|\bisa\b|easy access|fixed rate bond/i.test(head) ? 'savings' : 'current';
 }
 
 function applyTrackFrom(parsed) {
@@ -119,7 +124,8 @@ async function readPdf(item, buf) {
     accountRef: meta.accountRef || r.accountRef, method: 'Claude', verified: check.confident, balanceProven, check };
 }
 
-const isCsv = (f) => /\.(csv|txt)$/i.test(f.name) || /csv|comma-separated|text\/plain/.test(f.type);
+const isCsv = (f) => /\.(csv|txt|tsv|ofx|qfx|qif)$/i.test(f.name) || /csv|comma-separated|text\/plain|ofx|qif/.test(f.type);
+const isSpreadsheet = (f) => /\.(xlsx?|numbers|ods)$/i.test(f.name) || /spreadsheet|excel/.test(f.type);
 
 const isImage = (f) => /^image\//.test(f.type) || /\.(png|jpe?g|heic|webp)$/i.test(f.name);
 
@@ -136,20 +142,29 @@ async function readScreenshot(item) {
 
 async function readFile(item) {
   if (isImage(item.file)) return readScreenshot(item);
-  if (!isPdf(item.file) && !isCsv(item.file)) throw new Error('Not a statement, CSV or screenshot, so it was skipped.');
+  if (isSpreadsheet(item.file)) throw new Error('Spreadsheet files can\'t be read yet. In your bank\'s app or website, download the statement as CSV (or PDF) instead.');
+  if (!isPdf(item.file) && !isCsv(item.file)) throw new Error('Not a statement, CSV, OFX/QIF or screenshot, so it was skipped.');
   const buf = await item.file.arrayBuffer();
   try { item.hash = await fileHash(buf); } catch { item.hash = null; }
   const prior = item.hash && state.imports.find((i) => i.fileHash === item.hash);
   if (prior) item.prior = prior;
   if (!isPdf(item.file)) {
-    const text = new TextDecoder().decode(buf);
-    const r = parseCSVStatement(text);
+    const text = decodeText(buf);
+    let r = parseTextStatement(text, item.name);
+    const { apiKey, model } = state.settings;
+    // A layout none of the readers know: let Claude read the text, then check it adds up.
+    if (!r.transactions.length && apiKey && text.trim().length > 40) {
+      item.status = 'ai'; item.aiReason = 'the file layout isn\'t one the phone knows'; changed();
+      const pageTexts = text.match(/[\s\S]{1,12000}(?:\n|$)/g) || [text];
+      const read = await cachedAI(item.hash, async () => (await ai()).aiReadStatementText({ apiKey, model, pageTexts, onProgress: (done, total) => { item.progress = { done, total }; changed(); } }));
+      r = { ...read, format: 'Claude' };
+    }
     const head = item.name + ' ' + text.slice(0, 600);
     const details = extractDetails(text.slice(0, 3000), item.name);
     const bank = details.bank || guessBank(head);
     const cardRows = r.transactions.filter((t) => /PAYMENT RECEIVED|THANK YOU|INTEREST CHARGED|MINIMUM PAYMENT/i.test(t.description)).length;
     const type = isCardIssuer(head) || (cardRows && isCardIssuer(bank)) ? 'credit' : guessType(head);
-    return { ...r, headText: head, details, bank, accountType: type, accountRef: details.last4 || detectAccountRef(head), method: 'CSV', verified: reconcile(r).confident };
+    return { ...r, headText: head, details, bank, accountType: r.accountType || type, accountRef: details.last4 || r.accountRef || detectAccountRef(head), method: r.format || 'CSV', verified: reconcile(r).confident };
   }
   return readPdf(item, buf);
 }
@@ -309,7 +324,7 @@ export function pickFiles() {
   const input = document.createElement('input');
   input.type = 'file';
   input.multiple = true;
-  input.accept = '.pdf,.csv,application/pdf,text/csv,text/comma-separated-values,image/*';
+  input.accept = '.pdf,.csv,.txt,.tsv,.ofx,.qfx,.qif,application/pdf,text/csv,text/plain,text/comma-separated-values,image/*';
   input.onchange = () => addFiles([...input.files]);
   input.click();
 }
@@ -442,7 +457,7 @@ export async function commitAll() {
 
 /** Read failed files again. */
 export function retryFailed(id) {
-  for (const i of queue.items) if (i.status === 'error' && (!id || i.id === id) && !/Not a (PDF or CSV|statement)/.test(i.error || '')) { i.status = 'queued'; i.error = null; i.progress = null; }
+  for (const i of queue.items) if (i.status === 'error' && (!id || i.id === id) && !/Not a (PDF or CSV|statement)|Spreadsheet files/.test(i.error || '')) { i.status = 'queued'; i.error = null; i.progress = null; }
   changed();
   drain();
 }
