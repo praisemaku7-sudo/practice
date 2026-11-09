@@ -277,6 +277,19 @@ document.addEventListener('focusout', () => { if (pendingRender) { pendingRender
     await relinkTransfers();
     await saveSettings({ transferRulesVersion: 8 });
   }
+  if (state.txs.length && (state.settings.transferRulesVersion || 1) < 9) {
+    // Improved rules (e.g. "SAINSBURYS"): re-sort anything still in Other that you haven't chosen yourself.
+    const all9 = await db.all('tx');
+    const fixed9 = [];
+    for (const t of all9) {
+      if (t.category !== 'other' || t.userCategory) continue;
+      const c = categorize(t.description, t.amount, state.settings.userRules);
+      if (c !== 'other') { t.category = c; fixed9.push(t); }
+    }
+    if (fixed9.length) { await db.putMany('tx', fixed9); setTimeout(() => toast(`${fixed9.length} payments moved out of Other into proper categories`), 1500); }
+    await relinkTransfers();
+    await saveSettings({ transferRulesVersion: 9 });
+  }
   await route();
   sync.autoSync().then(() => render());
   // Warm up the PDF engine in the background so the first import starts instantly.
