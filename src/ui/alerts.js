@@ -44,10 +44,22 @@ export function buildAlerts() {
   return out.filter((a) => hiddenB['alert:' + a.id] !== String(a.sig));
 }
 
+const ICONS = {
+  bounce: '<path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4M12 17h.01"/>',
+  track: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r=".6"/>',
+  missing: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
+  dups: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
+  off: '<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/>',
+  cards: '<rect x="3" y="5.5" width="18" height="13" rx="2.5"/><path d="M3 10h18M7 15h3"/>',
+  checkin: '<circle cx="12" cy="12" r="8.5"/><path d="m8.5 12.2 2.4 2.4 4.6-4.8"/>',
+  rises: '<path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
+};
+const icon = (id) => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[id] || ICONS.off}</svg>`;
+
 /** Row of small badges for the Overview. */
 export function alertStrip(list = buildAlerts()) {
-  if (!list.length) return '<div class="alert-strip ok"><span class="as-ok">✓ Nothing needs your attention</span></div>';
-  return `<div class="alert-strip" role="list">${list.map((a) => `<button class="as-item ${a.tone}" role="listitem" data-action="alert-open" data-id="${a.id}" aria-label="${esc(a.title)}"><span class="as-ic">${a.icon}<b class="as-badge">${a.count > 99 ? '99+' : a.count}</b></span><small>${esc(a.label)}</small></button>`).join('')}</div>`;
+  if (!list.length) return '';
+  return `<div class="alert-strip" role="list">${list.map((a) => `<button class="as-item ${a.tone}" role="listitem" data-action="alert-open" data-id="${a.id}" aria-label="${esc(a.title)}"><span class="as-ic">${icon(a.id)}<b class="as-badge">${a.count > 99 ? '99+' : a.count}</b></span><small>${esc(a.label)}</small></button>`).join('')}</div>`;
 }
 
 /** Update the 🔔 count in the top bar. */
@@ -64,7 +76,7 @@ function listSheet(focus) {
   const list = buildAlerts();
   openSheet(`<h2>Notifications</h2>
     ${list.length ? list.map((a) => `<div class="act-item alert-item ${a.tone} ${a.id === focus ? 'focus' : ''}" id="alert-${a.id}">
-      <div class="row between"><span class="as-ic small">${a.icon}</span><b class="grow">${esc(a.title)}</b></div>
+      <div class="row between"><span class="as-ic small ${a.tone}">${icon(a.id)}</span><b class="grow">${esc(a.title)}</b></div>
       <div class="sub">${esc(a.detail)}</div>
       <div class="row gap wrap"><a class="chip sel" href="${esc(a.href)}">${esc(a.go)} ›</a><button class="chip" data-action="alert-hide" data-id="${a.id}" data-sig="${esc(String(a.sig))}">Dismiss</button></div></div>`).join('')
     : '<p class="muted">✓ Nothing needs your attention right now.</p>'}
