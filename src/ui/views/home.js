@@ -78,26 +78,20 @@ export function render() {
   return `
   ${monthSwitcher(month, months)}
   ${alertStrip()}
-  <nav class="quick-row" aria-label="Shortcuts"><a class="qchip" href="#/insights">✨ AI review</a><a class="qchip" href="#/bills">📅 Calendar</a><a class="qchip" href="#/track">📈 On track</a><a class="qchip" href="#/budget">🎯 Budget</a><a class="qchip" href="#/afford">❓ Afford?</a><a class="qchip" href="#/transactions">🧾 Transactions</a></nav>
   <div class="card hero feature">
     <div class="hero-row">
       <div><button class="explain" data-action="explain" data-what="spent"><div class="label">Spent ⓘ</div><div class="big">${fmt(s.spend, { whole: true })}</div></button>
         ${cmp.hasPrev ? (isCurrent
           ? `<div class="sub">${delta(paceDelta)} vs this point in ${esc(monthLabel(addMonths(month, -1), { short: true }))}</div>`
           : `<div class="sub">${delta(s.spend - cmp.prev.spend)} vs ${esc(monthLabel(addMonths(month, -1), { short: true }))}</div>`) : ''}</div>
-      <div class="hero-side">
-        <button class="explain" data-action="explain" data-what="in"><span class="label">In ⓘ</span> <b class="pos">${fmt(s.income, { whole: true })}</b></button>
-        <button class="explain" data-action="explain" data-what="saved"><span class="label">Saved ⓘ</span> <b>${fmt(s.saved, { whole: true })}</b></button>
-        <button class="explain" data-action="explain" data-what="left"><span class="label">Left over ⓘ</span> <b class="${s.net < 0 ? 'neg' : 'pos'}">${fmt(s.net, { whole: true, sign: true })}</b></button>
-      </div>
     </div>
     ${totalBudget ? `${progressBar(s.spend / totalBudget)}<div class="sub">${fmt(s.spend, { whole: true })} of ${fmt(totalBudget, { whole: true })} monthly budget</div>` : ''}
     ${cmp.hasPrev ? `<div class="pace-wrap tap-chart" data-action="dash-pace" role="button" tabindex="0" aria-label="Spending day by day: tap for the numbers">${paceChart(curDaily, prevDaily, daysSoFar)}
       <div class="pace-legend"><span><i class="sw cur"></i>${esc(monthLabel(month, { short: true }))}</span><span><i class="sw prev"></i>${esc(monthLabel(addMonths(month, -1), { short: true }))}</span>
-      <b class="${paceDelta > 0 ? 'neg' : 'pos'}">${paceDelta > 0 ? '▲' : '▼'} ${fmt(Math.abs(paceDelta), { whole: true })} vs same point last month</b></div><div class="tap-hint">Tap the chart for day-by-day numbers ›</div></div>` : ''}
-    <a class="link small-link" href="#/audit">What's counted here? ›</a>
+      <span class="pace-more">Day by day ›</span></div></div>` : ''}
   </div>
   <section class="card dash">${dashboard()}</section>
+  <nav class="quick-row" style="margin-top:-2px" aria-label="Shortcuts"><a class="qchip" href="#/insights">✨ AI review</a><a class="qchip" href="#/bills">📅 Calendar</a><a class="qchip" href="#/track">📈 On track</a><a class="qchip" href="#/budget">🎯 Budget</a><a class="qchip" href="#/afford">❓ Afford?</a><a class="qchip" href="#/transactions">🧾 Transactions</a></nav>
   ${(() => {
     const gs = (state.settings.goals || []).filter((g) => !g.owner || g.owner === 'all' || state.settings.scope === 'all' || g.owner === state.settings.scope);
     if (!gs.length) return '';

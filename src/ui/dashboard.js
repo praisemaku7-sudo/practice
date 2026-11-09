@@ -51,7 +51,23 @@ const METRICS = {
   top: { label: 'Biggest category', icon: '🏷️', good: 'low', value: (m) => topCat(m)?.[1] || 0, rows: (m) => { const c = topCat(m)?.[0]; return inMonth(m).filter((t) => t.category === c); }, sub: (m) => (topCat(m) ? catName(topCat(m)[0]) : ''), explain: 'The category you spent most on this month.', links: [['#/categories', 'Categories']] },
   balance: { label: 'In current accounts', icon: '🏦', good: 'high', current: true, value: () => state.accounts.filter((a) => a.type === 'current' && a.balance != null).reduce((x, a) => x + a.balance, 0), rows: () => [], sub: () => (state.derived.staleBalance ? 'from older statements' : 'latest statements'), list: () => state.accounts.filter((a) => a.type === 'current' && a.balance != null).map((a) => ({ name: a.name, amount: a.balance, sub: a.balanceDate ? `as of ${prettyDate(a.balanceDate)}` : '' })), explain: 'Latest balances from your imported current-account statements.', links: [['#/accounts', 'Accounts'], ['#/audit', 'Check my numbers']] },
 };
-const DEFAULT_TILES = ['spent', 'income', 'net', 'forecast', 'fun', 'bills', 'rate', 'daily', 'subs', 'cards', 'top', 'balance'];
+const DEFAULT_TILES = ['forecast', 'income', 'net', 'fun', 'bills', 'rate', 'daily', 'subs', 'cards', 'top', 'balance', 'spent'];
+// Line icons (24×24, stroke) so tiles match the rest of the app.
+const TILE_ICONS = {
+  spent: '<path d="M4 7h16v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M8 7V5a4 4 0 0 1 8 0v2"/>',
+  income: '<path d="M12 3v14M6 11l6 6 6-6"/><path d="M4 21h16"/>',
+  net: '<path d="M12 4v16M5 8h14M7 8l-3 6a3 3 0 0 0 6 0zM17 8l-3 6a3 3 0 0 0 6 0z"/>',
+  rate: '<path d="M19 5 5 19"/><circle cx="7" cy="7" r="2.5"/><circle cx="17" cy="17" r="2.5"/>',
+  daily: '<rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M4 10h16M9 3v4M15 3v4"/>',
+  fun: '<path d="M12 21s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 5.6-7 10-7 10z"/>',
+  forecast: '<path d="M3 17l5-5 4 3 6-7"/><path d="M14 8h4v4"/><path d="M3 21h18" stroke-dasharray="2 3"/>',
+  bills: '<path d="M7 3h10v18l-2.5-1.5L12 21l-2.5-1.5L7 21z"/><path d="M10 8h4M10 12h4"/>',
+  subs: '<path d="M4 12a8 8 0 0 1 13.7-5.7L20 8"/><path d="M20 4v4h-4"/><path d="M20 12a8 8 0 0 1-13.7 5.7L4 16"/><path d="M4 20v-4h4"/>',
+  cards: '<rect x="3" y="5.5" width="18" height="13" rx="2.5"/><path d="M3 10h18M7 15h3"/>',
+  top: '<path d="M4 4h8l8 8-8 8-8-8z"/><circle cx="8.5" cy="8.5" r="1.3"/>',
+  balance: '<path d="M3 10 12 4l9 6M5 10v8M10 10v8M14 10v8M19 10v8M3 20h18"/>',
+};
+const tIcon = (id) => `<svg viewBox="0 0 24 24" aria-hidden="true">${TILE_ICONS[id] || ''}</svg>`;
 
 function topCat(m) { return Object.entries(sum(m).byCat || {}).sort((a, b) => b[1] - a[1])[0]; }
 function upcoming() {
@@ -63,7 +79,7 @@ function upcoming() {
 // ---------- Preferences (per phone) ----------
 const PREF = 'pl-dash';
 function prefs() {
-  try { const p = JSON.parse(localStorage.getItem(PREF) || '{}'); return { tiles: p.tiles || DEFAULT_TILES, big: p.big || ['spent'] }; } catch { return { tiles: DEFAULT_TILES, big: ['spent'] }; }
+  try { const p = JSON.parse(localStorage.getItem(PREF) || '{}'); return { tiles: p.tiles || DEFAULT_TILES, big: p.big || ['forecast'] }; } catch { return { tiles: DEFAULT_TILES, big: ['forecast'] }; }
 }
 function savePrefs(p) { try { localStorage.setItem(PREF, JSON.stringify(p)); } catch { /* not remembered */ } }
 
@@ -91,7 +107,7 @@ export function dashboard() {
     const big = p.big.includes(d.id);
     const series = d.current ? [] : ms.map((m) => d.value(m));
     return `<div class="dash-tile ${big ? 'big' : ''}" data-action="dash-open" data-id="${d.id}" role="button" tabindex="0" aria-label="${esc(d.label)}: ${esc(show(d, v))}. Tap for details">
-      <div class="dt-top"><span class="dt-ic" aria-hidden="true">${d.icon}</span><span class="dt-label">${esc(d.label)}</span>
+      <div class="dt-top"><span class="dt-ic" aria-hidden="true">${tIcon(d.id)}</span><span class="dt-label">${esc(d.label)}</span>
         <button class="dt-size" data-action="dash-size" data-id="${d.id}" aria-label="${big ? 'Make smaller' : 'Make bigger'}">${big ? '⤡' : '⤢'}</button></div>
       <div class="dt-val ${tone(d, v)}">${esc(show(d, v))}</div>
       <div class="dt-sub">${diff != null && diff !== 0 ? `<span class="${better ? 'pos' : 'neg'}">${diff > 0 ? '▲' : '▼'} ${d.pct ? `${Math.abs(Math.round(diff * 10) / 10)} pts` : fmt(Math.abs(diff), { whole: true })}</span> vs ${esc(monthLabel(prevM, { short: true }).split(' ')[0])}` : esc(d.sub ? d.sub(state.month) : '')}</div>
@@ -148,7 +164,7 @@ function metricSheet(id, sel = state.month) {
   for (const t of rows) if (t.amount < 0) byCat[t.category] = (byCat[t.category] || 0) - t.amount;
   const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]).slice(0, 8);
   const catTotal = cats.reduce((a, [, x]) => a + x, 0) || 1;
-  openSheet(`<h2>${d.icon} ${esc(d.label)}</h2>
+  openSheet(`<h2><span class="dt-ic big">${tIcon(id)}</span> ${esc(d.label)}</h2>
     <div class="sheet-big ${tone(d, v)}">${esc(show(d, v))}<small> ${esc(d.current ? 'now' : monthLabel(sel))}</small></div>
     <p class="muted">${esc(d.explain)}</p>
     ${pts.length > 1 ? `<div id="dash-chart">${barChart(pts, { id, signed: pts.some((p) => p.value < 0), pct: d.pct, sel })}</div><p class="sub">Tap a month to see its transactions.</p>
@@ -219,7 +235,7 @@ function editSheet() {
   const p = prefs();
   const order = [...p.tiles, ...Object.keys(METRICS).filter((k) => !p.tiles.includes(k))];
   openSheet(`<h2>Customise dashboard</h2><p class="muted">Tick what to show; use the arrows to reorder. ⤢ on a tile makes it bigger.</p>
-    <div id="dash-edit">${order.map((id, i) => `<div class="dash-edit-row"><label class="check-row grow"><input type="checkbox" data-id="${id}" ${p.tiles.includes(id) ? 'checked' : ''}><span>${METRICS[id].icon} ${esc(METRICS[id].label)}${METRICS[id].current ? ' <small class="muted">this month only</small>' : ''}</span></label>
+    <div id="dash-edit">${order.map((id, i) => `<div class="dash-edit-row"><label class="check-row grow"><input type="checkbox" data-id="${id}" ${p.tiles.includes(id) ? 'checked' : ''}><span><span class="dt-ic">${tIcon(id)}</span> ${esc(METRICS[id].label)}${METRICS[id].current ? ' <small class="muted">this month only</small>' : ''}</span></label>
       <button class="icon-btn small" data-action="dash-move" data-id="${id}" data-dir="-1" aria-label="Move up" ${i === 0 ? 'disabled' : ''}>↑</button><button class="icon-btn small" data-action="dash-move" data-id="${id}" data-dir="1" aria-label="Move down" ${i === order.length - 1 ? 'disabled' : ''}>↓</button></div>`).join('')}</div>
     <button class="btn primary full" data-action="dash-save">Save</button>
     <button class="btn ghost full" data-action="dash-reset">Reset to default</button>`, { wide: true });
