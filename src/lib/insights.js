@@ -1,7 +1,7 @@
 import { catName, catKind } from './categories.js';
 import { compareMonths } from './analysis.js';
 import { fmt } from './money.js';
-import { monthLabel } from './dates.js';
+import { monthLabel, monthKey, todayISO, daysInMonth } from './dates.js';
 
 const STREAMING = /NETFLIX|DISNEY|PRIME VIDEO|AMAZON PRIME|NOW ?TV|PARAMOUNT|APPLE ?TV|DAZN|SKY|YOUTUBE/;
 const MUSIC = /SPOTIFY|APPLE MUSIC|YOUTUBE MUSIC|TIDAL|DEEZER|AMAZON MUSIC/;
@@ -10,7 +10,7 @@ const MUSIC = /SPOTIFY|APPLE MUSIC|YOUTUBE MUSIC|TIDAL|DEEZER|AMAZON MUSIC/;
  * Rule-based monthly suggestions. Each: { id, level: 'good'|'warn'|'alert'|'tip', title, detail, saving }
  * saving = estimated pence per month you could free up.
  */
-export function buildInsights({ txs, key, budget, recurring, accounts = [] }) {
+export function buildInsights({ txs, key, budget, recurring, accounts = [], today = todayISO() }) {
   const creditIds = new Set(accounts.filter((a) => a.type === 'credit').map((a) => a.id));
   const out = [];
   const cmp = compareMonths(txs, key);
@@ -27,14 +27,20 @@ export function buildInsights({ txs, key, budget, recurring, accounts = [] }) {
     else out.push({ id: 'rate', level: 'warn', title: `Savings rate ${Math.round(rate * 100)}% (target 20%)`, detail: `Getting to 20% means cutting about ${fmt(Math.round(cur.income * 0.2 - kept), { whole: true })} a month.`, saving: Math.round(cur.income * 0.2 - kept) });
   }
 
-  // Categories that grew vs the 3-month average
+  // Categories that grew or fell vs the 3-month average. A month still in progress is compared at
+  // today's pace (9 days of groceries against a whole month's average would always look "down").
   if (cmp.trailingMonths > 0) {
+    const live = key === monthKey(today);
+    const frac = live ? Math.max(0.05, +today.slice(8) / daysInMonth(key)) : 1;
     for (const r of cmp.rows) {
-      if (catKind(r.category) === 'fixed') continue;
-      if (r.deltaAvg > 3000 && r.current > r.average * 1.25) {
-        out.push({ id: 'up-' + r.category, level: 'warn', title: `${catName(r.category)} up ${fmt(r.deltaAvg, { whole: true })} on your usual`, detail: `${fmt(r.current, { whole: true })} this month vs a ${fmt(r.average, { whole: true })} average.`, saving: r.deltaAvg });
-      } else if (r.deltaAvg < -3000 && r.average > 0) {
-        out.push({ id: 'down-' + r.category, level: 'good', title: `${catName(r.category)} down ${fmt(-r.deltaAvg, { whole: true })}`, detail: `Nice. ${fmt(r.current, { whole: true })} vs a ${fmt(r.average, { whole: true })} average.`, saving: 0 });
+      if (catKind(r.category) === 'fixed' || r.average <= 0 && r.current <= 0) continue;
+      const pace = live ? Math.round(r.current / frac) : r.current;
+      const delta = pace - r.average;
+      const now = live ? `${fmt(r.current, { whole: true })} so far, heading for ${fmt(pace, { whole: true })}` : `${fmt(r.current, { whole: true })} this month`;
+      if ((delta > 3000 && pace > r.average * 1.25 && (!live || frac >= 0.2)) || (live && r.current > r.average * 1.1 && r.current - r.average > 3000)) {
+        out.push({ id: 'up-' + r.category, level: 'warn', title: `${catName(r.category)} ${live ? 'heading' : ''} up ${fmt(Math.max(delta, r.current - r.average), { whole: true })} on your usual`.replace('  ', ' '), detail: `${now} vs a ${fmt(r.average, { whole: true })} average.`, saving: Math.max(delta, 0), category: r.category, current: r.current, average: r.average, pace, live });
+      } else if (delta < -3000 && r.average > 0 && pace < r.average * 0.8 && (!live || frac >= 0.33)) {
+        out.push({ id: 'down-' + r.category, level: 'good', title: `${catName(r.category)} ${live ? 'on track to be' : ''} down ${fmt(-delta, { whole: true })}`.replace('  ', ' '), detail: `Nice. ${now} vs a ${fmt(r.average, { whole: true })} average.`, saving: 0, category: r.category, current: r.current, average: r.average, pace, live });
       }
     }
   }

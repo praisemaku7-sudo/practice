@@ -49,9 +49,15 @@ export function history({ txs, today, n = 6 }) {
  * The next months at your recent average: income − spending, with rent swapped for the mortgage
  * from its start month if you've entered one in Future planning.
  */
-export function outlook({ txs, today, budget, months = 6, mortgage = null, housingNow = 0, incomeFor = null, cut = 0 }) {
-  const past = history({ txs, today, n: 3 });
-  const avgSpend = past.length ? Math.round(past.reduce((a, m) => a + m.spend, 0) / past.length) : budget.avgSpend || 0;
+export function outlook({ txs, today, budget, months = 6, mortgage = null, housingNow = 0, incomeFor = null, cut = 0, recurring = [] }) {
+  // A typical month: the median of up to 6 complete months, so one big month (a holiday, a deposit
+  // paid out) doesn't drag every future month with it. Fewer than 3 months: plain average.
+  const past = history({ txs, today, n: 6 });
+  const spends = past.map((m) => m.spend).sort((a, b) => a - b);
+  const mid = spends.length ? (spends.length % 2 ? spends[(spends.length - 1) / 2] : Math.round((spends[spends.length / 2 - 1] + spends[spends.length / 2]) / 2)) : 0;
+  const mean = spends.length ? Math.round(spends.reduce((a, v) => a + v, 0) / spends.length) : 0;
+  const avgSpend = spends.length >= 3 ? mid : spends.length ? mean : budget.avgSpend || 0;
+  const bills = recurring.filter((r) => r.active && r.direction === 'out' && r.category !== 'transfer').reduce((a, r) => a + r.amount, 0);
   const income = budget.income || 0;
   const sched = mortgage?.principal ? schedule({ ...mortgage }) : null;
   const pay = new Map((sched?.rows || []).map((r) => [r.month, r.payment]));
@@ -65,7 +71,7 @@ export function outlook({ txs, today, budget, months = 6, mortgage = null, housi
     const inc = incomeFor ? incomeFor(m) : income;
     const left = inc - spend - (budget.goalsMonthly || 0);
     running += left;
-    out.push({ month: m, income: inc, spend, left, running, mortgage: !!started });
+    out.push({ month: m, income: inc, spend, bills: Math.min(bills, spend), left, running, mortgage: !!started });
   }
-  return { avgSpend, income, months: out, shortMonths: out.filter((m) => m.left < 0).length };
+  return { avgSpend, meanSpend: mean, basis: spends.length >= 3 ? 'median' : 'mean', monthsUsed: past.length, income, months: out, shortMonths: out.filter((m) => m.left < 0).length };
 }
