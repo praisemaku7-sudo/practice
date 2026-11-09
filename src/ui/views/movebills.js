@@ -27,7 +27,7 @@ export function render() {
   const main = s.mainAccountId || suggestedMain();
   const mainAcc = state.allAccounts?.find((a) => a.id === main) || state.accounts.find((a) => a.id === main);
   const moved = s.billsMoved || {};
-  const bills = state.derived.recurring.filter((r) => r.active && r.direction === 'out' && r.category !== 'transfer');
+  const bills = state.derived.recurring.filter((r) => r.active && r.direction === 'out' && (r.category !== 'transfer' || r.cardRepay));
   const toMove = bills.filter((r) => r.accountId !== main);
   const done = toMove.filter((r) => moved[r.key]);
   const total = bills.reduce((a, r) => a + r.amount, 0);

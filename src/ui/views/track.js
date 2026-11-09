@@ -38,7 +38,7 @@ function cashChart(pts, sel) {
     ${pts.map((p, i) => {
       const cx = i * step + step / 2;
       const neg = p.spend > p.income;
-      return `<g class="cm ${p.kind} ${i === sel ? 'sel' : ''}">
+      return `<g class="cm ${p.kind} ${p.incomplete ? 'inc' : ''} ${i === sel ? 'sel' : ''}">
         <rect x="${(i * step + 1).toFixed(1)}" y="2" width="${(step - 2).toFixed(1)}" height="${H - 4}" rx="6" class="cm-bg"/>
         <rect x="${(cx - bw - 1).toFixed(1)}" y="${y(p.income).toFixed(1)}" width="${bw}" height="${Math.max(1, base - y(p.income)).toFixed(1)}" rx="2.5" class="cm-in"/>
         <rect x="${(cx + 1).toFixed(1)}" y="${y(p.spend).toFixed(1)}" width="${bw}" height="${Math.max(1, base - y(p.spend)).toFixed(1)}" rx="2.5" class="cm-out ${neg ? 'over' : ''}"/>
@@ -56,7 +56,8 @@ function detailFor(p) {
   if (p.kind === 'past') {
     const sm = summarizeMonth(state.txs, p.month);
     const top = Object.entries(sm.byCat || {}).sort((a, b) => b[1] - a[1]).slice(0, 4);
-    return `<b>${esc(monthLabel(p.month))}</b> <small class="muted">actual</small><div class="plan-table">${row('In', fmt(p.income, { whole: true }), 'pos')}${row('Out', fmt(p.spend, { whole: true }))}${row('Left over', fmt(p.left, { whole: true, sign: true }), p.left < 0 ? 'neg' : 'pos')}</div>
+    const miss = p.incomplete ? state.derived.coverage.missing.filter((x) => x.month === p.month) : [];
+    return `<b>${esc(monthLabel(p.month))}</b> <small class="muted">actual</small>${miss.length ? `<div class="sub warn-text">⚠ Incomplete: no statement from ${esc(miss.map((x) => x.accountName).join(', '))}, so these totals are too low. Left out of the typical month. <a href="#/accounts">Import ›</a></div>` : ''}<div class="plan-table">${row('In', fmt(p.income, { whole: true }), 'pos')}${row('Out', fmt(p.spend, { whole: true }))}${row('Left over', fmt(p.left, { whole: true, sign: true }), p.left < 0 ? 'neg' : 'pos')}</div>
       ${top.length ? `<div class="sub">Biggest: ${top.map(([c, v]) => `${esc(catName(c))} ${fmt(v, { whole: true })}`).join(' · ')}</div>` : ''}
       <div class="row gap wrap"><button class="chip" data-action="dash-month" data-month="${p.month}">Breakdown and transactions ›</button></div>`;
   }
@@ -82,7 +83,8 @@ function enoughCard({ past, ahead, withPlan, mo, chosen, picked, mort, s }) {
   const income = plan.months[0]?.income || 0;
   const outTyp = plan.avgSpend - (ui.withActions ? picked : 0);
   const spare = income - outTyp;
-  const checks = income && ahead.avgSpend > income * 1.3 ? diagnoseSpending({ txs: state.txs, accounts: state.allAccounts || state.accounts, months: past.map((p) => p.month), people: s.people, income }) : [];
+  const recvd = past.filter((p) => !p.incomplete).length ? Math.round(past.filter((p) => !p.incomplete).reduce((a, p) => a + p.income, 0) / past.filter((p) => !p.incomplete).length) : null;
+  const checks = income && (ahead.avgSpend > income * 1.3 || (recvd && recvd > income * 1.35)) ? diagnoseSpending({ txs: state.txs, accounts: state.allAccounts || state.accounts, months: past.filter((p) => !p.incomplete).map((p) => p.month), people: s.people, income, receivedIncome: recvd }) : [];
   const nAct = Object.values(chosen).filter(Boolean).length;
   return `<div class="card keep-open">
     <h3>Will we have enough?</h3>
@@ -92,7 +94,7 @@ function enoughCard({ past, ahead, withPlan, mo, chosen, picked, mort, s }) {
       <div><span class="label">${spare < 0 ? 'Short' : 'Spare'} each month</span><b class="${spare < 0 ? 'neg' : 'pos'}">${fmt(Math.abs(spare), { whole: true })}</b></div>
     </div>
     <p class="sub">"Typical" is your middle month of the last ${ahead.monthsUsed}${ahead.basis === 'median' && Math.abs(ahead.meanSpend - ahead.avgSpend) > ahead.avgSpend * 0.05 ? ` (the average is ${fmt(ahead.meanSpend, { whole: true })}, pushed ${ahead.meanSpend > ahead.avgSpend ? 'up' : 'down'} by one-off months)` : ''}. Income month by month from <a href="#/income">Income</a>${mort ? ', with the mortgage from Future planning' : ''}.</p>
-    ${checks.length ? `<div class="cal-tip bad"><b>⚠ Does this look right? Spending is ${Math.round((ahead.avgSpend / income) * 100)}% of income</b><span>Spending this far above income usually means something's counted that isn't really spending:</span>
+    ${checks.length ? `<div class="cal-tip bad"><b>⚠ Does this look right? ${ahead.avgSpend > income * 1.3 ? `Spending is ${Math.round((ahead.avgSpend / income) * 100)}% of income` : 'Income doesn\'t match your payslips'}</b><span>Spending this far above income usually means something's counted that isn't really spending:</span>
       ${checks.slice(0, 3).map((c) => `<div class="diag"><b>${esc(c.title)}</b><span>${esc(c.detail)}</span>${c.action ? `<a class="chip" href="${esc(c.action.href)}">${esc(c.action.label)} ›</a>` : ''}</div>`).join('')}
       ${checks.length > 3 ? `<details><summary class="sub">${checks.length - 3} more checks</summary>${checks.slice(3).map((c) => `<div class="diag"><b>${esc(c.title)}</b><span>${esc(c.detail)}</span></div>`).join('')}</details>` : ''}</div>` : ''}
     ${withPlan ? `<div class="seg" role="radiogroup" aria-label="Forecast"><button class="${ui.withActions ? '' : 'sel'}" data-action="tr-with" data-v="0">As things are</button><button class="${ui.withActions ? 'sel' : ''}" data-action="tr-with" data-v="1">With my ${nAct} action${nAct === 1 ? '' : 's'}</button></div>` : ''}
@@ -113,14 +115,14 @@ export function render() {
   const over = alerts.filter((a) => a.status === 'over'), heading = alerts.filter((a) => a.status === 'heading');
   const housingNow = budget.lines.find((l) => l.category === 'housing')?.hist || 0;
   const mort = s.mortgage?.principal || (s.mortgage?.price && s.mortgage?.deposit != null) ? { ...s.mortgage, principal: s.mortgage.principal ?? s.mortgage.price - s.mortgage.deposit } : null;
-  const ahead = outlook({ txs: state.txs, today, budget, months: 6, mortgage: mort, housingNow, incomeFor, recurring });
-  const past = history({ txs: state.txs, today, n: 6 });
+  const ahead = outlook({ txs: state.txs, today, budget, months: 6, mortgage: mort, housingNow, incomeFor, recurring, incomplete: state.derived.incomplete });
+  const past = history({ txs: state.txs, today, n: 6, incomplete: state.derived.incomplete });
   const [word, wcls] = statusWord[mo.status];
   const mortPay = mort ? (schedule({ ...mort }).rows[0]?.payment || 0) + (mort.extraCosts || 0) : null;
   const path = buildPath({ budget, recurring, settings: s, income: ahead.months[0]?.income ?? budget.income, avgSpend: ahead.avgSpend, mortgagePayment: mortPay });
   const chosen = s.pathChosen || {};
   const picked = chosenSaving(path, chosen);
-  const withPlan = picked ? outlook({ txs: state.txs, today, budget, months: 6, mortgage: mort, housingNow, incomeFor, cut: picked, recurring }) : null;
+  const withPlan = picked ? outlook({ txs: state.txs, today, budget, months: 6, mortgage: mort, housingNow, incomeFor, cut: picked, recurring, incomplete: state.derived.incomplete }) : null;
   const pathHtml = pathCard(path, chosen, picked);
   const plan = s.plan;
 

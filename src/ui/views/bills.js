@@ -19,7 +19,7 @@ let ctx = null; // what the last render computed, for the sheets
 
 const ord = (d) => `${d}${d % 10 === 1 && d !== 11 ? 'st' : d % 10 === 2 && d !== 12 ? 'nd' : d % 10 === 3 && d !== 13 ? 'rd' : 'th'}`;
 const short = (p) => (Math.abs(p) >= 100000 ? `£${(p / 100000).toFixed(1).replace('.0', '')}k` : `£${Math.round(p / 100)}`);
-const matches = (r, f) => f === 'all' ? true : f === 'in' ? r.direction === 'in' : r.direction === 'out' && (f === 'subs' ? SUBS.has(r.category) : f === 'debt' ? r.category === 'debt' : !SUBS.has(r.category) && r.category !== 'debt');
+const matches = (r, f) => f === 'all' ? true : f === 'in' ? r.direction === 'in' : r.direction === 'out' && (f === 'subs' ? SUBS.has(r.category) : f === 'debt' ? r.category === 'debt' || r.cardRepay : !SUBS.has(r.category) && r.category !== 'debt' && !r.cardRepay);
 
 export function applyParams(params) {
   if (params.get('month')) ui.month = params.get('month');
@@ -29,12 +29,15 @@ export function applyParams(params) {
 function startBalance() {
   const cur = state.accounts.filter((a) => a.type === 'current' && a.balance != null);
   if (!cur.length) return null;
-  return { amount: state.derived.balance ?? cur.reduce((a, x) => a + x.balance, 0), stale: state.derived.balance == null, accounts: cur };
+  const today = state.derived.today;
+  const fresh = cur.filter((a) => a.balanceDate && (Date.parse(today) - Date.parse(a.balanceDate)) / 86400000 <= 10);
+  const use = fresh.length ? fresh : cur;
+  return { amount: use.reduce((a, x) => a + x.balance, 0), stale: !fresh.length, accounts: use };
 }
 
 export function render() {
   const { recurring, today, payday } = state.derived;
-  const all = recurring.filter((r) => r.category !== 'transfer');
+  const all = recurring.filter((r) => (r.category !== 'transfer' || r.cardRepay));
   if (!all.length) return emptyState({ title: 'Bills & subscriptions', body: 'Regular payments appear here once two months of statements are imported. You can also add one yourself.' }) + '<button class="btn primary full" data-action="bill-add">＋ Add a regular payment</button>';
   const s = state.settings;
   const flags = s.billFlags || {};
@@ -91,10 +94,12 @@ export function render() {
       <div class="row gap wrap"><button class="chip" data-action="cal-day" data-d="${+first.date.slice(8)}">See that day</button><a class="chip" href="#/movebills">Move bills guide</a></div></div>`);
   }
   if (payday) {
-    const pre = out.filter((r) => (r.day < payday && r.day >= payday - 7) || (payday <= 7 && r.day > 21 + payday));
+    const pre = out.filter((r) => r.category !== 'fees' && !/\b(LATE|FEE|CHARGE|INTEREST)\b/i.test(r.name) && ((r.day < payday && r.day >= payday - 7) || (payday <= 7 && r.day > 21 + payday)));
     const preSum = pre.reduce((a, r) => a + r.amount, 0);
     if (pre.length && preSum > 2000) tips.push(`<div class="cal-tip"><b>${fmt(preSum, { whole: true })} of bills leave in the week before payday</b><span>${esc(pre.sort((a, b) => b.amount - a.amount).slice(0, 3).map((r) => `${r.name} (${ord(r.day)})`).join(', '))}. Moving them to the ${ord(Math.min(payday + 2, 28))} means they're paid from fresh pay. Most companies let you change the date online; make sure the first payment on the new date doesn't land before your pay arrives.</span><button class="chip" data-action="bill-movetips">How to move a date</button></div>`);
   }
+  const lateFees = out.filter((r) => r.category === 'fees' || /\b(LATE|OVERLIMIT|OVER LIMIT|RETURNED|UNPAID)\b.*\b(FEE|CHARGE)\b|\bLATE FEE\b/i.test(r.name));
+  if (lateFees.length) tips.unshift(`<div class="cal-tip bad"><b>⚠ You're paying fees most months: ${fmt(lateFees.reduce((a, r) => a + r.amount, 0), { whole: true })} a month</b><span>${esc(lateFees.map((r) => `${r.name} (around the ${ord(r.day)})`).join(', '))}. Late and returned-payment fees are avoidable and are often reported as missed payments on your credit file. Set up a Direct Debit for at least the minimum on each card, make sure the paying account has the money on that day, and ask the card company to refund recent fees.</span><a class="chip" href="#/cards">Card payoff plan ›</a></div>`);
   const weeks = weekTotals(allByDay, month);
   const busiest = weeks.reduce((a, w) => (w.out > a.out ? w : a), weeks[0]);
   if (busiest?.count >= 2) tips.push(`<div class="cal-tip"><b>Busiest week: ${busiest.from === busiest.to ? busiest.from : `${busiest.from}–${busiest.to}`} ${esc(monthLabel(month, { short: true }).split(' ')[0])}</b><span>${fmt(busiest.out, { whole: true })} across ${busiest.count} payment${busiest.count > 1 ? 's' : ''}. Keep that much in the account the week before.</span></div>`);
@@ -125,7 +130,7 @@ export function render() {
   }).join('') || '<p class="sub">Nothing in this month for this filter.</p>';
 
   // Sections below.
-  const bills = out.filter((r) => ['fixed', 'essential'].includes(catKind(r.category)) || r.category === 'debt');
+  const bills = out.filter((r) => ['fixed', 'essential'].includes(catKind(r.category)) || r.category === 'debt' || r.cardRepay);
   const subs = out.filter((r) => SUBS.has(r.category));
   const other = out.filter((r) => !bills.includes(r) && !subs.includes(r));
   const toCancel = all.filter((r) => flags[r.key] === 'cancel');
@@ -158,8 +163,13 @@ export function render() {
   </div>
   <div class="row gap cal-actions"><button class="btn ghost grow" data-action="bill-add">＋ Add payment</button><button class="btn primary grow" data-action="due-calendar">📅 All to Calendar</button></div>
   ${fc ? `<div class="card"><h3>Balance forecast</h3>
-    <div class="stat-grid"><div><span class="label">Now${sb.stale ? ' (older statement)' : ''}</span><b>${fmt(sb.amount, { whole: true })}</b></div><div><span class="label">Lowest · ${prettyDate(fc.low.date)}</span><b class="${fc.low.balance < 0 ? 'neg' : ''}">${fmt(fc.low.balance, { whole: true })}</b></div></div>
-    ${fcChart}<p class="sub">Your current-account balance after each bill and pay still to come${sb.stale ? '. Based on your last imported balance: import a recent statement for a sharper forecast' : ''}. Tap a dot for that day. Spending on cards and shopping isn't included, so keep a buffer.</p></div>` : ''}
+    <p class="sub">What's likely to be in your current account${sb.accounts.length > 1 ? 's' : ''} each day until ${prettyDate(until)}: today's balance, minus each regular bill on its day, plus pay when it lands. It warns you before a payment could bounce.</p>
+    <div class="stat-grid"><div><span class="label">Starting balance</span><b>${fmt(sb.amount, { whole: true })}</b></div><div><span class="label">Lowest · ${prettyDate(fc.low.date)}</span><b class="${fc.low.balance < 0 ? 'neg' : ''}">${fmt(fc.low.balance, { whole: true })}</b></div></div>
+    ${fcChart}
+    <details class="checks"><summary>Where the starting balance comes from</summary>
+      ${sb.accounts.map((a) => `<div class="pt-row two"><span>${esc(a.name)} <small class="muted">${a.balanceDate ? `statement ${prettyDate(a.balanceDate)}` : 'date unknown'}</small></span><b>${fmt(a.balance, { whole: true })}</b></div>`).join('')}
+      <p class="sub">${sb.stale ? '⚠ These balances are from your last imported statements, not today. Import recent statements (or type today\'s balance in Accounts) for a true picture.' : 'From statements in the last 10 days.'} Card spending, shopping and anything not regular aren't included, so keep a buffer.</p></details>
+    <p class="sub">Tap a dot to see that day.</p></div>` : ''}
   ${tips.length ? `<div class="card"><h3>What to do</h3>${tips.join('')}</div>` : ''}
   ${toCancel.length ? `<div class="card tip-box"><b>Cancel list:</b> ${toCancel.map((r) => esc(r.name)).join(', ')} saves <b>${fmt(toCancel.reduce((a, r) => a + r.amount, 0))}/month</b> (${fmt(toCancel.reduce((a, r) => a + r.amount, 0) * 12, { whole: true })}/yr). Tap "To cancel" again once it's done.</div>` : ''}
   ${section('Bills', bills)}${section('Subscriptions', subs)}${section('Other regular payments', other)}${section('Income', live.filter((r) => r.direction === 'in' && r.active))}

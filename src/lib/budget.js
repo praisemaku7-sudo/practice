@@ -6,9 +6,12 @@ const roundUp = (p, step = 500) => Math.ceil(p / step) * step; // nearest £5 up
 const roundDown = (p, step = 500) => Math.floor(p / step) * step;
 
 /** Last N complete months before the current month that have data. */
-export function baselineMonths(txs, { today = todayISO(), n = 3 } = {}) {
+export function baselineMonths(txs, { today = todayISO(), n = 3, incomplete = null } = {}) {
   const current = monthKey(today);
-  return monthsPresent(txs).filter((m) => m < current).slice(-n);
+  const done = monthsPresent(txs).filter((m) => m < current);
+  // Skip months missing a statement (their totals are too low), unless that leaves nothing.
+  const complete = incomplete?.size ? done.filter((m) => !incomplete.has(m)) : done;
+  return (complete.length ? complete : done).slice(-n);
 }
 
 /**
@@ -21,8 +24,8 @@ export function baselineMonths(txs, { today = todayISO(), n = 3 } = {}) {
  *    proportion to how you've actually spent, but capped so the savings target holds.
  * settings.budgets[cat] overrides any category.
  */
-export function buildBudget(txs, settings = {}, { today = todayISO() } = {}) {
-  const months = baselineMonths(txs, { today });
+export function buildBudget(txs, settings = {}, { today = todayISO(), incomplete = null } = {}) {
+  const months = baselineMonths(txs, { today, incomplete });
   const sums = months.map((m) => summarizeMonth(txs, m));
   const n = Math.max(sums.length, 1);
   const avgIncome = Math.round(sums.reduce((a, s) => a + s.income, 0) / n);

@@ -259,6 +259,19 @@ document.addEventListener('focusout', () => { if (pendingRender) { pendingRender
     await relinkTransfers();
     await saveSettings({ transferRulesVersion: 6 });
   }
+  if (state.txs.length && (state.settings.transferRulesVersion || 1) < 7) {
+    // Card repayments ("OBP AMERICAN EXP") counted as spending even though the card statement is
+    // imported (purchases counted twice). Applies even where a suggested category was accepted.
+    const all7 = await db.all('tx');
+    const accs = Object.fromEntries((await db.all('accounts')).map((a) => [a.id, a]));
+    const { cardWordsFor, isCardRepayment, CARD_ALIASES_PUBLIC } = await import('./lib/analysis.js');
+    const words = cardWordsFor(accs, CARD_ALIASES_PUBLIC);
+    const fixed = [];
+    for (const t of all7) if (accs[t.accountId]?.type !== 'credit' && isCardRepayment(t, words)) { t.category = 'transfer'; t.userCategory = false; t.autoTransfer = true; t.cardRepay = true; fixed.push(t); }
+    if (fixed.length) { await db.putMany('tx', fixed); setTimeout(() => toast(`${fixed.length} credit card repayments no longer counted as spending (the card purchases already are)`), 1200); }
+    await relinkTransfers();
+    await saveSettings({ transferRulesVersion: 7 });
+  }
   await route();
   sync.autoSync().then(() => render());
   // Warm up the PDF engine in the background so the first import starts instantly.
