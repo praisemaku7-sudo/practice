@@ -10,7 +10,7 @@ const MUSIC = /SPOTIFY|APPLE MUSIC|YOUTUBE MUSIC|TIDAL|DEEZER|AMAZON MUSIC/;
  * Rule-based monthly suggestions. Each: { id, level: 'good'|'warn'|'alert'|'tip', title, detail, saving }
  * saving = estimated pence per month you could free up.
  */
-export function buildInsights({ txs, key, budget, recurring, accounts = [], today = todayISO() }) {
+export function buildInsights({ txs, key, budget, recurring, accounts = [], today = todayISO(), incomplete = null }) {
   const creditIds = new Set(accounts.filter((a) => a.type === 'credit').map((a) => a.id));
   const out = [];
   const cmp = compareMonths(txs, key);
@@ -18,7 +18,8 @@ export function buildInsights({ txs, key, budget, recurring, accounts = [], toda
   const label = monthLabel(key);
 
   // Savings rate (skipped while a month is in progress and pay hasn't landed yet)
-  const inProgress = budget && cur.income < budget.income * 0.6;
+  // Skipped while pay hasn't landed yet, or when a statement for this month is missing.
+  const inProgress = (budget && cur.income < budget.income * 0.6) || !!incomplete?.has(key);
   if (cur.income > 0 && !inProgress) {
     const kept = cur.income - cur.spend;
     const rate = kept / cur.income;
@@ -29,7 +30,7 @@ export function buildInsights({ txs, key, budget, recurring, accounts = [], toda
 
   // Categories that grew or fell vs the 3-month average. A month still in progress is compared at
   // today's pace (9 days of groceries against a whole month's average would always look "down").
-  if (cmp.trailingMonths > 0) {
+  if (cmp.trailingMonths > 0 && !incomplete?.has(key)) {
     const live = key === monthKey(today);
     const frac = live ? Math.max(0.05, +today.slice(8) / daysInMonth(key)) : 1;
     for (const r of cmp.rows) {

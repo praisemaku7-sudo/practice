@@ -39,7 +39,7 @@ const subsCats = new Set(['subscriptions', 'entertainment', 'fitness', 'personal
 // value(m) → pence for a month (drives the tile, sparkline and chart); rows(m) → transactions behind it.
 const METRICS = {
   spent: { label: 'Spent', icon: '💸', good: 'low', value: (m) => sum(m).spend, rows: (m) => inMonth(m).filter(isSpend), explain: 'Money out minus refunds, not counting transfers between your accounts or savings.', links: [['#/transactions', 'Transactions'], ['#/categories', 'Categories'], ['#/audit', "What's counted"]] },
-  income: { label: 'Income', icon: '💷', good: 'high', value: (m) => sum(m).income, rows: (m) => inMonth(m).filter((t) => catKind(t.category) === 'income'), explain: 'Money in categorised as income (pay, benefits). Transfers from your own accounts are not counted.', links: [['#/income', 'Income'], ['#/transactions?cat=income', 'Income transactions']] },
+  income: { label: 'Income', icon: '💷', good: 'high', value: (m) => sum(m).income, rows: (m) => inMonth(m).filter((t) => catKind(t.category) === 'income'), sub: () => (state.derived.budget.income ? `expected ${fmt(state.derived.budget.income, { whole: true })}` : ''), explain: 'Money in categorised as income (pay, benefits). Transfers from your own accounts are not counted. "Expected" is what your Income page says (payslips, maternity pay, benefits): if the two are far apart, something is miscounted.', links: [['#/income', 'Income'], ['#/transactions?cat=income', 'Income transactions']] },
   net: { label: 'Left over', icon: '⚖️', good: 'high', signed: true, value: (m) => sum(m).net, rows: (m) => inMonth(m).filter((t) => catKind(t.category) !== 'transfer'), explain: 'Income − spending − money moved to savings.', links: [['#/track', 'On track'], ['#/history', 'Monthly record']] },
   rate: { label: 'Savings rate', icon: '🐷', good: 'high', pct: true, value: (m) => { const s = sum(m); return s.income > 0 ? Math.round(((s.income - s.spend) / s.income) * 1000) / 10 : 0; }, rows: (m) => inMonth(m).filter((t) => t.category === 'savings'), sub: (m) => (sum(m).income ? '' : 'no income yet this month'), explain: 'Share of income not spent. 10–20% is a healthy target; below 0 means spending more than you earn.', links: [['#/goals', 'Savings goals'], ['#/track', 'On track']] },
   daily: { label: 'Per day', icon: '📆', good: 'low', value: (m) => { const days = m === monthKey(state.derived.today) ? +state.derived.today.slice(8) : daysInMonth(m); return Math.round(sum(m).spend / Math.max(1, days)); }, rows: (m) => inMonth(m).filter(isSpend), explain: 'Average spending per day so far this month (whole month for past months).', links: [['#/budget', 'Budget'], ['#/afford', 'Can I afford it?']] },
@@ -101,7 +101,8 @@ export function dashboard() {
   <div class="dash-grid">${tiles.map((d) => {
     const v = d.value(state.month);
     const prevM = addMonths(state.month, -1);
-    const pv = !d.current && state.derived.months.includes(prevM) ? d.value(prevM) : null;
+    const inc = state.derived.incomplete || new Set();
+    const pv = !d.current && state.derived.months.includes(prevM) && !inc.has(prevM) && !inc.has(state.month) ? d.value(prevM) : null;
     const diff = pv != null ? v - pv : null;
     const better = diff == null || diff === 0 ? null : (d.good === 'high') === diff > 0;
     const big = p.big.includes(d.id);
@@ -127,7 +128,7 @@ function barChart(points, { onTap = 'dash-bar', id = '', signed = false, pct = f
     ${points.map((p, i) => {
       const h = Math.max(2, (Math.abs(p.value) / max) * (signed ? base - 14 : base - 14));
       const x = pad + i * step + (step - bw) / 2, y = p.value >= 0 ? base - h : base;
-      return `<g class="ibar ${p.key === sel ? 'sel' : ''} ${p.value < 0 ? 'neg' : ''}" data-action="${onTap}" data-id="${esc(id)}" data-key="${esc(p.key)}" role="button" tabindex="0" aria-label="${esc(p.label)}: ${esc(pct ? p.value + '%' : fmt(p.value, { whole: true }))}">
+      return `<g class="ibar ${p.key === sel ? 'sel' : ''} ${p.value < 0 ? 'neg' : ''} ${p.inc ? 'inc' : ''}" data-action="${onTap}" data-id="${esc(id)}" data-key="${esc(p.key)}" role="button" tabindex="0" aria-label="${esc(p.label)}: ${esc(pct ? p.value + '%' : fmt(p.value, { whole: true }))}">
         <rect x="${x - (step - bw) / 2}" y="0" width="${step}" height="${H}" class="ihit"/>
         <rect x="${x}" y="${y}" width="${bw}" height="${h}" rx="5"/>
         <text x="${x + bw / 2}" y="${H - 6}" text-anchor="middle" class="bar-label">${esc(p.label)}</text></g>`;
@@ -149,28 +150,39 @@ function csvButton(rows, name) {
 }
 const linksHtml = (links) => `<div class="act-links">${links.map(([h, l]) => `<a class="act-link" href="${esc(h)}">${esc(l)} ›</a>`).join('')}</div>`;
 
+// ---------- Breakdown of a month's rows: by category and by account ----------
+function splitHtml(rows, m) {
+  const by = (key) => { const o = {}; for (const t of rows) { const v = -t.amount; if (!v) continue; o[key(t)] = (o[key(t)] || 0) + v; } return Object.entries(o).filter(([, v]) => Math.abs(v) > 0).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])); };
+  const sign = rows.length && rows.every((t) => t.amount > 0) ? -1 : 1; // income rows are positive
+  const cats = by((t) => t.category).map(([k, v]) => [k, v * sign]).slice(0, 8);
+  const accs = by((t) => t.accountId).map(([k, v]) => [k, v * sign]);
+  const bar = (list, label, color, href) => { const tot = list.reduce((a, [, x]) => a + Math.max(0, x), 0) || 1; return list.map(([k, x]) => `<a class="mini-bar" href="${href(k)}"><span class="ellipsis">${esc(label(k))}</span><span class="mb-track"><i style="width:${((Math.max(0, x) / tot) * 100).toFixed(1)}%;background:${color(k)}"></i></span><b>${fmt(x, { whole: true })}</b></a>`).join(''); };
+  const mm = monthLabel(m, { short: true });
+  return `${cats.length > 1 ? `<h3>By category · ${esc(mm)}</h3>${bar(cats, catName, (c) => (CAT[c] || CAT.other).color, (c) => `#/transactions?cat=${esc(c)}`)}` : ''}
+    ${accs.length > 1 ? `<h3>By account · ${esc(mm)}</h3>${bar(accs, accountName, () => 'var(--accent)', () => '#/accounts')}<p class="sub">If two accounts show the same amounts, one may be imported twice; if money goes from one of your accounts to another, it shouldn't count here.</p>` : ''}`;
+}
+
 // ---------- Metric sheet ----------
 function metricSheet(id, sel = state.month) {
   const d = { id, ...METRICS[id] };
   const ms = window6();
-  const pts = d.current ? [] : ms.map((m) => ({ key: m, label: monthLabel(m, { short: true }).split(' ')[0].slice(0, 3), value: d.value(m) }));
+  const inc = state.derived.incomplete || new Set();
+  const pts = d.current ? [] : ms.map((m) => ({ key: m, label: monthLabel(m, { short: true }).split(' ')[0].slice(0, 3) + (inc.has(m) ? '*' : ''), value: d.value(m), inc: inc.has(m) }));
+  const full = pts.filter((p) => !p.inc && p.key !== monthKey(state.derived.today));
   const v = d.value(sel);
   const list = d.list ? d.list() : null;
   const rows = d.rows(sel);
-  const avg = pts.length ? Math.round(pts.reduce((a, p) => a + p.value, 0) / pts.length * 10) / 10 : null;
-  const best = pts.length ? pts.reduce((a, p) => ((d.good === 'high' ? p.value > a.value : p.value < a.value) ? p : a), pts[0]) : null;
+  const base = full.length ? full : pts;
+  const avg = base.length ? Math.round(base.reduce((a, p) => a + p.value, 0) / base.length * 10) / 10 : null;
+  const best = base.length ? base.reduce((a, p) => ((d.good === 'high' ? p.value > a.value : p.value < a.value) ? p : a), base[0]) : null;
   // Category split of the rows (where there's spending behind the number).
-  const byCat = {};
-  for (const t of rows) if (t.amount < 0) byCat[t.category] = (byCat[t.category] || 0) - t.amount;
-  const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]).slice(0, 8);
-  const catTotal = cats.reduce((a, [, x]) => a + x, 0) || 1;
   openSheet(`<h2><span class="dt-ic big">${tIcon(id)}</span> ${esc(d.label)}</h2>
     <div class="sheet-big ${tone(d, v)}">${esc(show(d, v))}<small> ${esc(d.current ? 'now' : monthLabel(sel))}</small></div>
     <p class="muted">${esc(d.explain)}</p>
     ${pts.length > 1 ? `<div id="dash-chart">${barChart(pts, { id, signed: pts.some((p) => p.value < 0), pct: d.pct, sel })}</div><p class="sub">Tap a month to see its transactions.</p>
-      <div class="stat-grid"><div><span class="label">6-month average</span><b>${esc(show(d, d.pct ? avg : Math.round(avg)))}</b></div><div><span class="label">${d.good === 'high' ? 'Best' : 'Lowest'} month</span><b>${esc(monthLabel(best.key, { short: true }))} · ${esc(show(d, best.value))}</b></div></div>` : ''}
+      ${pts.some((p) => p.inc) ? '<p class="sub warn-text">* Missing statements that month, so its total is too low. Left out of the average.</p>' : ''}<div class="stat-grid"><div><span class="label">${base.length < pts.length ? `Average of ${base.length} complete months` : '6-month average'}</span><b>${esc(show(d, d.pct ? avg : Math.round(avg)))}</b></div><div><span class="label">${d.good === 'high' ? 'Best' : 'Lowest'} month</span><b>${esc(monthLabel(best.key, { short: true }))} · ${esc(show(d, best.value))}</b></div></div>` : ''}
     ${list ? `<h3>Details</h3>${list.map((r) => `<div class="list-row">${r.category ? catChip(r.category) : ''}<div class="grow">${esc(r.name)}<div class="sub">${esc(r.sub || [r.type, r.nextDue && prettyDate(r.nextDue)].filter(Boolean).join(' · '))}</div></div><b>${fmt(r.amount)}</b></div>`).join('') || '<p class="sub">Nothing to show.</p>'}` : ''}
-    ${cats.length > 1 ? `<h3>By category</h3>${cats.map(([c, x]) => `<a class="mini-bar" href="#/transactions?cat=${esc(c)}"><span class="ellipsis">${esc(catName(c))}</span><span class="mb-track"><i style="width:${((x / catTotal) * 100).toFixed(1)}%;background:${(CAT[c] || CAT.other).color}"></i></span><b>${fmt(x, { whole: true })}</b></a>`).join('')}` : ''}
+    <div id="dash-split">${splitHtml(rows, sel)}</div>
     ${list && !rows.length ? '' : `<h3 id="dash-raw-h">Transactions · ${esc(monthLabel(sel, { short: true }))}</h3><div id="dash-raw">${txTable(rows)}</div>`}
     <div id="dash-csv-wrap">${csvButton(rows.length ? rows : (list || []).map((r) => ({ date: r.nextDue || '', description: r.name, amount: -r.amount, category: r.category || '', accountId: r.accountId || '' })), `${id}-${sel}.csv`)}</div>
     <h3>Go to</h3>${linksHtml(d.links)}
@@ -262,6 +274,8 @@ export const dashActions = {
   'dash-bar': (el) => {
     const d = METRICS[el.dataset.id];
     const m = el.dataset.key;
+    const split = document.getElementById('dash-split');
+    if (split) split.innerHTML = splitHtml(d.rows(m), m);
     swapRaw(d.rows(m), m, `${el.dataset.id}-${m}.csv`);
     const big = document.querySelector('.sheet-big');
     if (big) big.innerHTML = `${esc(show(d, d.value(m)))}<small> ${esc(monthLabel(m))}</small>`;

@@ -10,7 +10,7 @@ export { median };
 /**
  * @returns {Array<{id, title, detail, monthly, action:{label, href}|null, txs}>} biggest first
  */
-export function diagnoseSpending({ txs, accounts, months, people = [], income }) {
+export function diagnoseSpending({ txs, accounts, months, people = [], income, receivedIncome = null }) {
   const out = [];
   const n = Math.max(1, months.length);
   const inWin = txs.filter((t) => months.includes(monthKey(t.date)));
@@ -39,6 +39,30 @@ export function diagnoseSpending({ txs, accounts, months, people = [], income })
   const pairs = spendTx.filter((t) => Math.abs(t.amount) >= 5000 && ins.some((x) => x.accountId !== t.accountId && x.amount === -t.amount && Math.abs(Date.parse(x.date) - Date.parse(t.date)) <= 3 * 86400000));
   const pSum = pairs.reduce((a, t) => a - t.amount, 0);
   if (pSum > 5000 * n) out.push({ id: 'pairs', title: 'Money moved between your accounts', detail: `${pairs.length} payments match the same amount arriving in another of your accounts within 3 days (${fmt0(pSum / n)}/month). These are moves, not spending.`, monthly: Math.round(pSum / n), action: { label: 'Fix in Check my numbers', href: '#/audit' }, txs: pairs });
+
+  // The same account imported twice (e.g. a PDF and a CSV of one account set up as two accounts).
+  const keyOf = (t) => `${t.date}|${t.amount}|${String(t.description).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10)}`;
+  const byAcc = {};
+  for (const t of inWin) (byAcc[t.accountId] ||= new Set()).add(keyOf(t));
+  const ids = Object.keys(byAcc);
+  for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) {
+    const a = byAcc[ids[i]], b = byAcc[ids[j]];
+    let both = 0; for (const k of a) if (b.has(k)) both++;
+    if (both >= 10 && both >= Math.min(a.size, b.size) * 0.4) {
+      const dupSpend = spendTx.filter((t) => t.accountId === ids[j] && a.has(keyOf(t))).reduce((x, t) => x - t.amount, 0);
+      const nm = (id) => accounts.find((x) => x.id === id)?.name || 'an account';
+      out.push({ id: 'dup-acc', title: `"${nm(ids[i])}" and "${nm(ids[j])}" look like the same account`, detail: `${both} identical transactions in both. If it's one account imported twice, everything in it is counted twice (${fmt0(dupSpend / n)}/month of spending). Remove one in Accounts.`, monthly: Math.round(dupSpend / n), action: { label: 'Open Accounts', href: '#/accounts' }, txs: [] });
+    }
+  }
+
+  // Income far above what your payslips / Income page say: money between you or refunds counted as pay.
+  if (receivedIncome && income && receivedIncome > income * 1.35) {
+    const inc = inWin.filter((t) => t.amount > 0 && catKind(t.category) === 'income' && !/\b(SALARY|WAGES|PAYROLL|HMRC|DWP|CHILD BENEFIT|MATERNITY|SMP|PENSION)\b/i.test(t.description));
+    const by = {};
+    for (const t of inc) by[t.merchant || t.description] = (by[t.merchant || t.description] || 0) + t.amount;
+    const top = Object.entries(by).sort((a, b) => b[1] - a[1]).slice(0, 3);
+    out.push({ id: 'income-high', title: `Income looks too high: ${fmt0(receivedIncome)} a month received vs ${fmt0(income)} expected`, detail: `Your Income page (payslips) says ${fmt0(income)}. ${top.length ? `Counted as income but not pay: ${top.map(([k, v]) => `${k} ${fmt0(v / n)}/mo`).join(', ')}. If these are from each other or your own accounts, mark them as transfers.` : 'Check what\'s counted as income in Transactions.'}`, monthly: Math.round(receivedIncome - income), action: { label: 'See income payments', href: '#/transactions?cat=income' }, txs: inc });
+  }
 
   // 3. Categories that are a huge share of income.
   const byCat = {};

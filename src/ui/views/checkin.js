@@ -40,7 +40,7 @@ export function render() {
   const queue = toSort(month);
   const missing = state.derived.coverage.missing.filter((m) => m.month <= month);
   const cmp = compareMonths(state.txs, month);
-  const ins = buildInsights({ txs: state.txs, key: month, budget: state.derived.budget, recurring: state.derived.recurring, accounts: state.accounts, today: state.derived.today }).filter((i) => i.level !== 'good').slice(0, 3);
+  const ins = buildInsights({ txs: state.txs, key: month, budget: state.derived.budget, recurring: state.derived.recurring, accounts: state.accounts, today: state.derived.today, incomplete: state.derived.incomplete }).filter((i) => i.level !== 'good').slice(0, 3);
   const b = state.derived.budget;
   const next = addMonths(month, 1);
   const step = (n, title, done, body, open) => `<div class="card step ${done ? 'done' : ''} ${open ? 'open' : ''}">

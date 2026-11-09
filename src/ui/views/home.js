@@ -19,7 +19,7 @@ function cashflowCard() {
   const cur = state.accounts.filter((a) => a.type === 'current' && a.balance != null);
   if (!cur.length) return '';
   const flags = state.settings.billFlags || {}, hidden = state.settings.billHidden || {};
-  const live = d.recurring.filter((r) => r.category !== 'transfer' && !hidden[r.key] && flags[r.key] !== 'cancelled');
+  const live = d.recurring.filter((r) => (r.category !== 'transfer' || r.cardRepay) && !hidden[r.key] && flags[r.key] !== 'cancelled');
   const start = d.balance ?? cur.reduce((a, x) => a + x.balance, 0);
   const until = d.payday ? nextDayOfMonth(addDays(d.today, 1), d.payday) : `${monthKey(d.today)}-${String(daysInMonthOf(monthKey(d.today))).padStart(2, '0')}`;
   const fc = balanceForecast({ start, today: d.today, until, recurring: live, paidKeys: paidThisMonth(live, state.txs, monthKey(d.today), state.settings.billPaid) });

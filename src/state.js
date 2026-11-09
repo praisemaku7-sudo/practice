@@ -206,16 +206,18 @@ export function recompute() {
   const payday = state.eff.payday ?? detected?.day ?? null;
   const byIdAll = Object.fromEntries((state.allAccounts || state.accounts).map((a) => [a.id, a]));
   const gm = goalsMonthly(state.settings.goals || [], state.settings.scope, today, byIdAll);
-  const budget = buildBudget(state.txs, { ...state.eff, goalsMonthly: gm }, { today });
+  const coverage = statementCoverage({ accounts: state.accounts, imports: state.imports, txs: state.txs, today, dismissed: state.settings.coverageDismissed || {}, startMonth: state.settings.trackFrom ? monthKey(state.settings.trackFrom) : null });
+  // Months missing a statement from any account: their totals are too low, so averages skip them.
+  const incomplete = new Set(coverage.missing.map((m) => m.month));
+  const budget = buildBudget(state.txs, { ...state.eff, goalsMonthly: gm }, { today, incomplete });
   const currentAccounts = state.accounts.filter((a) => a.type === 'current' && a.balance != null);
   // A balance older than ~10 days is too stale to trust for the bills check.
   const fresh = currentAccounts.filter((a) => a.balanceDate && daysBetween(a.balanceDate, today) <= 10);
   const balance = fresh.length ? fresh.reduce((s, a) => s + a.balance, 0) : null;
-  const coverage = statementCoverage({ accounts: state.accounts, imports: state.imports, txs: state.txs, today, dismissed: state.settings.coverageDismissed || {}, startMonth: state.settings.trackFrom ? monthKey(state.settings.trackFrom) : null });
   const cards = cardSummary({ accounts: state.accounts, txs: state.txs, allTxs: state.allTxs, today, trackFrom: state.settings.trackFrom });
   const suspects = suspectedCreditCards(state.accounts, state.txs);
   const duplicates = findStoredDuplicates(state.txs);
-  state.derived = { today, coverage, cards, suspects, duplicates, recurring, payday, detectedPayday: detected, budget, balance, staleBalance: currentAccounts.length > 0 && !fresh.length, months: monthsPresent(state.txs) };
+  state.derived = { today, coverage, cards, suspects, duplicates, recurring, payday, detectedPayday: detected, budget, balance, staleBalance: currentAccounts.length > 0 && !fresh.length, months: monthsPresent(state.txs), incomplete };
   return state.derived;
 }
 
@@ -249,7 +251,7 @@ export async function relinkTransfers() {
   const before = new Map(all.map((t) => [t.id, t.category + '|' + (t.pairId || '') + '|' + (t.autoTransfer ? 1 : 0)]));
   for (const t of all) {
     if ((t.pairId || t.autoTransfer) && !t.userCategory) {
-      delete t.pairId; delete t.autoTransfer;
+      delete t.pairId; delete t.autoTransfer; delete t.cardRepay;
       t.category = categorize(t.description, t.amount, state.settings.userRules);
     }
   }

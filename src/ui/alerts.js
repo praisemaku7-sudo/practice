@@ -20,11 +20,17 @@ export function buildAlerts() {
   const cur = state.accounts.filter((a) => a.type === 'current' && a.balance != null);
   if (cur.length && d.payday) {
     const flags = state.settings.billFlags || {}, hidden = state.settings.billHidden || {};
-    const live = d.recurring.filter((r) => r.category !== 'transfer' && !hidden[r.key] && flags[r.key] !== 'cancelled');
+    const live = d.recurring.filter((r) => (r.category !== 'transfer' || r.cardRepay) && !hidden[r.key] && flags[r.key] !== 'cancelled');
     const start = d.balance ?? cur.reduce((a, x) => a + x.balance, 0);
     const fc = balanceForecast({ start, today, until: nextDayOfMonth(addDays(today, 1), d.payday), recurring: live, paidKeys: paidThisMonth(live, state.txs, month, state.settings.billPaid) });
     const bad = fc.rows.filter((r) => r.balance < 0 && r.outflow > 0);
     if (bad.length) out.push({ id: 'bounce', icon: '⚠️', label: 'Bounce risk', count: bad.length, tone: 'bad', title: `A bill could bounce on ${prettyDate(bad[0].date)}`, detail: `Your balance could drop to ${fmt(bad[0].balance, { whole: true })} when ${bad[0].items.filter((r) => r.direction === 'out').map((r) => r.name).join(', ')} leave${bad[0].items.length === 1 ? 's' : ''}. Top up the account or move the date.`, href: '#/bills', go: 'Open calendar', sig: bad[0].date + bad[0].balance });
+  }
+  // Numbers that can't be right: typical spending far above expected income.
+  {
+    const past = (d.months || []).filter((m) => m < month && !d.incomplete?.has(m)).slice(-6).map((m) => summarizeMonth(state.txs, m).spend).sort((a, b) => a - b);
+    const typical = past.length ? past[Math.floor(past.length / 2)] : 0;
+    if (d.budget.income && past.length >= 2 && typical > d.budget.income * 1.4) out.push({ id: 'numbers', icon: '🔍', label: 'Check numbers', count: 1, tone: 'bad', title: 'Spending looks too high to be right', detail: `A typical month shows ${fmt(typical, { whole: true })} spent against ${fmt(d.budget.income, { whole: true })} income. Usually card repayments or moves between your accounts counted as spending. On track lists what to fix.`, href: '#/track', go: 'See what to fix', sig: Math.round(typical / 10000) });
   }
   const mo = monthOutlook({ txs: state.txs, today, budget: d.budget, recurring: d.recurring });
   const al = budgetAlerts({ txs: state.txs, today, budget: d.budget });
@@ -50,6 +56,7 @@ const ICONS = {
   missing: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
   dups: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
   off: '<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/>',
+  numbers: '<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2M11 8v3.5M11 14h.01"/>',
   cards: '<rect x="3" y="5.5" width="18" height="13" rx="2.5"/><path d="M3 10h18M7 15h3"/>',
   checkin: '<circle cx="12" cy="12" r="8.5"/><path d="m8.5 12.2 2.4 2.4 4.6-4.8"/>',
   rises: '<path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/>',

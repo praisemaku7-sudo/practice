@@ -40,19 +40,21 @@ export function budgetAlerts({ txs, today, budget }) {
 }
 
 /** Last N complete months of income and spending (for the trend). */
-export function history({ txs, today, n = 6 }) {
+export function history({ txs, today, n = 6, incomplete = null, skipIncomplete = false }) {
   const cur = monthKey(today);
-  return monthsPresent(txs).filter((m) => m < cur).slice(-n).map((m) => { const s = summarizeMonth(txs, m); return { month: m, income: s.income, spend: s.spend, left: s.income - s.spend }; });
+  let ms = monthsPresent(txs).filter((m) => m < cur);
+  if (skipIncomplete && incomplete?.size && ms.some((m) => !incomplete.has(m))) ms = ms.filter((m) => !incomplete.has(m));
+  return ms.slice(-n).map((m) => { const s = summarizeMonth(txs, m); return { month: m, income: s.income, spend: s.spend, left: s.income - s.spend, incomplete: !!incomplete?.has(m) }; });
 }
 
 /**
  * The next months at your recent average: income − spending, with rent swapped for the mortgage
  * from its start month if you've entered one in Future planning.
  */
-export function outlook({ txs, today, budget, months = 6, mortgage = null, housingNow = 0, incomeFor = null, cut = 0, recurring = [] }) {
+export function outlook({ txs, today, budget, months = 6, mortgage = null, housingNow = 0, incomeFor = null, cut = 0, recurring = [], incomplete = null }) {
   // A typical month: the median of up to 6 complete months, so one big month (a holiday, a deposit
   // paid out) doesn't drag every future month with it. Fewer than 3 months: plain average.
-  const past = history({ txs, today, n: 6 });
+  const past = history({ txs, today, n: 6, incomplete, skipIncomplete: true });
   const spends = past.map((m) => m.spend).sort((a, b) => a - b);
   const mid = spends.length ? (spends.length % 2 ? spends[(spends.length - 1) / 2] : Math.round((spends[spends.length / 2 - 1] + spends[spends.length / 2]) / 2)) : 0;
   const mean = spends.length ? Math.round(spends.reduce((a, v) => a + v, 0) / spends.length) : 0;

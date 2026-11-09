@@ -44,6 +44,15 @@ export function suggestCategory(group, allTxs, { userRules = {}, saved = {} } = 
     const c = categorize(stripped, out ? -1 : 1, userRules);
     if (c !== 'other' && c !== 'income') return { category: c, confidence: 'high', reason: `"${merchantKey(stripped)}" paid through a card reader` };
   }
+  // 2b. Spelling variants the rules miss: plurals and possessives ("SAINSBURYS", "MCDONALDS LTD").
+  {
+    const orig = String(sample || merchant).toUpperCase();
+    const variants = [orig, orig.replace(/'S\b/g, 'S'), orig.replace(/'S\b/g, '').replace(/\b([A-Z]{4,})S\b/g, '$1')];
+    for (const v of variants) {
+      const c = categorize(v, out ? -1 : 1, userRules);
+      if (c !== 'other' && !(out && c === 'income')) return { category: c, confidence: 'high', reason: `Looks like ${catName(c).toLowerCase()}` };
+    }
+  }
   // 3. You've put a merchant with the same first word somewhere else before.
   let weak = null;
   const first = merchant.split(' ')[0];

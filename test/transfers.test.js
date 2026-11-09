@@ -34,7 +34,8 @@ test('transfers between own accounts are not spending or income', () => {
   const s = summarizeMonth(txs, '2026-09');
   assert.ok(before.spend > s.spend, 'spend reduced');
   assert.equal(s.spend, 4000 + 2500, 'only Tesco and Deliveroo are spending');
-  assert.equal(s.income, 250000 + 310, 'salary + savings interest only');
+  assert.equal(s.income, 250000, 'salary only: savings interest stays in savings');
+  assert.ok(txs.some((t) => t.category === 'interest' && t.amount === 310), 'savings interest kept as its own category');
 });
 
 test('things you categorised yourself are never overridden', () => {

@@ -302,3 +302,16 @@ export async function aiReadMIP({ apiKey, model, text = null, images = [], media
   });
   return fromAI(r);
 }
+
+/** Answer a question about your money from aggregated numbers only (no raw transactions). */
+export async function aiAsk({ apiKey, model, question, context }) {
+  return structured({
+    apiKey, model, effort: 'medium', maxTokens: 6000,
+    system: 'You are a practical UK personal-finance helper for a couple. Answer using only the numbers given; never invent figures or website addresses. Be specific and kind but direct. Give short numbered steps with £ amounts where possible. If debt is unmanageable, mention free help from StepChange, MoneyHelper or National Debtline. Not regulated financial advice: for mortgages, pensions or investments, suggest a qualified adviser.',
+    content: [{ type: 'text', text: `My numbers (GBP):\n${JSON.stringify(context, null, 1)}\n\nQuestion: ${question}` }],
+    schema: {
+      type: 'object', additionalProperties: false, required: ['answer', 'steps'],
+      properties: { answer: { type: 'string' }, steps: { type: 'array', items: { type: 'string' } } },
+    },
+  });
+}

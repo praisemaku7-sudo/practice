@@ -259,6 +259,37 @@ document.addEventListener('focusout', () => { if (pendingRender) { pendingRender
     await relinkTransfers();
     await saveSettings({ transferRulesVersion: 6 });
   }
+  if (state.txs.length && (state.settings.transferRulesVersion || 1) < 7) {
+    // Card repayments ("OBP AMERICAN EXP") counted as spending even though the card statement is
+    // imported (purchases counted twice). Applies even where a suggested category was accepted.
+    const all7 = await db.all('tx');
+    const accs = Object.fromEntries((await db.all('accounts')).map((a) => [a.id, a]));
+    const { cardWordsFor, isCardRepayment, CARD_ALIASES_PUBLIC } = await import('./lib/analysis.js');
+    const words = cardWordsFor(accs, CARD_ALIASES_PUBLIC);
+    const fixed = [];
+    for (const t of all7) if (accs[t.accountId]?.type !== 'credit' && isCardRepayment(t, words)) { t.category = 'transfer'; t.userCategory = false; t.autoTransfer = true; t.cardRepay = true; fixed.push(t); }
+    if (fixed.length) { await db.putMany('tx', fixed); setTimeout(() => toast(`${fixed.length} credit card repayments no longer counted as spending (the card purchases already are)`), 1200); }
+    await relinkTransfers();
+    await saveSettings({ transferRulesVersion: 7 });
+  }
+  if (state.txs.length && (state.settings.transferRulesVersion || 1) < 8) {
+    // Savings interest stays in savings: not spendable household income (re-checked by relink).
+    await relinkTransfers();
+    await saveSettings({ transferRulesVersion: 8 });
+  }
+  if (state.txs.length && (state.settings.transferRulesVersion || 1) < 9) {
+    // Improved rules (e.g. "SAINSBURYS"): re-sort anything still in Other that you haven't chosen yourself.
+    const all9 = await db.all('tx');
+    const fixed9 = [];
+    for (const t of all9) {
+      if (t.category !== 'other' || t.userCategory) continue;
+      const c = categorize(t.description, t.amount, state.settings.userRules);
+      if (c !== 'other') { t.category = c; fixed9.push(t); }
+    }
+    if (fixed9.length) { await db.putMany('tx', fixed9); setTimeout(() => toast(`${fixed9.length} payments moved out of Other into proper categories`), 1500); }
+    await relinkTransfers();
+    await saveSettings({ transferRulesVersion: 9 });
+  }
   await route();
   sync.autoSync().then(() => render());
   // Warm up the PDF engine in the background so the first import starts instantly.

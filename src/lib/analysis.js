@@ -33,6 +33,32 @@ export function ownBanksOf(accounts) {
  *  3. Everything on a savings account is a transfer, except interest.
  * Mutates and returns the array.
  */
+export const CARD_ALIASES_PUBLIC = { 'american express': ['AMERICAN EXPRESS', 'AMERICAN EXP', 'AMERICANEXPRESS', 'AMEX'], amex: ['AMERICAN EXPRESS', 'AMERICAN EXP', 'AMEX'], aqua: ['AQUA', 'NEWDAY'], 'capital one': ['CAPITAL ONE'], barclaycard: ['BARCLAYCARD'],
+    vanquis: ['VANQUIS'], mbna: ['MBNA'], 'tesco bank': ['TESCO BANK', 'TESCO CREDIT CARD'], marbles: ['MARBLES', 'NEWDAY'], fluid: ['FLUID', 'NEWDAY'], zopa: ['ZOPA'] };
+const CARD_ALIASES = CARD_ALIASES_PUBLIC;
+const GENERIC = new Set(['CREDIT', 'CARD', 'CARDS', 'PLATINUM', 'GOLD', 'CLASSIC', 'REWARDS', 'CASHBACK', 'EVERYDAY', 'PREFERRED', 'THE', 'MY', 'UK', 'BANK', 'MASTERCARD', 'VISA', 'ACCOUNT']);
+/** Words that identify the card companies you hold an imported card with. */
+export function cardWordsFor(accountsById, aliases = {}) {
+  const words = new Set();
+  for (const a of Object.values(accountsById)) {
+    if (a.type !== 'credit') continue;
+    const bank = String(a.bank || '').toLowerCase();
+    for (const w of aliases[bank] || (a.bank ? [String(a.bank).toUpperCase()] : [])) words.add(w);
+    const text = `${a.bank || ''} ${a.name || ''}`.toUpperCase();
+    for (const list of Object.values(aliases)) if (list.some((w) => text.includes(w))) list.forEach((w) => words.add(w));
+    const first = text.replace(/[^A-Z ]/g, ' ').split(/\s+/).find((w) => w.length > 2 && !GENERIC.has(w));
+    if (first) words.add(first);
+  }
+  return [...words];
+}
+/** A payment from a current account to a card company you have an imported card with. */
+export function isCardRepayment(t, cardWords) {
+  if (!cardWords.length || t.amount >= 0 || !['debt', 'other', 'transfer', 'shopping', 'bills'].includes(t.category)) return false;
+  const d = ` ${String(t.description || '').toUpperCase().replace(/[^A-Z0-9 ]/g, ' ')} `;
+  if (/\b(FEE|INTEREST|CHARGE)\b/.test(d)) return false;
+  return cardWords.some((w) => d.includes(` ${w} `) || d.includes(` ${w}`));
+}
+
 export function markTransfers(txs, accountsById = {}, { ownNames = [] } = {}) {
   const byAbs = new Map();
   for (const t of txs) {
@@ -65,10 +91,7 @@ export function markTransfers(txs, accountsById = {}, { ownNames = [] } = {}) {
   const ownBanks = ownBanksOf(accountsById);
   // Card companies you have a card account with: paying them from a current account is moving
   // money to your own debt, not new spending (the purchases are already counted on the card).
-  const CARD_ALIASES = { 'american express': ['AMERICAN EXPRESS', 'AMEX'], aqua: ['AQUA', 'NEWDAY'], 'capital one': ['CAPITAL ONE'], barclaycard: ['BARCLAYCARD'],
-    vanquis: ['VANQUIS'], mbna: ['MBNA'], 'tesco bank': ['TESCO BANK', 'TESCO CREDIT CARD'], marbles: ['MARBLES', 'NEWDAY'], fluid: ['FLUID', 'NEWDAY'], zopa: ['ZOPA'] };
-  const cardWords = Object.values(accountsById).filter((a) => a.type === 'credit')
-    .flatMap((a) => CARD_ALIASES[String(a.bank || '').toLowerCase()] || (a.bank ? [String(a.bank).toUpperCase()] : []));
+  const cardWords = cardWordsFor(accountsById, CARD_ALIASES);
   const names = ownNames.map((n) => n.toUpperCase().replace(/[^A-Z ]/g, ' ').replace(/\s+/g, ' ').trim()).filter((n) => n.length >= 3);
   for (const t of txs) {
     if (t.userCategory || t.pairId) continue;
@@ -76,13 +99,14 @@ export function markTransfers(txs, accountsById = {}, { ownNames = [] } = {}) {
     // Money paid onto a credit card is a repayment, never income (refunds keep their shop category).
     if (acc?.type === 'credit' && t.amount > 0 && t.category === 'income') { t.category = 'transfer'; t.autoTransfer = true; continue; }
     if (acc?.type === 'savings') {
-      if (!/\b(INTEREST|BONUS)\b/i.test(t.description)) { t.category = 'transfer'; t.autoTransfer = true; }
+      // Interest paid into savings stays there: it grows your savings but isn't money you can
+      // spend, so it isn't household income either.
+      t.category = /\b(INTEREST|BONUS)\b/i.test(t.description) && t.amount > 0 ? 'interest' : 'transfer'; t.autoTransfer = true;
       continue;
     }
-    if (t.amount < 0 && acc?.type !== 'credit' && cardWords.length && ['debt', 'other', 'transfer', 'shopping'].includes(t.category)) {
-      const d = ` ${String(t.description || '').toUpperCase()} `;
-      if (cardWords.some((w) => d.includes(` ${w} `) || d.includes(` ${w}`))) { t.category = 'transfer'; t.autoTransfer = true; continue; }
-    }
+    if (t.amount < 0 && acc?.type !== 'credit' && isCardRepayment(t, cardWords)) { t.category = 'transfer'; t.autoTransfer = true; t.cardRepay = true; continue; }
+    // A payment received on a card statement is your repayment arriving, not a refund.
+    if (acc?.type === 'credit' && t.amount > 0 && /\b(PAYMENT RECEIVED|PAYMENT - THANK YOU|THANK YOU FOR YOUR PAYMENT|DIRECT DEBIT PAYMENT|PAYMENT THANK YOU|FASTER PAYMENT RECEIVED)\b/i.test(t.description)) { t.category = 'transfer'; t.autoTransfer = true; continue; }
     if (['income', 'other', 'transfer'].includes(t.category) && looksLikeOwnTransfer(t, { ownBanks, ownNames: names })) {
       t.category = 'transfer'; t.autoTransfer = true;
     }
@@ -173,7 +197,8 @@ const SPLIT_CATS = new Set(['housing', 'bills', 'insurance', 'debt', 'childcare'
 export function detectRecurring(txs, { today = todayISO() } = {}) {
   const groups = new Map();
   for (const t of txs) {
-    if (t.category === 'transfer' || t.category === 'excluded' || isSummaryLine(t.description)) continue;
+    // Card repayments are transfers (not spending) but the cash still leaves: keep them for the calendar.
+    if ((t.category === 'transfer' && !t.cardRepay) || t.category === 'excluded' || t.category === 'interest' || isSummaryLine(t.description)) continue;
     const dir = t.amount < 0 ? 'out' : 'in';
     // Month names in references ("RENT NOV", "OCTOBER RENT") would split one payee into many.
     const payee = String(t.merchant || merchantKey(t.description)).toUpperCase().replace(/\b(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|SEPT|OCT|NOV|DEC)[A-Z]*\b/g, ' ').replace(/\b\d+\b/g, ' ').replace(/\s+/g, ' ').trim() || String(t.merchant || t.description).toUpperCase();
@@ -216,7 +241,9 @@ export function detectRecurring(txs, { today = todayISO() } = {}) {
       : /\b(DD|DIRECT DEBIT|D\/D)\b/.test(desc) ? 'Direct Debit'
       : /\b(SO|STO|STANDING ORDER|S\/O)\b/.test(desc) ? 'Standing Order'
       : 'Card / Subscription';
-    const typeLabel = split ? `${type === 'Card / Subscription' ? 'Payments' : type} (in parts)` : type;
+    const cardRepay = list.some((t) => t.cardRepay);
+    const typeLabel0 = cardRepay ? 'Card repayment' : type;
+    const typeLabel = split ? `${typeLabel0 === 'Card / Subscription' ? 'Payments' : typeLabel0} (in parts)` : typeLabel0;
     // Monthly payments fall on the same day each month; others repeat at their own interval.
     let nextDue = addDays(last.date, Math.round(g));
     while (nextDue < today) nextDue = addDays(nextDue, Math.round(g));
@@ -242,6 +269,7 @@ export function detectRecurring(txs, { today = todayISO() } = {}) {
       months: months.size,
       type: typeLabel,
       split,
+      cardRepay,
       priceChange: prevAmt && Math.abs(lastAmt - prevAmt) > Math.max(prevAmt * 0.04, 50) ? lastAmt - prevAmt : 0,
       // Considered lapsed if it hasn't appeared for ~2 intervals.
       active: daysBetween(last.date, today) <= g * 2 + 5,

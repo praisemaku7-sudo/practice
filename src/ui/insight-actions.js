@@ -120,6 +120,7 @@ export function openInsight(i) {
     ${extra.join('')}
     ${links.length ? `<h3>Where to go</h3><div class="act-links">${links.map(link).join('')}</div>` : ''}
     ${cta}
+    <button class="btn ghost full" data-action="ins-ask-q" data-q="${esc(`About "${i.title}" (${i.detail}): what exactly should we do, step by step, and how much could it save?`)}">✨ Ask Claude about this</button>
     <button class="btn ghost full" data-action="close-sheet">Done</button>`, { wide: true });
 }
 
