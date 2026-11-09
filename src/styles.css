@@ -1069,3 +1069,18 @@ button.ins-go { border: 0; background: none; font: inherit; cursor: pointer; pad
 .cat-bar.over span { background: var(--bad); }
 .cc-actions { margin-top: 10px; }
 button.ins-go { font-size: 14px; font-weight: 700; color: var(--accent-text, var(--accent)); }
+/* Accounts: grouped */
+.pos-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 6px; }
+.pos-grid > div { background: var(--track); border-radius: 12px; padding: 9px 11px; display: flex; flex-direction: column; min-width: 0; }
+.pos-grid b { font-size: 18px; }
+.acc-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.acc-head h3 { margin: 0; flex: 1; font-size: 17px; }
+.acc-head > b { font-size: 16px; }
+.sec-ic.current { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--accent-text, var(--accent)); }
+.sec-ic.savings { background: color-mix(in srgb, var(--good) 15%, transparent); color: var(--good); }
+.sec-ic.credit { background: color-mix(in srgb, #8a5cd1 15%, transparent); color: #8a5cd1; }
+.sec-ic.investment { background: var(--track); color: var(--muted); }
+.acc-row .acc-name { font-weight: 600; }
+.acc-row .cat-bar { margin-top: 6px; max-width: 220px; }
+.acc-group .cal-tip { margin-top: 10px; }
+.acc-group .bal small { display: block; text-align: right; }
