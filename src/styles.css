@@ -917,3 +917,46 @@ button.plain { border: 0; background: none; font: inherit; color: inherit; text-
 .sec-all { align-items: center; gap: 4px; margin: 0 2px 6px; }
 .sec-all span { font-size: 11.5px; color: var(--muted); margin-right: 2px; }
 .sec-all button { font-size: 11.5px; padding: 4px 9px; }
+/* Future planning: mortgage in principle and insights */
+.mip-row { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 10px; }
+.mip-ic { width: 42px; height: 42px; flex: none; border-radius: 12px; background: var(--accent-soft); display: grid; place-items: center; font-size: 21px; }
+.mip-card label.btn { display: flex; justify-content: center; align-items: center; cursor: pointer; }
+.mip-card label.chip { cursor: pointer; flex: none; }
+.mip-exp { font-size: 13.5px; margin-bottom: 6px; }
+.cat-bar.warn span { background: var(--warn); }
+.bi-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 18px 4px 8px; flex-wrap: wrap; }
+.bi-head h2 { margin: 0; font-size: 20px; }
+.kpi-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+.kpi { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 11px 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0; box-shadow: var(--shadow); }
+.kpi b { font-size: 19px; overflow-wrap: anywhere; }
+.kpi small { color: var(--muted); font-size: 11.5px; }
+.bi-chart { width: 100%; height: 150px; display: block; margin: 6px 0 2px; }
+.bi-line { fill: none; stroke-width: 2.4; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.bi-area { stroke: none; opacity: .14; }
+.bi-line.bal { stroke: var(--bad); } .bi-area.bal { fill: var(--bad); }
+.bi-line.val { stroke: var(--good); } .bi-area.val { fill: var(--good); }
+.bi-line.over { stroke: var(--accent); }
+.bi-line.rent { stroke: var(--warn); } .bi-line.own { stroke: var(--accent); }
+.bi-bar.cap { fill: var(--accent); } .bi-bar.int { fill: color-mix(in srgb, var(--bad) 70%, transparent); }
+.bi-zero { stroke: var(--line); stroke-dasharray: 4 4; vector-effect: non-scaling-stroke; }
+.bi-label { font-size: 9.5px; fill: var(--muted); }
+.bi-hit { fill: transparent; cursor: pointer; }
+.bi-hit.sel { fill: color-mix(in srgb, var(--ink) 7%, transparent); }
+.bi-detail { font-size: 13px; background: var(--track); border-radius: 10px; padding: 8px 10px; margin: 4px 0 6px; min-height: 2.6em; }
+.bi-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.bi-key { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.bi-key.bal { background: var(--bad); } .bi-key.val { background: var(--good); } .bi-key.over { background: var(--accent); }
+.bi-key.cap { background: var(--accent); } .bi-key.int { background: color-mix(in srgb, var(--bad) 70%, transparent); }
+.bi-key.rent { background: var(--warn); } .bi-key.own { background: var(--accent); }
+.bi-txt.cap, .bi-txt.over, .bi-txt.own { color: var(--accent-text, var(--accent)); font-weight: 650; } .bi-txt.int { color: var(--bad); font-weight: 650; } .bi-txt.rent { color: var(--warn); font-weight: 650; }
+.field.inline { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.field.inline input { max-width: 90px; text-align: right; }
+.gauge { position: relative; height: 14px; margin: 14px 0 4px; }
+.g-zones { display: grid; grid-template-columns: 60fr 20fr 20fr; height: 100%; border-radius: 99px; overflow: hidden; }
+.g-zones .z1 { background: var(--good); } .g-zones .z2 { background: var(--warn); } .g-zones .z3 { background: var(--bad); }
+.gauge i { position: absolute; top: -5px; width: 4px; height: 24px; border-radius: 2px; background: var(--ink); transform: translateX(-50%); box-shadow: 0 0 0 2px var(--card); }
+.g-scale { display: grid; grid-template-columns: 60fr 20fr 20fr 0fr; font-size: 11px; color: var(--muted); }
+.g-scale span:last-child { text-align: right; white-space: nowrap; transform: translateX(-100%); }
+.kpi { padding: 9px 11px; border-radius: 14px; }
+.kpi b { font-size: 17px; }
+.kpi-grid { gap: 8px; }
