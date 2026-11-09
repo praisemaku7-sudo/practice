@@ -961,3 +961,30 @@ button.plain { border: 0; background: none; font: inherit; color: inherit; text-
 .kpi b { font-size: 17px; }
 .kpi-grid { gap: 8px; }
 .mini-bar.static { cursor: default; border-bottom: 0; padding: 4px 0; }
+/* On track: money in vs out */
+.enough-sum { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 4px 0 6px; }
+.enough-sum > div { background: var(--track); border-radius: 12px; padding: 8px 10px; display: flex; flex-direction: column; min-width: 0; }
+.enough-sum .label { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.enough-sum b { font-size: 17px; }
+.cash-chart { width: 100%; height: 170px; display: block; margin: 10px 0 0; }
+.cm-bg { fill: transparent; }
+.cm.sel .cm-bg { fill: color-mix(in srgb, var(--accent) 12%, transparent); }
+.cm-in { fill: var(--good); }
+.cm-out { fill: color-mix(in srgb, var(--ink) 45%, transparent); }
+.cm-out.over { fill: var(--bad); }
+.cm.future .cm-in, .cm.future .cm-out { opacity: .45; }
+.cm.now .cm-in, .cm.now .cm-out { opacity: .75; }
+.cm-net { font-size: 8.5px; font-weight: 700; }
+.cm-net.neg { fill: var(--bad); } .cm-net.pos { fill: var(--good); }
+.cm .ihit { cursor: pointer; }
+.tb-key.out { background: color-mix(in srgb, var(--ink) 45%, transparent); }
+.run-line { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: center; margin: 4px 0 8px; font-size: 12px; }
+.run-line svg { width: 100%; height: 30px; }
+.run-path { fill: none; stroke-width: 2.2; vector-effect: non-scaling-stroke; }
+.run-path.neg { stroke: var(--bad); } .run-path.pos { stroke: var(--good); }
+.cm-detail { background: var(--track); border-radius: 14px; padding: 10px 12px; margin: 8px 0; font-size: 14px; }
+.cm-detail .plan-table { margin: 6px 0; }
+.cm-detail .pt-row { padding: 5px 2px; }
+.diag { display: flex; flex-direction: column; gap: 4px; padding: 8px 0; border-top: 1px solid color-mix(in srgb, var(--bad) 25%, transparent); }
+.diag b { color: var(--ink) !important; font-size: 14px; }
+.diag .chip { align-self: flex-start; }

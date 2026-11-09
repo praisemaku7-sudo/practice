@@ -13,31 +13,95 @@ import { saveSettings, recompute, incomeFor } from '../../state.js';
 import { checkinStatus, targetMonth } from './checkin.js';
 import { catChip } from '../common.js';
 import { buildPath, chosenSaving } from '../../lib/path.js';
+import { diagnoseSpending } from '../../lib/diagnose.js';
+import { summarizeMonth } from '../../lib/analysis.js';
 import { schedule } from '../../lib/mortgage.js';
 
 let reports = [];
-const ui = { showAllSavings: false, showAllPath: false };
+const ui = { showAllSavings: false, showAllPath: false, withActions: false, sel: null };
+let points = [];
 export async function preload() { reports = await creditReports(); }
 
 const statusWord = { ok: ['On track', 'pos'], tight: ['Tight', 'warn-text'], short: ['Short', 'neg'] };
 const bar = (pct, cls = '') => `<div class="cat-bar ${cls}"><span style="width:${Math.max(0, Math.min(100, pct * 100)).toFixed(1)}%"></span></div>`;
 
-/** Last 6 months and the next 6 as little bars: left over each month (green) or short (red). */
-function trendChart(past, ahead) {
-  const all = [...past.map((m) => ({ ...m, future: false })), ...ahead.map((m) => ({ month: m.month, left: m.left, future: true }))];
-  if (!all.length) return '';
-  const max = Math.max(1, ...all.map((m) => Math.abs(m.left)));
-  const W = 320, H = 110, mid = H / 2, bw = W / all.length;
-  const bars = all.map((m, i) => {
-    const h = Math.max(2, (Math.abs(m.left) / max) * (mid - 12));
-    const y = m.left >= 0 ? mid - h : mid;
-    return `<rect x="${(i * bw + 3).toFixed(1)}" y="${y.toFixed(1)}" width="${(bw - 6).toFixed(1)}" height="${h.toFixed(1)}" rx="3" class="${m.left >= 0 ? 'tb-pos' : 'tb-neg'} ${m.future ? 'tb-future' : ''}"><title>${esc(monthLabel(m.month))}: ${m.left >= 0 ? '' : '−'}£${Math.round(Math.abs(m.left) / 100)}</title></rect>
-      <text x="${(i * bw + bw / 2).toFixed(1)}" y="${H - 1}" text-anchor="middle" class="tb-label">${esc(monthLabel(m.month, { short: true }).split(' ')[0].slice(0, 1))}</text>`;
-  }).join('');
-  const split = past.length * bw;
-  return `<svg class="trend" viewBox="0 0 ${W} ${H}" role="img" aria-label="Left over each month">
-    <line x1="0" x2="${W}" y1="${mid}" y2="${mid}" class="tb-axis"/>${past.length && ahead.length ? `<line x1="${split}" x2="${split}" y1="4" y2="${H - 12}" class="tb-split"/>` : ''}${bars}</svg>
-    <div class="kind-legend"><span><i class="tb-key pos"></i>Left over</span><span><i class="tb-key neg"></i>Short</span><span><i class="tb-key future"></i>Forecast</span></div>`;
+/** Money in vs out, month by month: 6 complete months, this month at today's pace, 6 ahead. */
+function cashChart(pts, sel) {
+  const W = 320, H = 170, top = 10, base = H - 34;
+  const max = Math.max(1, ...pts.flatMap((p) => [p.income, p.spend]));
+  const step = W / pts.length, bw = Math.min(10, step * 0.32);
+  const y = (v) => base - (v / max) * (base - top);
+  const runs = pts.filter((p) => p.running != null);
+  const rMax = Math.max(1, ...runs.map((p) => Math.abs(p.running)));
+  return `<svg class="cash-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Money in and out by month. Tap a month.">
+    <line x1="0" x2="${W}" y1="${base}" y2="${base}" class="tb-axis"/>
+    ${pts.map((p, i) => {
+      const cx = i * step + step / 2;
+      const neg = p.spend > p.income;
+      return `<g class="cm ${p.kind} ${i === sel ? 'sel' : ''}">
+        <rect x="${(i * step + 1).toFixed(1)}" y="2" width="${(step - 2).toFixed(1)}" height="${H - 4}" rx="6" class="cm-bg"/>
+        <rect x="${(cx - bw - 1).toFixed(1)}" y="${y(p.income).toFixed(1)}" width="${bw}" height="${Math.max(1, base - y(p.income)).toFixed(1)}" rx="2.5" class="cm-in"/>
+        <rect x="${(cx + 1).toFixed(1)}" y="${y(p.spend).toFixed(1)}" width="${bw}" height="${Math.max(1, base - y(p.spend)).toFixed(1)}" rx="2.5" class="cm-out ${neg ? 'over' : ''}"/>
+        <text x="${cx.toFixed(1)}" y="${H - 20}" text-anchor="middle" class="tb-label">${esc(monthLabel(p.month, { short: true }).split(' ')[0].slice(0, 3))}</text>
+        <text x="${cx.toFixed(1)}" y="${H - 7}" text-anchor="middle" class="cm-net ${p.left < 0 ? 'neg' : 'pos'}">${p.left < 0 ? '−' : '+'}${Math.abs(p.left) >= 100000 ? (Math.abs(p.left) / 100000).toFixed(1) + 'k' : Math.round(Math.abs(p.left) / 100)}</text>
+        <rect x="${(i * step).toFixed(1)}" y="0" width="${step.toFixed(1)}" height="${H}" class="ihit" data-action="tr-m" data-i="${i}"/></g>`;
+    }).join('')}
+    ${pts.findIndex((p) => p.kind === 'now') > 0 ? `<line x1="${(pts.findIndex((p) => p.kind === 'now') * step).toFixed(1)}" x2="${(pts.findIndex((p) => p.kind === 'now') * step).toFixed(1)}" y1="2" y2="${base}" class="tb-split"/>` : ''}
+  </svg>${runs.length > 1 ? `<div class="run-line"><span class="label">Running total from now</span><svg viewBox="0 0 ${W} 30" preserveAspectRatio="none">${(() => { const idx = pts.map((p, i) => [p, i]).filter(([p]) => p.running != null); return `<line x1="0" x2="${W}" y1="15" y2="15" class="tb-axis"/><path d="${idx.map(([p, i], j) => `${j ? 'L' : 'M'}${(i * step + step / 2).toFixed(1)},${(15 - (p.running / rMax) * 13).toFixed(1)}`).join(' ')}" class="run-path ${runs.at(-1).running < 0 ? 'neg' : 'pos'}"/>`; })()}</svg><b class="${runs.at(-1).running < 0 ? 'neg' : 'pos'}">${fmt(runs.at(-1).running, { whole: true, sign: true })}</b></div>` : ''}`;
+}
+
+function detailFor(p) {
+  if (!p) return '';
+  const row = (l, v, cls = '') => `<div class="pt-row two"><span>${l}</span><b class="${cls}">${v}</b></div>`;
+  if (p.kind === 'past') {
+    const sm = summarizeMonth(state.txs, p.month);
+    const top = Object.entries(sm.byCat || {}).sort((a, b) => b[1] - a[1]).slice(0, 4);
+    return `<b>${esc(monthLabel(p.month))}</b> <small class="muted">actual</small><div class="plan-table">${row('In', fmt(p.income, { whole: true }), 'pos')}${row('Out', fmt(p.spend, { whole: true }))}${row('Left over', fmt(p.left, { whole: true, sign: true }), p.left < 0 ? 'neg' : 'pos')}</div>
+      ${top.length ? `<div class="sub">Biggest: ${top.map(([c, v]) => `${esc(catName(c))} ${fmt(v, { whole: true })}`).join(' · ')}</div>` : ''}
+      <div class="row gap wrap"><button class="chip" data-action="dash-month" data-month="${p.month}">Breakdown and transactions ›</button></div>`;
+  }
+  if (p.kind === 'now') {
+    return `<b>${esc(monthLabel(p.month))}</b> <small class="muted">in progress</small><div class="plan-table">${row('Spent so far', fmt(p.spent, { whole: true }))}${row('Heading for', fmt(p.spend, { whole: true }))}${row('Bills still to come', fmt(p.billsToCome, { whole: true }))}${row('Income', fmt(p.income, { whole: true }), 'pos')}${row('Left at month end', fmt(p.left, { whole: true, sign: true }), p.left < 0 ? 'neg' : 'pos')}</div>
+      <div class="row gap wrap"><a class="chip" href="#/bills">Bills calendar ›</a><a class="chip" href="#/budget">Budgets ›</a></div>`;
+  }
+  return `<b>${esc(monthLabel(p.month))}</b> <small class="muted">forecast</small><div class="plan-table">${row('In' + (p.incomeNote ? ` <small class="muted">${esc(p.incomeNote)}</small>` : ''), fmt(p.income, { whole: true }), 'pos')}${row('Regular bills', fmt(p.bills || 0, { whole: true }))}${row('Everyday spending (typical)', fmt(Math.max(0, p.spend - (p.bills || 0)), { whole: true }))}${p.mortgage ? row('🏠 Mortgage instead of rent', 'included') : ''}${row('Left over', fmt(p.left, { whole: true, sign: true }), p.left < 0 ? 'neg' : 'pos')}${row('Running total', fmt(p.running, { whole: true, sign: true }), p.running < 0 ? 'neg' : '')}</div>
+    <div class="row gap wrap"><a class="chip" href="#/income">Income ›</a>${p.mortgage ? '<a class="chip" href="#/plan">Future planning ›</a>' : ''}</div>`;
+}
+
+function enoughCard({ past, ahead, withPlan, mo, chosen, picked, mort, s }) {
+  const plan = ui.withActions && withPlan ? withPlan : ahead;
+  points = [
+    ...past.map((m) => ({ ...m, kind: 'past', running: null })),
+    { month: mo.key, kind: 'now', income: mo.income, spend: mo.spendEnd - (ui.withActions && picked ? Math.round(picked * (1 - mo.day / mo.days)) : 0), spent: mo.spent, billsToCome: mo.billsToCome, left: mo.left + (ui.withActions && picked ? Math.round(picked * (1 - mo.day / mo.days)) : 0), running: null },
+    ...plan.months.map((m) => ({ ...m, kind: 'future' })),
+  ];
+  const nowLeft = points.find((p) => p.kind === 'now').left;
+  let run = nowLeft; for (const p of points) if (p.kind === 'future') { run += p.left; p.running = run; }
+  points.find((p) => p.kind === 'now').running = nowLeft;
+  const sel = ui.sel ?? points.findIndex((p) => p.kind === 'now');
+  const income = plan.months[0]?.income || 0;
+  const outTyp = plan.avgSpend - (ui.withActions ? picked : 0);
+  const spare = income - outTyp;
+  const checks = income && ahead.avgSpend > income * 1.3 ? diagnoseSpending({ txs: state.txs, accounts: state.allAccounts || state.accounts, months: past.map((p) => p.month), people: s.people, income }) : [];
+  const nAct = Object.values(chosen).filter(Boolean).length;
+  return `<div class="card keep-open">
+    <h3>Will we have enough?</h3>
+    <div class="enough-sum">
+      <div><span class="label">Typical month in</span><b class="pos">${fmt(income, { whole: true })}</b></div>
+      <div><span class="label">Typical month out</span><b>${fmt(outTyp, { whole: true })}</b></div>
+      <div><span class="label">${spare < 0 ? 'Short' : 'Spare'} each month</span><b class="${spare < 0 ? 'neg' : 'pos'}">${fmt(Math.abs(spare), { whole: true })}</b></div>
+    </div>
+    <p class="sub">"Typical" is your middle month of the last ${ahead.monthsUsed}${ahead.basis === 'median' && Math.abs(ahead.meanSpend - ahead.avgSpend) > ahead.avgSpend * 0.05 ? ` (the average is ${fmt(ahead.meanSpend, { whole: true })}, pushed ${ahead.meanSpend > ahead.avgSpend ? 'up' : 'down'} by one-off months)` : ''}. Income month by month from <a href="#/income">Income</a>${mort ? ', with the mortgage from Future planning' : ''}.</p>
+    ${checks.length ? `<div class="cal-tip bad"><b>⚠ Does this look right? Spending is ${Math.round((ahead.avgSpend / income) * 100)}% of income</b><span>Spending this far above income usually means something's counted that isn't really spending:</span>
+      ${checks.slice(0, 3).map((c) => `<div class="diag"><b>${esc(c.title)}</b><span>${esc(c.detail)}</span>${c.action ? `<a class="chip" href="${esc(c.action.href)}">${esc(c.action.label)} ›</a>` : ''}</div>`).join('')}
+      ${checks.length > 3 ? `<details><summary class="sub">${checks.length - 3} more checks</summary>${checks.slice(3).map((c) => `<div class="diag"><b>${esc(c.title)}</b><span>${esc(c.detail)}</span></div>`).join('')}</details>` : ''}</div>` : ''}
+    ${withPlan ? `<div class="seg" role="radiogroup" aria-label="Forecast"><button class="${ui.withActions ? '' : 'sel'}" data-action="tr-with" data-v="0">As things are</button><button class="${ui.withActions ? 'sel' : ''}" data-action="tr-with" data-v="1">With my ${nAct} action${nAct === 1 ? '' : 's'}</button></div>` : ''}
+    ${cashChart(points, sel)}
+    <div class="kind-legend"><span><i class="tb-key pos"></i>In</span><span><i class="tb-key out"></i>Out</span><span><i class="tb-key neg"></i>Out more than in</span><span><i class="tb-key future"></i>Forecast</span></div>
+    <div class="cm-detail" id="tr-detail">${detailFor(points[sel])}</div>
+    <p class="sub ${plan.shortMonths ? 'warn-text' : ''}">${plan.shortMonths ? `At this rate you'd be short in ${plan.shortMonths} of the next 6 months, ${fmt(points.at(-1).running, { whole: true, sign: true })} by ${esc(monthLabel(points.at(-1).month))}. ${ui.withActions ? '' : 'Your path below shows how to close the gap.'}` : 'Enough every month at this rate.'}</p>
+    ${withPlan && !ui.withActions ? `<p class="sub">With your ${nAct} chosen action${nAct === 1 ? '' : 's'} (${fmt(picked, { whole: true })}/month): ${withPlan.shortMonths ? `still short in ${withPlan.shortMonths} of 6 months` : '<span class="pos">enough every month</span>'}.</p>` : ''}
+  </div>`;
 }
 
 export function render() {
@@ -49,14 +113,14 @@ export function render() {
   const over = alerts.filter((a) => a.status === 'over'), heading = alerts.filter((a) => a.status === 'heading');
   const housingNow = budget.lines.find((l) => l.category === 'housing')?.hist || 0;
   const mort = s.mortgage?.principal || (s.mortgage?.price && s.mortgage?.deposit != null) ? { ...s.mortgage, principal: s.mortgage.principal ?? s.mortgage.price - s.mortgage.deposit } : null;
-  const ahead = outlook({ txs: state.txs, today, budget, months: 6, mortgage: mort, housingNow, incomeFor });
+  const ahead = outlook({ txs: state.txs, today, budget, months: 6, mortgage: mort, housingNow, incomeFor, recurring });
   const past = history({ txs: state.txs, today, n: 6 });
   const [word, wcls] = statusWord[mo.status];
   const mortPay = mort ? (schedule({ ...mort }).rows[0]?.payment || 0) + (mort.extraCosts || 0) : null;
   const path = buildPath({ budget, recurring, settings: s, income: ahead.months[0]?.income ?? budget.income, avgSpend: ahead.avgSpend, mortgagePayment: mortPay });
   const chosen = s.pathChosen || {};
   const picked = chosenSaving(path, chosen);
-  const withPlan = picked ? outlook({ txs: state.txs, today, budget, months: 6, mortgage: mort, housingNow, incomeFor, cut: picked }) : null;
+  const withPlan = picked ? outlook({ txs: state.txs, today, budget, months: 6, mortgage: mort, housingNow, incomeFor, cut: picked, recurring }) : null;
   const pathHtml = pathCard(path, chosen, picked);
   const plan = s.plan;
 
@@ -169,17 +233,7 @@ export function render() {
     ${over.length || heading.length ? `<div class="sub mi-movers"><span class="neg">⚠ ${[over.length && `${over.length} over budget`, heading.length && `${heading.length} heading over`].filter(Boolean).join(' · ')}</span></div>` : ''}
   </div>
 
-  <div class="card">
-    <h3>Will we have enough?</h3>
-    <p class="sub">At your average spending (${fmt(ahead.avgSpend, { whole: true })}/month) and your income month by month (<a href="#/income">Income</a>)${mort ? ', with the mortgage from Future planning' : ''}:</p>
-    ${trendChart(past, ahead.months)}
-    <div class="plan-table">
-      <div class="pt-row head"><span>Month</span><span>In</span><span>Left</span><span>Running</span></div>
-      ${ahead.months.map((m) => `<div class="pt-row ${m.mortgage ? 'start' : ''}"><span>${esc(monthLabel(m.month, { short: true }))}${m.mortgage ? ' 🏠' : ''}</span><span>${fmt(m.income, { whole: true })}</span><span class="${m.left < 0 ? 'neg' : ''}">${fmt(m.left, { whole: true, sign: true })}</span><span class="${m.running < 0 ? 'neg' : ''}">${fmt(m.running, { whole: true, sign: true })}</span></div>`).join('')}
-    </div>
-    <p class="sub ${ahead.shortMonths ? 'warn-text' : ''}">${ahead.shortMonths ? `Short in ${ahead.shortMonths} of the next 6 months at this rate. Your path below shows how to close the gap.` : 'Enough every month at this rate.'}</p>
-    ${withPlan ? `<p class="sub"><b>With the ${Object.values(chosen).filter(Boolean).length} actions you've chosen</b> (${fmt(picked, { whole: true })}/month): ${withPlan.shortMonths ? `<span class="warn-text">still short in ${withPlan.shortMonths} of 6 months</span>` : '<span class="pos">enough every month</span>'}, ${fmt(withPlan.months.at(-1).running, { whole: true, sign: true })} after 6 months instead of ${fmt(ahead.months.at(-1).running, { whole: true, sign: true })}.</p>` : ''}
-  </div>
+  ${enoughCard({ past, ahead, withPlan, mo, chosen, picked, mort, s })}
 
   ${pathHtml}
 
@@ -228,6 +282,14 @@ function pathCard(path, chosen, picked) {
 }
 
 export const actions = {
+  'tr-m': (el) => {
+    const i = +el.dataset.i;
+    ui.sel = i;
+    const d = document.getElementById('tr-detail');
+    if (d) d.innerHTML = detailFor(points[i]);
+    document.querySelectorAll('.cash-chart .cm').forEach((g, j) => g.classList.toggle('sel', j === i));
+  },
+  'tr-with': (el, rerender) => { ui.withActions = el.dataset.v === '1'; ui.sel = null; rerender(); },
   'tr-path-more': (_, rerender) => { ui.showAllPath = true; rerender(); },
   'tr-more': (_, rerender) => { ui.showAllSavings = true; rerender(); },
   'tr-stage': async (el, rerender) => { const n = await applyStage(+el.dataset.stage); toast(`${n} budgets moved to month ${+el.dataset.stage + 1} targets`); rerender(); },
