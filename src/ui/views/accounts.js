@@ -5,6 +5,8 @@ import { fmt, parsePrice } from '../../lib/money.js';
 import { prettyDate, monthLabel } from '../../lib/dates.js';
 import { canonicalBank } from '../../lib/parse/details.js';
 import { catChip, emptyState } from '../common.js';
+import { catName } from '../../lib/categories.js';
+import { helpFor } from '../../lib/directory.js';
 
 const SHORT_TYPE = { current: 'Current', savings: 'Savings', credit: 'Card', investment: 'Investment' };
 const TYPE_LABEL = { current: 'Current / debit', savings: 'Savings', credit: 'Credit card', investment: 'Investment / pension (not counted)' };
@@ -21,12 +23,13 @@ function accountRow(a) {
   const mainId = state.settings.mainAccountId;
   const counts = state.txs.filter((t) => t.accountId === a.id).length;
   const old = a.balanceDate ? Math.round((Date.parse(state.derived.today) - Date.parse(a.balanceDate)) / 86400000) : null;
-  const lim = a.type === 'credit' && a.limit && a.balance != null ? Math.max(0, -a.balance) / a.limit : null;
-  return `<button class="list-row tap acc-row" data-action="edit-account" data-id="${esc(a.id)}">
+  const limit = a.limit ?? a.details?.limit ?? null;
+  const lim = a.type === 'credit' && limit && a.balance != null ? Math.max(0, -a.balance) / limit : null;
+  return `<button class="list-row tap acc-row" data-action="${a.type === 'credit' ? 'card-open' : 'edit-account'}" data-id="${esc(a.id)}">
     <span class="bank-badge" style="${state.settings.people.length > 1 ? `box-shadow: inset 0 -3px 0 ${state.settings.people.find((p) => p.id === ownerOf(a))?.color || 'var(--muted)'}` : ''}">${esc((a.bank || a.name).slice(0, 2).toUpperCase())}</span>
     <div class="grow"><div class="acc-name">${esc(a.name)} ${a.id === mainId ? '<small class="pill">main</small>' : ''}</div>
-    <div class="sub one-line">${state.settings.people.length > 1 ? `<b>${esc(personName(ownerOf(a)).split(' ')[0])}</b> · ` : ''}${a.typeLocked ? '🔒 ' : ''}${esc(a.bank || '')}${a.apr ? ` · ${a.apr}% APR` : ''} · ${counts} tx</div>
-    ${lim != null ? `<div class="cat-bar ${lim > 1 ? 'over' : lim > 0.75 ? 'warn' : ''}"><span style="width:${Math.min(100, lim * 100).toFixed(1)}%"></span></div><div class="sub">${Math.round(lim * 100)}% of ${fmt(a.limit, { whole: true })} limit</div>` : ''}
+    <div class="sub one-line">${state.settings.people.length > 1 ? `<b>${esc(personName(ownerOf(a)).split(' ')[0])}</b> · ` : ''}${a.typeLocked ? '🔒 ' : ''}${esc(a.bank || '')}${a.apr != null ? ` · ${(a.apr * 100).toFixed(1)}% APR` : ''} · ${counts} tx</div>
+    ${lim != null ? `<div class="cat-bar ${lim > 1 ? 'over' : lim > 0.75 ? 'warn' : ''}"><span style="width:${Math.min(100, lim * 100).toFixed(1)}%"></span></div><div class="sub">${Math.round(lim * 100)}% of ${fmt(limit, { whole: true })} limit</div>` : ''}
     ${!a.typeLocked && a.type !== 'credit' && /\bCARD\b/i.test(a.name) && !/DEBIT/i.test(a.name) ? '<div class="sub warn-text">Called a card but set as a current account: tap to check the type</div>' : ''}</div>
     <div class="bal"><b class="${a.type === 'credit' && a.balance < 0 ? 'neg' : a.balance < 0 ? 'neg' : ''}">${a.balance != null ? (a.type === 'credit' ? `${fmt(Math.max(0, -a.balance))}` : fmt(a.balance)) : a.balanceUnverified ? `<span class="muted">${fmt(Math.abs(a.balanceUnverified.amount))}?</span>` : '—'}</b>${a.type === 'credit' && a.balance != null ? '<small class="sub">owed</small>' : ''}${a.balanceDate ? `<small class="sub ${old > 31 ? 'warn-text' : ''}">${a.balanceDate === state.derived.today ? 'today' : `${old > 31 ? '⚠ ' : ''}on ${prettyDate(a.balanceDate)}`}</small>` : ''}</div></button>`;
 }
@@ -50,7 +53,8 @@ function positionCard() {
 function savingsTip(list) {
   const year = new Date(Date.parse(state.derived.today) - 365 * 86400000).toISOString().slice(0, 10);
   const all = state.allTxs || state.txs;
-  return list.filter((a) => a.balance > 100000).map((a) => {
+  const ghosts = new Set(ghostAccounts().map((a) => a.id));
+  return list.filter((a) => a.balance > 100000 && !ghosts.has(a.id)).map((a) => {
     const intr = all.filter((t) => t.accountId === a.id && t.amount > 0 && t.date >= year && (t.category === 'interest' || /INTEREST/i.test(t.description)));
     if (!intr.length) return '';
     const months = new Set(intr.map((t) => t.date.slice(0, 7))).size;
@@ -68,7 +72,7 @@ function cardsTip(list) {
   const owed = list.reduce((x, a) => x + Math.max(0, -(a.balance || 0)), 0);
   if (!owed) return '';
   const saved = state.accounts.filter((a) => a.type === 'savings').reduce((x, a) => x + (a.balance || 0), 0);
-  const apr = list.filter((a) => a.apr).length ? list.reduce((x, a) => x + Math.max(0, -(a.balance || 0)) * (a.apr || 25), 0) / owed : 25;
+  const apr = (list.reduce((x, a) => x + Math.max(0, -(a.balance || 0)) * ((a.apr ?? 0.25) * 100), 0) / owed);
   return `<div class="cal-tip ${saved > owed ? '' : 'bad'}"><b>Card interest at about ${Math.round(apr)}% APR costs roughly ${fmt((owed * apr) / 100, { whole: true })} a year</b><span>${saved > owed ? `You have ${fmt(saved, { whole: true })} in savings. Clearing the ${fmt(owed, { whole: true })} from savings would cost a few pounds of savings interest and save far more in card interest. It's your call (e.g. if the savings are for a deposit), but it's usually the best return available.` : 'Pay more than the minimum on the highest-rate card first; the payoff plan shows the order and the date you\'ll be clear.'}</span>
     <div class="row gap wrap"><a class="chip sel" href="#/cards">Payoff plan ›</a><a class="chip" href="#/movebills">Move bills off cards ›</a></div></div>`;
 }
@@ -97,6 +101,8 @@ export function render() {
   ${dups.length ? `<div class="card banner"><b>${dups.length} duplicate transaction${dups.length > 1 ? 's' : ''} found</b>
     <span class="sub">The same payment imported twice (from overlapping statements, or a PDF and CSV of the same month).</span>
     <div class="row gap"><button class="btn ghost grow" data-action="dup-review">Review</button><button class="btn primary grow" data-action="dup-remove-all">Remove ${dups.length}</button></div></div>` : ''}
+  ${ghostAccounts().map((a) => `<div class="card banner bad"><b>Is "${esc(a.name)}" real?</b><span class="sub">${fmt(a.balance, { whole: true })} with only a few transactions. This often happens when an investment or pension statement (e.g. Quilter) is read as a savings account. If it isn't a real account, remove it: everything it's counted in will be corrected.</span>
+    <div class="row gap wrap"><button class="btn danger grow" data-action="acc-ghost-remove" data-id="${esc(a.id)}">Not real: remove</button><button class="btn ghost grow" data-action="acc-ghost-count" data-id="${esc(a.id)}">Real, but don't count it</button><button class="btn ghost grow" data-action="acc-ghost-keep" data-id="${esc(a.id)}">It's real</button></div></div>`).join('')}
   ${positionCard()}
   ${GROUPS.map(([type, title, icon]) => {
     const list = state.accounts.filter((a) => (type === 'current' ? !['savings', 'credit', 'investment'].includes(a.type) : a.type === type));
@@ -165,7 +171,113 @@ function renderStatements() {
 const accName = (id) => state.accounts.find((a) => a.id === id)?.name ?? '?';
 
 
+/** Months and interest to clear a balance paying a fixed amount each month. */
+function clearIn(owed, apr, monthly) {
+  let bal = owed, months = 0, interest = 0;
+  while (bal > 0 && months < 600) {
+    const i = Math.round(bal * (apr / 12));
+    if (monthly <= i) return { months: null, interest: null };
+    bal += i - monthly; interest += i; months++;
+  }
+  return { months, interest };
+}
+
+function cardSheet(a) {
+  const today = state.derived.today;
+  const all = (state.allTxs || state.txs).filter((t) => t.accountId === a.id);
+  const owed = a.balance != null ? Math.max(0, -a.balance) : null;
+  const limit = a.limit ?? a.details?.limit ?? null;
+  const apr = a.apr ?? null;
+  const aprUse = apr ?? 0.249;
+  const use = limit && owed != null ? owed / limit : null;
+  const monthInt = owed ? Math.round(owed * (aprUse / 12)) : 0;
+  // UK minimums are usually interest + 1% of the balance, with a floor (often £25).
+  const minPay = owed ? Math.min(owed, Math.max(2500, monthInt + Math.round(owed * 0.01))) : 0;
+  const m = monthLabel(today.slice(0, 7), { short: true });
+  const inMonth = all.filter((t) => t.date.startsWith(today.slice(0, 7)));
+  const isFee = (t) => t.category === 'fees' || /\b(INTEREST|LATE|FEE|CHARGE)\b/i.test(t.description);
+  const spent = inMonth.filter((t) => t.amount < 0 && t.category !== 'transfer' && !isFee(t)).reduce((x, t) => x - t.amount, 0);
+  const fees3 = all.filter((t) => t.amount < 0 && isFee(t) && t.date >= new Date(Date.parse(today) - 92 * 86400000).toISOString().slice(0, 10));
+  const pays = all.filter((t) => t.amount > 0 && !/REFUND/i.test(t.description)).sort((x, y) => y.date.localeCompare(x.date));
+  const since = new Date(Date.parse(today) - 92 * 86400000).toISOString().slice(0, 10);
+  const recent = all.filter((t) => t.amount < 0 && t.date >= since && !isFee(t) && t.category !== 'transfer');
+  const byCat = {};
+  for (const t of recent) byCat[t.category] = (byCat[t.category] || 0) - t.amount;
+  const cats = Object.entries(byCat).sort((x, y) => y[1] - x[1]).slice(0, 5);
+  const top = [...recent].sort((x, y) => x.amount - y.amount).slice(0, 5);
+  const regular = state.derived.recurring.filter((r) => r.accountId === a.id && r.direction === 'out' && r.active);
+  const h = helpFor(a.bank || a.name);
+  const opts = owed ? [['Minimum (about)', minPay], ['+ £50 a month', minPay + 5000], ['+ £100 a month', minPay + 10000], ['+ £250 a month', minPay + 25000]].map(([l, p]) => ({ l, p, r: clearIn(owed, aprUse, p) })) : [];
+  const row = (l, v, cls = '') => `<div><span class="label">${l}</span><b class="${cls}">${v}</b></div>`;
+  openSheet(`<h2>${esc(a.name)}</h2>
+    <p class="muted">${esc(personName(ownerOf(a)).split(' ')[0])} · ${esc(a.bank || 'Credit card')}${a.balanceDate ? ` · balance from ${prettyDate(a.balanceDate)}` : ''}</p>
+    <div class="sheet-big ${owed ? 'neg' : 'pos'}">${owed == null ? 'Balance unknown' : fmt(owed)}<small> owed</small></div>
+    ${use != null ? `<div class="cat-bar ${use > 1 ? 'over' : use > 0.75 ? 'warn' : ''}"><span style="width:${Math.min(100, use * 100).toFixed(1)}%"></span></div><p class="sub">${Math.round(use * 100)}% of your limit used. ${use > 0.3 ? 'Under 30% helps your credit score.' : 'Under 30%: good for your credit score.'}</p>` : ''}
+    <div class="cc-stats">
+      ${row('Limit', limit ? fmt(limit, { whole: true }) : '<span class="muted">not set</span>')}
+      ${row('Available', limit && owed != null ? fmt(Math.max(0, limit - owed), { whole: true }) : '–')}
+      ${row('APR', apr != null ? `${(apr * 100).toFixed(1)}%` : '<span class="muted">not set (24.9% assumed)</span>')}
+      ${row('Interest a month', owed ? `~${fmt(monthInt, { whole: true })}` : '£0', monthInt ? 'neg' : '')}
+      ${row(`Spent in ${esc(m)}`, fmt(spent, { whole: true }), spent ? 'warn-text' : 'pos')}
+      ${row('Interest & fees (3 months)', fmt(fees3.reduce((x, t) => x - t.amount, 0), { whole: true }), fees3.length ? 'neg' : '')}
+      ${row('Estimated minimum', owed ? `~${fmt(minPay, { whole: true })}/mo` : '–')}
+      ${row('Last payment', pays[0] ? `${fmt(pays[0].amount, { whole: true })} · ${prettyDate(pays[0].date)}` : '<span class="muted">none seen</span>')}
+    </div>
+    ${opts.length ? `<h3>How fast can it be cleared?</h3><div class="plan-table"><div class="pt-row head three"><span>Paying</span><span>Clear in</span><span>Interest</span></div>
+      ${opts.map((o) => `<div class="pt-row three"><span>${o.l}<br><small class="muted">${fmt(o.p, { whole: true })}/mo</small></span><span>${o.r.months == null ? '<span class="neg">never</span>' : o.r.months >= 12 ? `${Math.floor(o.r.months / 12)}y ${o.r.months % 12}m` : `${o.r.months} months`}</span><span>${o.r.interest == null ? '–' : fmt(o.r.interest, { whole: true })}</span></div>`).join('')}</div>
+      <p class="sub">${apr == null ? 'Using 24.9% until you add this card\'s APR (on its statement). ' : ''}Paying only the minimum takes years and costs the most; every extra £50 shortens it a lot.</p>` : ''}
+    ${cats.length ? `<h3>What it's used for (3 months)</h3>${cats.map(([c, v]) => `<div class="list-row">${catChip(c)}<span class="grow">${esc(catName(c))}</span><b>${fmt(v, { whole: true })}</b></div>`).join('')}` : ''}
+    ${top.length ? `<h3>Biggest purchases (3 months)</h3>${top.map((t) => `<div class="list-row"><span class="grow ellipsis">${esc(t.merchant || t.description)} <small class="muted">${prettyDate(t.date)}</small></span><b>${fmt(-t.amount)}</b></div>`).join('')}` : ''}
+    ${regular.length ? `<h3>Regular payments on this card</h3>${regular.map((r) => `<div class="list-row">${catChip(r.category)}<span class="grow">${esc(r.name)} <small class="muted">${prettyDate(r.nextDue)}</small></span><b>${fmt(r.amount)}</b></div>`).join('')}<p class="sub">Move these to your debit card so the card can be paid off and put away.</p>` : ''}
+    <h3>Keep your credit file healthy</h3>
+    <ol class="act-steps"><li>Set a Direct Debit for at least the minimum, so a payment is never missed.</li><li>Keep the balance under 30% of the limit where you can.</li><li>Don't take cash out on a credit card: it costs a fee and interest from day one.</li><li>If you can't make the minimum, call the card company before the due date and ask about a payment plan.</li></ol>
+    <div class="row gap wrap"><a class="btn primary grow" href="#/cards">Payoff plan for all cards</a><button class="btn ghost grow" data-action="edit-account" data-id="${esc(a.id)}">Edit card</button></div>
+    <div class="act-links"><a class="act-link" href="#/transactions">Transactions ›</a>${h ? `<a class="act-link" href="${esc(h.url)}" target="_blank" rel="noopener">${esc(h.label)} ↗</a>` : ''}<a class="act-link" href="https://www.moneyhelper.org.uk/en/everyday-money/credit-and-purchases/credit-cards-explained" target="_blank" rel="noopener">MoneyHelper: credit cards explained ↗</a></div>
+    <button class="btn ghost full" data-action="close-sheet">Done</button>`, { wide: true });
+}
+
+async function removeAccount(a) {
+  const gone = (await db.all('tx')).filter((t) => t.accountId === a.id);
+  await Promise.all(gone.map((t) => db.del('tx', t.id)));
+  await db.del('accounts', a.id);
+  const imps = state.imports.filter((i) => i.accountId === a.id);
+  await Promise.all(imps.map((i) => db.del('imports', i.id)));
+  state.imports = state.imports.filter((i) => i.accountId !== a.id);
+  state.txs = state.txs.filter((t) => t.accountId !== a.id);
+  state.accounts = state.accounts.filter((x) => x.id !== a.id);
+  if (state.settings.mainAccountId === a.id) await saveSettings({ mainAccountId: null });
+  await relinkTransfers();
+  recompute();
+}
+
+/** Accounts that probably aren't real: a big balance with hardly any transactions, or the same
+ *  balance as an investment you've left out (an investment statement read as savings). */
+function ghostAccounts() {
+  const counts = {};
+  for (const t of state.allTxs || state.txs) counts[t.accountId] = (counts[t.accountId] || 0) + 1;
+  const invest = (state.allAccounts || state.accounts).filter((a) => a.type === 'investment' || a.excluded).map((a) => Math.abs(a.balance || 0)).filter((v) => v > 0);
+  return state.accounts.filter((a) => !a.confirmedReal && a.type !== 'credit' && Math.abs(a.balance || 0) >= 2000000
+    && ((counts[a.id] || 0) <= 10 || invest.some((v) => Math.abs(v - Math.abs(a.balance)) <= v * 0.03)));
+}
+
 export const actions = {
+  'card-open': (el) => { const a = (state.allAccounts || state.accounts).find((x) => x.id === el.dataset.id); if (a) cardSheet(a); },
+  'acc-ghost-remove': async (el, rerender) => {
+    const a = state.accounts.find((x) => x.id === el.dataset.id);
+    if (!a || !(await confirmSheet({ title: `Remove ${a.name}?`, body: 'Removes the account and its transactions from this phone, and stops the same statement creating it again.', ok: 'Remove', danger: true }))) return;
+    await saveSettings({ blockedAccounts: [...(state.settings.blockedAccounts || []), { name: a.name, bank: a.bank || '', ref: a.ref || a.details?.last4 || null, at: state.derived.today }] });
+    await removeAccount(a); rerender(); toast(`${a.name} removed`);
+  },
+  'acc-ghost-count': async (el, rerender) => {
+    const a = state.accounts.find((x) => x.id === el.dataset.id);
+    if (!a) return;
+    a.excluded = true; a.typeLocked = true; await db.put('accounts', a); await relinkTransfers(); recompute(); rerender(); toast(`${a.name} is no longer counted`);
+  },
+  'acc-ghost-keep': async (el, rerender) => {
+    const a = state.accounts.find((x) => x.id === el.dataset.id);
+    if (!a) return;
+    a.confirmedReal = true; await db.put('accounts', a); rerender();
+  },
   'edit-account': (el, rerender) => {
     const a = (state.allAccounts || state.accounts).find((x) => x.id === el.dataset.id);
     if (!a) return;
@@ -174,6 +286,7 @@ export const actions = {
       <label class="field"><span>Bank</span><input id="ea-bank" value="${esc(a.bank || '')}"></label>
       <label class="field select"><span>Type</span><select id="ea-type">${Object.entries(TYPE_LABEL).map(([k, v]) => `<option value="${k}" ${a.type === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
       <label class="field"><span>${a.type === 'credit' ? 'Owed £' : 'Balance £'}</span><input id="ea-bal" inputmode="decimal" value="${a.balance != null ? (Math.abs(a.balance) / 100).toFixed(2) : ''}" placeholder="unknown"></label>
+      ${a.type === 'credit' ? `<div class="plan-grid"><label class="field"><span>APR %</span><input id="ea-apr" inputmode="decimal" value="${a.apr != null ? (a.apr * 100).toFixed(1) : ''}" placeholder="e.g. 29.9"></label><label class="field"><span>Credit limit £</span><input id="ea-limit" inputmode="decimal" value="${(a.limit ?? a.details?.limit) != null ? ((a.limit ?? a.details?.limit) / 100).toFixed(0) : ''}" placeholder="e.g. 1500"></label></div><p class="sub">Both are on the card's statement or app.</p>` : ''}
       <label class="check-row"><input type="checkbox" id="ea-count" ${a.excluded ? '' : 'checked'}> <span><b>Count this account</b><br><small class="sub">Untick for money that isn't part of your day-to-day finances: investments, a pot held for someone else, a deposit fund. It stays here but is left out of every total.</small></span></label>
       <p class="sub">Credit card? Set Type to Credit card and enter what you owe. Debit cards belong to your current account.</p>
       <div class="row gap"><button class="btn danger grow" id="ea-del">Delete</button><button class="btn primary grow" id="ea-save">Save</button></div>`, {
@@ -187,6 +300,9 @@ export const actions = {
           const bal = parsePrice(raw.replace(/^-/, ''));
           if (raw && bal != null) { a.balance = neg ? -bal : bal; a.balanceDate = state.derived.today; }
           a.typeLocked = true;
+          const aprEl = p.querySelector('#ea-apr'), limEl = p.querySelector('#ea-limit');
+          if (aprEl) { const v = aprEl.value.trim(); a.apr = v === '' ? null : Math.max(0, parseFloat(v)) / 100; }
+          if (limEl) { const v = parsePrice(limEl.value.trim()); a.limit = v || null; }
           a.excluded = !p.querySelector('#ea-count').checked || a.type === 'investment';
           // Credit cards store what you owe as a negative balance.
           if (a.type === 'credit' && a.balance > 0) a.balance = -a.balance;
@@ -196,18 +312,10 @@ export const actions = {
         };
         p.querySelector('#ea-del').onclick = async () => {
           closeSheet();
-          if (!(await confirmSheet({ title: `Delete ${a.name}?`, body: 'This removes the account and all its transactions from this phone.', ok: 'Delete', danger: true }))) return;
-          const gone = (await db.all('tx')).filter((t) => t.accountId === a.id);
-          await Promise.all(gone.map((t) => db.del('tx', t.id)));
-          await db.del('accounts', a.id);
-          const imps = state.imports.filter((i) => i.accountId === a.id);
-          await Promise.all(imps.map((i) => db.del('imports', i.id)));
-          state.imports = state.imports.filter((i) => i.accountId !== a.id);
-          state.txs = state.txs.filter((t) => t.accountId !== a.id);
-          state.accounts = state.accounts.filter((x) => x.id !== a.id);
-          if (state.settings.mainAccountId === a.id) await saveSettings({ mainAccountId: null });
-          await relinkTransfers();
-          recompute(); rerender(); toast('Account deleted');
+          if (!(await confirmSheet({ title: `Delete ${a.name}?`, body: 'This removes the account and all its transactions from this phone. It won\'t be created again if the same statement is imported later.', ok: 'Delete', danger: true }))) return;
+          await saveSettings({ blockedAccounts: [...(state.settings.blockedAccounts || []), { name: a.name, bank: a.bank || '', ref: a.ref || a.details?.last4 || null, at: state.derived.today }] });
+          await removeAccount(a);
+          rerender(); toast('Account deleted');
         };
       },
     });

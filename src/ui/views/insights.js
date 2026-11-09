@@ -98,10 +98,10 @@ function cardsSummary() {
   const paid = inM.filter((t) => t.amount > 0 && (t.category === 'transfer' || /PAYMENT/i.test(t.description))).reduce((a, t) => a + t.amount, 0);
   const rows = cs.cards.map((c) => {
     const a = c.account;
-    const lim = a.limit || null;
+    const lim = a.limit ?? a.details?.limit ?? null;
     const use = lim && c.owed != null ? c.owed / lim : null;
     const ms = inM.filter((t) => t.accountId === a.id && t.amount < 0 && t.category !== 'transfer' && !isFee(t)).reduce((x, t) => x - t.amount, 0);
-    return `<a class="cc-row" href="#/cards"><div class="grow"><b class="ellipsis">${esc(a.name)}</b><div class="sub">${ms ? `${fmt(ms, { whole: true })} spent this month` : 'Nothing new this month ✓'}${c.apr ? ` · ${c.apr}% APR` : ''}${lim ? ` · limit ${fmt(lim, { whole: true })}` : ''}</div>
+    return `<a class="cc-row" href="#/cards"><div class="grow"><b class="ellipsis">${esc(a.name)}</b><div class="sub">${ms ? `${fmt(ms, { whole: true })} spent this month` : 'Nothing new this month ✓'}${c.apr != null ? ` · ${(c.apr * 100).toFixed(1)}% APR` : ''}${lim ? ` · limit ${fmt(lim, { whole: true })}` : ''}</div>
       ${use != null ? `<div class="cat-bar ${use > 1 ? 'over' : use > 0.75 ? 'warn' : ''}"><span style="width:${Math.min(100, use * 100).toFixed(1)}%"></span></div>` : ''}</div>
       <div class="cc-owed"><b class="${c.owed > 0 ? 'neg' : 'pos'}">${c.owed == null ? '?' : fmt(c.owed, { whole: true })}</b><small>${use != null ? `${Math.round(use * 100)}% used` : 'owed'}</small></div></a>`;
   }).join('');
