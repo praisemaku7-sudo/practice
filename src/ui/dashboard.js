@@ -111,7 +111,7 @@ export function dashboard() {
       <div class="dt-top"><span class="dt-ic" aria-hidden="true">${tIcon(d.id)}</span><span class="dt-label">${esc(d.label)}</span>
         <button class="dt-size" data-action="dash-size" data-id="${d.id}" aria-label="${big ? 'Make smaller' : 'Make bigger'}">${big ? '⤡' : '⤢'}</button></div>
       <div class="dt-val ${tone(d, v)}">${esc(show(d, v))}</div>
-      <div class="dt-sub">${diff != null && diff !== 0 ? `<span class="${better ? 'pos' : 'neg'}">${diff > 0 ? '▲' : '▼'} ${d.pct ? `${Math.abs(Math.round(diff * 10) / 10)} pts` : fmt(Math.abs(diff), { whole: true })}</span> vs ${esc(monthLabel(prevM, { short: true }).split(' ')[0])}` : esc(d.sub ? d.sub(state.month) : '')}</div>
+      <div class="dt-sub">${diff != null && diff !== 0 ? `<span class="${better ? 'pos' : 'neg'}">${diff > 0 ? '▲' : '▼'} ${d.pct ? `${Math.abs(Math.round(diff * 10) / 10)} pts` : fmt(Math.abs(diff), { whole: true })}</span> vs ${esc(monthLabel(prevM, { short: true }).split(' ')[0])}` : inc.has(state.month) && !d.current ? `<span class="warn-text">⚠ ${(() => { const pm = (state.derived.payMissing || []).filter((x) => x.month === state.month); return pm.length && ['income', 'net', 'rate'].includes(d.id) ? `${esc(pm[0].name)} not in statements` : 'statements missing this month'; })()}</span>` : esc(d.sub ? d.sub(state.month) : '')}</div>
       ${series.length > 1 ? `<div class="dt-spark">${spark(series, big ? 56 : 28)}</div>` : ''}
       ${big && series.length > 1 ? `<div class="dt-months" style="grid-template-columns:repeat(${ms.length},minmax(0,1fr))">${ms.map((m, i) => `<span>${esc(monthLabel(m, { short: true }).split(' ')[0].slice(0, 3))}<b>${esc(show(d, series[i]))}</b></span>`).join('')}</div>` : ''}
     </div>`;

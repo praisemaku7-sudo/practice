@@ -32,6 +32,13 @@ export function buildAlerts() {
     const typical = past.length ? past[Math.floor(past.length / 2)] : 0;
     if (d.budget.income && past.length >= 2 && typical > d.budget.income * 1.4) out.push({ id: 'numbers', icon: '🔍', label: 'Check numbers', count: 1, tone: 'bad', title: 'Spending looks too high to be right', detail: `A typical month shows ${fmt(typical, { whole: true })} spent against ${fmt(d.budget.income, { whole: true })} income. Usually card repayments or moves between your accounts counted as spending. On track lists what to fix.`, href: '#/track', go: 'See what to fix', sig: Math.round(typical / 10000) });
   }
+  if (d.payMissing?.length) {
+    const byMonth = {};
+    for (const p of d.payMissing) (byMonth[p.month] ||= []).push(p);
+    const [m, list] = Object.entries(byMonth).sort()[0];
+    const acc = (id) => state.accounts.find((a) => a.id === id)?.name || 'its account';
+    out.push({ id: 'paymissing', icon: '💷', label: 'Pay missing', count: d.payMissing.length, tone: 'bad', title: `Pay not found in ${monthLabel(m)}`, detail: `${list.map((p) => `${p.name} (${fmt(p.amount, { whole: true })}, usually around the ${p.day}${p.day % 10 === 1 && p.day !== 11 ? 'st' : p.day % 10 === 2 && p.day !== 12 ? 'nd' : p.day % 10 === 3 && p.day !== 13 ? 'rd' : 'th'}) isn't in your statements: import ${monthLabel(m)} for ${acc(p.accountId)}`).join('. ')}. Until then that month's income and savings rate are too low, so it's left out of averages.`, href: '#/accounts', go: 'Import statements', sig: d.payMissing.map((p) => p.key + p.month).join(',') });
+  }
   const mo = monthOutlook({ txs: state.txs, today, budget: d.budget, recurring: d.recurring });
   const al = budgetAlerts({ txs: state.txs, today, budget: d.budget });
   const over = al.filter((a) => a.status === 'over'), heading = al.filter((a) => a.status === 'heading');
@@ -56,6 +63,7 @@ const ICONS = {
   missing: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
   dups: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
   off: '<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/>',
+  paymissing: '<rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M3 3l18 18"/>',
   numbers: '<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2M11 8v3.5M11 14h.01"/>',
   cards: '<rect x="3" y="5.5" width="18" height="13" rx="2.5"/><path d="M3 10h18M7 15h3"/>',
   checkin: '<circle cx="12" cy="12" r="8.5"/><path d="m8.5 12.2 2.4 2.4 4.6-4.8"/>',

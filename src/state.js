@@ -197,6 +197,8 @@ function withManualBills(detected, today) {
   return [...detected, ...manual].sort((a, b) => b.amount - a.amount);
 }
 
+const prevMonth = (key, n) => { const [y, m] = key.split('-').map(Number); const d = new Date(Date.UTC(y, m - 1 - n, 1)); return d.toISOString().slice(0, 7); };
+
 export function recompute() {
   clearAnalysisCache(); // data may have changed (categories, imports…)
   const today = todayISO();
@@ -209,6 +211,16 @@ export function recompute() {
   const coverage = statementCoverage({ accounts: state.accounts, imports: state.imports, txs: state.txs, today, dismissed: state.settings.coverageDismissed || {}, startMonth: state.settings.trackFrom ? monthKey(state.settings.trackFrom) : null });
   // Months missing a statement from any account: their totals are too low, so averages skip them.
   const incomplete = new Set(coverage.missing.map((m) => m.month));
+  // Regular pay that didn't arrive in a finished month: almost always a statement not imported yet.
+  const doneUpTo = monthKey(today) > '0' ? (+today.slice(8) > 7 ? prevMonth(monthKey(today), 1) : prevMonth(monthKey(today), 2)) : null;
+  const payMissing = [];
+  for (const r of recurring.filter((x) => x.direction === 'in' && x.months >= 2 && x.amount >= 20000 && x.lastDate)) {
+    // Up to 3 months after it was last seen (after that it has probably stopped, e.g. a job change).
+    for (let m = prevMonth(monthKey(r.lastDate), -1), k = 0; m <= doneUpTo && k < 3; m = prevMonth(m, -1), k++) {
+      payMissing.push({ key: r.key, name: r.name, amount: r.amount, day: r.day, accountId: r.accountId, month: m });
+      incomplete.add(m);
+    }
+  }
   const budget = buildBudget(state.txs, { ...state.eff, goalsMonthly: gm }, { today, incomplete });
   const currentAccounts = state.accounts.filter((a) => a.type === 'current' && a.balance != null);
   // A balance older than ~10 days is too stale to trust for the bills check.
@@ -217,7 +229,7 @@ export function recompute() {
   const cards = cardSummary({ accounts: state.accounts, txs: state.txs, allTxs: state.allTxs, today, trackFrom: state.settings.trackFrom });
   const suspects = suspectedCreditCards(state.accounts, state.txs);
   const duplicates = findStoredDuplicates(state.txs);
-  state.derived = { today, coverage, cards, suspects, duplicates, recurring, payday, detectedPayday: detected, budget, balance, staleBalance: currentAccounts.length > 0 && !fresh.length, months: monthsPresent(state.txs), incomplete };
+  state.derived = { today, coverage, cards, suspects, duplicates, recurring, payday, detectedPayday: detected, budget, balance, staleBalance: currentAccounts.length > 0 && !fresh.length, months: monthsPresent(state.txs), incomplete, payMissing };
   return state.derived;
 }
 
