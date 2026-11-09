@@ -71,6 +71,66 @@ function askCard() {
     <p class="sub">${state.settings.apiKey ? 'Claude sees this month\'s totals by category, your regular payments and top merchants: never raw transactions, names or account numbers.' : '<a href="#/settings">Add your Claude key in Settings</a> to ask questions.'}</p></div>`;
 }
 
+const SEC_ICONS = {
+  cards: '<rect x="3" y="5.5" width="18" height="13" rx="2.5"/><path d="M3 10h18M7 15h3"/>',
+  spend: '<path d="M4 7h16v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M8 7V5a4 4 0 0 1 8 0v2"/>',
+  bills: '<path d="M7 3h10v18l-2.5-1.5L12 21l-2.5-1.5L7 21z"/><path d="M10 8h4M10 12h4"/>',
+  save: '<path d="M12 21s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 5.6-7 10-7 10z"/>',
+};
+const SECTIONS = [
+  ['cards', 'Credit cards', (i) => /^card-/.test(i.id) || i.id === 'fees'],
+  ['spend', 'Spending', (i) => /^(over|up|down)-/.test(i.id) || ['food', 'small'].includes(i.id)],
+  ['bills', 'Bills & subscriptions', (i) => ['subs', 'streaming', 'music', 'consolidate'].includes(i.id) || /^(rise|new)-/.test(i.id)],
+  ['save', 'Saving', () => true],
+];
+const secIcon = (k) => `<span class="sec-ic ${k}"><svg viewBox="0 0 24 24" aria-hidden="true">${SEC_ICONS[k]}</svg></span>`;
+
+/** Credit cards at a glance for the month on screen: owed, new spending, interest and fees, each card. */
+function cardsSummary() {
+  const credit = state.accounts.filter((a) => a.type === 'credit');
+  if (!credit.length) return '';
+  const m = state.month;
+  const cs = state.derived.cards;
+  const inM = state.txs.filter((t) => t.date.startsWith(m) && credit.some((a) => a.id === t.accountId));
+  const isFee = (t) => t.category === 'fees' || /\b(INTEREST|LATE|FEE|CHARGE)\b/i.test(t.description);
+  const spend = inM.filter((t) => t.amount < 0 && t.category !== 'transfer' && !isFee(t)).reduce((a, t) => a - t.amount, 0);
+  const fees = inM.filter((t) => t.amount < 0 && isFee(t)).reduce((a, t) => a - t.amount, 0);
+  const paid = inM.filter((t) => t.amount > 0 && (t.category === 'transfer' || /PAYMENT/i.test(t.description))).reduce((a, t) => a + t.amount, 0);
+  const rows = cs.cards.map((c) => {
+    const a = c.account;
+    const lim = a.limit || null;
+    const use = lim && c.owed != null ? c.owed / lim : null;
+    const ms = inM.filter((t) => t.accountId === a.id && t.amount < 0 && t.category !== 'transfer' && !isFee(t)).reduce((x, t) => x - t.amount, 0);
+    return `<a class="cc-row" href="#/cards"><div class="grow"><b class="ellipsis">${esc(a.name)}</b><div class="sub">${ms ? `${fmt(ms, { whole: true })} spent this month` : 'Nothing new this month ✓'}${c.apr ? ` · ${c.apr}% APR` : ''}${lim ? ` · limit ${fmt(lim, { whole: true })}` : ''}</div>
+      ${use != null ? `<div class="cat-bar ${use > 1 ? 'over' : use > 0.75 ? 'warn' : ''}"><span style="width:${Math.min(100, use * 100).toFixed(1)}%"></span></div>` : ''}</div>
+      <div class="cc-owed"><b class="${c.owed > 0 ? 'neg' : 'pos'}">${c.owed == null ? '?' : fmt(c.owed, { whole: true })}</b><small>${use != null ? `${Math.round(use * 100)}% used` : 'owed'}</small></div></a>`;
+  }).join('');
+  return `<div class="card cc-card">
+    <div class="cc-stats">
+      <div><span class="label">Owed now</span><b class="${cs.totalOwed > 0 ? 'neg' : 'pos'}">${fmt(cs.totalOwed, { whole: true })}</b></div>
+      <div><span class="label">New spending</span><b class="${spend > 0 ? 'warn-text' : 'pos'}">${fmt(spend, { whole: true })}</b></div>
+      <div><span class="label">Interest & fees</span><b class="${fees > 0 ? 'neg' : ''}">${fmt(fees, { whole: true })}</b></div>
+      <div><span class="label">Paid off</span><b class="pos">${fmt(paid, { whole: true })}</b></div>
+    </div>
+    ${fees > 0 ? `<p class="sub neg">You paid ${fmt(fees, { whole: true })} in interest and fees in ${esc(monthLabel(m, { short: true }))}: about ${fmt(fees * 12, { whole: true })} a year for nothing.</p>` : ''}
+    ${rows}
+    <div class="row gap wrap cc-actions"><a class="btn primary grow" href="#/cards">Payoff plan</a><a class="btn ghost grow" href="#/movebills">Move bills off cards</a></div>
+  </div>`;
+}
+
+function sections(shown, card) {
+  if (!shown.length && ui.filter !== 'todo' && ui.filter !== 'all') return `<p class="muted center">${ui.filter === 'done' ? 'Nothing marked done yet.' : 'Nothing here this month.'}</p>`;
+  const used = new Set();
+  const out = SECTIONS.map(([k, title, test]) => {
+    const items = shown.filter((x) => !used.has(x.n) && test(x.i));
+    items.forEach((x) => used.add(x.n));
+    const summary = k === 'cards' && (ui.filter === 'todo' || ui.filter === 'all') ? cardsSummary() : '';
+    if (!items.length && !summary) return '';
+    return `<section class="ins-sec-wrap"><div class="ins-sec">${secIcon(k)}<h2>${title}</h2>${items.length ? `<small>${items.length}</small>` : ''}</div>${summary}${items.map(card).join('')}</section>`;
+  }).join('');
+  return out || '<p class="muted center">Nothing to flag this month. 👏</p>';
+}
+
 function supportCard() {
   const items = [HELP.stepchange, HELP.nationaldebtline, HELP.moneyhelper, { name: 'Citizens Advice: money and debt', url: 'https://www.citizensadvice.org.uk/debt-and-money/', tel: '0800 144 8848' },
     { name: 'Breathing Space: 60 days\' pause on interest and debt action (through a debt adviser)', url: 'https://www.gov.uk/government/publications/debt-respite-scheme-breathing-space-guidance' },
@@ -94,7 +154,7 @@ export function render() {
   const report = reports[state.month];
   lastList = list;
   const card = ({ i, n, st: s2 }) => `<div class="card insight lvl-${i.level} ${s2 !== 'todo' ? 'is-done' : ''}">
-    <button class="ins-main" data-action="ins-open" data-n="${n}"><div class="insight-title">${s2 === 'done' ? '✓ ' : s2 === 'snooze' ? '💤 ' : ''}${esc(i.title)}</div><div class="sub">${esc(i.detail)}</div></button>
+    <button class="ins-main" data-action="ins-open" data-n="${n}"><span class="lvl-tag ${i.level}">${{ alert: 'Needs action', warn: 'Worth a look', tip: 'Tip', good: 'Good news' }[i.level] || 'Tip'}</span><div class="insight-title">${s2 === 'done' ? '✓ ' : s2 === 'snooze' ? '💤 ' : ''}${esc(i.title)}</div><div class="sub">${esc(i.detail)}</div></button>
     <div class="ins-foot">${i.saving > 0 && i.level !== 'good' ? `<span class="pill save">~${fmt(i.saving, { whole: true })}/mo</span>` : '<span></span>'}
       <span class="ins-acts">${s2 === 'todo' ? `<button class="ins-act" data-action="ins-state" data-id="${esc(i.id)}" data-s="done" aria-label="Mark done">✓ Done</button><button class="ins-act" data-action="ins-state" data-id="${esc(i.id)}" data-s="snooze" aria-label="Snooze for 30 days">Snooze</button><button class="ins-act" data-action="ins-state" data-id="${esc(i.id)}" data-s="dismiss" aria-label="Not relevant">✕</button>` : `<button class="ins-act" data-action="ins-state" data-id="${esc(i.id)}" data-s="todo">Undo</button>`}
       <button class="ins-go" data-action="ins-open" data-n="${n}">What to do ›</button></span></div></div>`;
@@ -110,7 +170,7 @@ export function render() {
   ${real.total ? `<a class="plan-link" href="#/track">Turn these into a plan you can tick off ›</a>` : ''}
   ${sortOtherCard()}
   <div class="cal-filters ins-filters" role="radiogroup" aria-label="Show">${[['todo', `To do · ${todo.length}`], ['saving', `Saving ideas · ${saving.length}`], ['good', `Good news · ${good.length}`], ['done', `Done · ${done.length}`], ['all', 'All']].map(([v, l]) => `<button class="chip ${ui.filter === v ? 'sel' : ''}" role="radio" aria-checked="${ui.filter === v}" data-action="ins-filter" data-f="${v}">${l}</button>`).join('')}</div>
-  ${shown.map(card).join('') || `<p class="muted center">${ui.filter === 'done' ? 'Nothing marked done yet.' : 'Nothing here this month. 👏'}</p>`}
+  ${sections(shown, card)}
   ${dismissed ? `<button class="link small-link" data-action="ins-undismiss">Show ${dismissed} dismissed</button>` : ''}
   ${askCard()}
   <div class="card ai-card">

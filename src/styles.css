@@ -1039,3 +1039,48 @@ button.ins-go { border: 0; background: none; font: inherit; cursor: pointer; pad
 .ask-row input { flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
 .ask-answer { background: var(--track); border-radius: 14px; padding: 10px 12px; margin: 8px 0; }
 .ask-answer p { margin: 0 0 6px; }
+/* Insights: sections, credit cards, cleaner cards */
+.ins-sec-wrap { margin-bottom: 6px; }
+.ins-sec { display: flex; align-items: center; gap: 10px; margin: 18px 4px 10px; }
+.ins-sec h2 { margin: 0; font-size: 18px; letter-spacing: -.01em; }
+.ins-sec small { background: var(--track); color: var(--muted); font-weight: 700; font-size: 12px; border-radius: 99px; padding: 2px 9px; }
+.sec-ic { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--accent-text, var(--accent)); flex: none; }
+.sec-ic.cards { background: color-mix(in srgb, #8a5cd1 15%, transparent); color: #8a5cd1; }
+.sec-ic.bills { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+.sec-ic svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.insight { border-left: 0 !important; border: 1px solid var(--line); box-shadow: var(--shadow); }
+.ins-main .insight-title { font-size: 16px; line-height: 1.3; margin: 6px 0 4px; }
+.lvl-tag { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; padding: 3px 8px; border-radius: 99px; background: var(--track); color: var(--muted); }
+.lvl-tag.alert { background: color-mix(in srgb, var(--bad) 14%, transparent); color: var(--bad); }
+.lvl-tag.warn { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+.lvl-tag.good { background: color-mix(in srgb, var(--good) 15%, transparent); color: var(--good); }
+.lvl-tag.tip { background: color-mix(in srgb, #5b7fd6 14%, transparent); color: #5b7fd6; }
+.ins-act { padding: 5px 9px; font-size: 11.5px; }
+.cc-card { padding: 14px; }
+.cc-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
+.cc-stats > div { background: var(--track); border-radius: 12px; padding: 9px 11px; display: flex; flex-direction: column; min-width: 0; }
+.cc-stats b { font-size: 18px; }
+.cc-row { display: flex; align-items: center; gap: 12px; padding: 10px 2px; border-top: 1px solid var(--line); color: var(--ink); text-decoration: none; min-width: 0; }
+.cc-row .grow { min-width: 0; }
+.cc-row b.ellipsis { display: block; }
+.cc-row .cat-bar { margin-top: 6px; }
+.cc-owed { display: flex; flex-direction: column; align-items: flex-end; flex: none; }
+.cc-owed small { color: var(--muted); font-size: 11.5px; }
+.cat-bar.over span { background: var(--bad); }
+.cc-actions { margin-top: 10px; }
+button.ins-go { font-size: 14px; font-weight: 700; color: var(--accent-text, var(--accent)); }
+/* Accounts: grouped */
+.pos-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 6px; }
+.pos-grid > div { background: var(--track); border-radius: 12px; padding: 9px 11px; display: flex; flex-direction: column; min-width: 0; }
+.pos-grid b { font-size: 18px; }
+.acc-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.acc-head h3 { margin: 0; flex: 1; font-size: 17px; }
+.acc-head > b { font-size: 16px; }
+.sec-ic.current { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--accent-text, var(--accent)); }
+.sec-ic.savings { background: color-mix(in srgb, var(--good) 15%, transparent); color: var(--good); }
+.sec-ic.credit { background: color-mix(in srgb, #8a5cd1 15%, transparent); color: #8a5cd1; }
+.sec-ic.investment { background: var(--track); color: var(--muted); }
+.acc-row .acc-name { font-weight: 600; }
+.acc-row .cat-bar { margin-top: 6px; max-width: 220px; }
+.acc-group .cal-tip { margin-top: 10px; }
+.acc-group .bal small { display: block; text-align: right; }
