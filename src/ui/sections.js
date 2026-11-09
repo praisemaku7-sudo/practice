@@ -48,9 +48,26 @@ export function enhanceSections(main, view) {
     card.classList.toggle('collapsed', folded);
     head.setAttribute('aria-expanded', String(!folded));
   });
+  // Expand all / Collapse all, on any page with two or more foldable sections.
+  if (main.querySelectorAll(':scope > .card.collapsible').length >= 2) {
+    const bar = document.createElement('div');
+    bar.className = 'sec-all';
+    bar.innerHTML = '<span>Sections</span><button data-action="sec-all" data-open="1">Expand all</button><button data-action="sec-all" data-open="0">Collapse all</button>';
+    main.querySelector(':scope > .card.collapsible').before(bar);
+  }
 }
 
 export const sectionActions = {
+  'sec-all': (el) => {
+    const open = el.dataset.open === '1';
+    const map = load();
+    document.querySelectorAll('#main > .card.collapsible').forEach((card) => {
+      card.classList.toggle('collapsed', !open);
+      const head = card.querySelector('.card-head');
+      if (head) { head.setAttribute('aria-expanded', String(open)); map[head.dataset.sec] = !open; if (open) shownOpen.add(head.dataset.sec); }
+    });
+    save(map);
+  },
   'sec-toggle': (el) => {
     const card = el.closest('.card');
     if (!card) return;

@@ -19,7 +19,7 @@ export function openSheet(html, { onMount, wide = false } = {}) {
   const root = $('#sheet');
   root.innerHTML = `<div class="sheet-backdrop" data-action="close-sheet"></div>
     <div class="sheet-panel ${wide ? 'wide' : ''}" role="dialog" aria-modal="true">
-      <div class="sheet-grabber"></div>${html}</div>`;
+      <div class="sheet-grabber"></div><button class="sheet-x" data-action="close-sheet" aria-label="Close">✕</button>${html}</div>`;
   root.classList.add('open');
   document.body.classList.add('no-scroll');
   sheetCleanup = onMount ? onMount(root.querySelector('.sheet-panel')) : null;

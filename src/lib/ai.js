@@ -290,3 +290,15 @@ export async function aiCategorizeMerchants({ apiKey, model = DEFAULT_MODEL, mer
     throw new Error("Claude didn't return the categories. Try again with fewer merchants.");
   });
 }
+
+/** Read a mortgage in principle from page images (scans/photos) or text. Only figures come back. */
+export async function aiReadMIP({ apiKey, model, text = null, images = [], mediaType = 'image/jpeg' }) {
+  const { MIP_SCHEMA, fromAI } = await import('./mip.js');
+  const r = await structured({
+    apiKey, model, effort: 'low', maxTokens: 4000,
+    system: 'You read UK mortgage in principle / agreement in principle / decision in principle documents. Report only the figures asked for. Use null when a value is not in the document. Never include names or addresses.',
+    content: [...images.map((data) => ({ type: 'image', source: { type: 'base64', media_type: mediaType, data } })), { type: 'text', text: text ? `Document text:\n${text.slice(0, 20000)}` : 'Read this document.' }],
+    schema: MIP_SCHEMA,
+  });
+  return fromAI(r);
+}

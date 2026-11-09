@@ -1,6 +1,7 @@
 // Future planning: your mortgage (amount, rate, term, fixed period) and what your months look like once it starts.
 import { state, saveSettings } from '../../state.js';
 import { esc, toast } from '../dom.js';
+import { mipCard, biSection, biActions, biChanges } from '../plan-bi.js';
 import { fmt, parsePrice } from '../../lib/money.js';
 import { monthKey, monthLabel, addMonths } from '../../lib/dates.js';
 import { schedule, projection, byYear, monthlyPayment, propertyTax, borrowingRange, ltvBands, savingTimeline } from '../../lib/mortgage.js';
@@ -147,6 +148,7 @@ export function render() {
   if (!(principal > 0 && m.rate > 0) && buying) results = buying;
   else results = results.replace('<!--buying-->', buying);
   return `<h1 class="page-title">Future planning</h1>
+  ${mipCard()}
   <div class="card">
     <h3>Your mortgage</h3>
     <div class="plan-grid"><label class="field slim"><span>Starts</span><input id="pl-start" type="month" value="${esc(m.startMonth)}"></label>
@@ -169,10 +171,14 @@ export function render() {
     <p class="sub">Add the property price above to see the cash you need, ${'stamp duty'} and when you'll be ready.</p>
     <button class="btn primary full" data-action="pl-save">Work it out</button>
   </div>
-  ${results}`;
+  ${results}
+  ${principal > 0 && m.rate > 0 ? biSection(m, principal, rent, b) : ''}`;
 }
 
+export const changes = { ...biChanges };
+
 export const actions = {
+  ...biActions,
   'pl-save': async (_, rerender) => {
     const v = (id) => document.getElementById(id).value.trim();
     const money = (id) => (v(id) === '' ? null : parsePrice(v(id)));

@@ -27,6 +27,7 @@ import { initLock, lockActions } from './ui/lock.js';
 import { enhanceSections, sectionActions } from './ui/sections.js';
 import { insightActions } from './ui/insight-actions.js';
 import { dashActions } from './ui/dashboard.js';
+import { alertActions, updateBell } from './ui/alerts.js';
 import { menuActions, menuInputs, closeMenu, menuIsOpen, setMenuCurrent, applyTheme } from './ui/menu.js';
 import * as sync from './ui/views/sync.js';
 import * as add from './ui/views/add.js';
@@ -62,10 +63,13 @@ async function render() {
     const multi = state.settings.people.length > 1 || state.allAccounts?.some((a) => a.owner === 'joint');
     sb.hidden = !multi;
     const p = state.settings.people.find((x) => x.id === state.settings.scope);
-    sb.textContent = state.settings.scope === 'all' ? '🏠 Household' : state.settings.scope === 'joint' ? '👥 Joint' : `● ${p?.name || ''}`;
+    sb.textContent = state.settings.scope === 'all' ? '🏠' : state.settings.scope === 'joint' ? '👥' : (p?.name || '?').slice(0, 1).toUpperCase();
+    sb.title = state.settings.scope === 'all' ? 'Household' : state.settings.scope === 'joint' ? 'Joint' : p?.name || '';
+    sb.setAttribute('aria-label', `Showing: ${sb.title}. Change`);
     sb.style.setProperty('--pc', p?.color || 'var(--accent)');
   }
   main.dataset.view = current;
+  updateBell();
   setMenuCurrent(current);
   document.title = `${TITLES[current]} · Pocket Ledger`;
   // Which tab is highlighted for pages that aren't tabs themselves.
@@ -136,7 +140,7 @@ const globalActions = {
   },
 };
 
-const allActions = Object.assign({}, globalActions, lockActions, sectionActions, insightActions, menuActions, dashActions, ...Object.values(VIEWS).map((v) => v.actions || {}));
+const allActions = Object.assign({}, globalActions, lockActions, sectionActions, insightActions, menuActions, dashActions, alertActions, ...Object.values(VIEWS).map((v) => v.actions || {}));
 const allChanges = Object.assign({}, ...Object.values(VIEWS).map((v) => v.changes || {}));
 const allInputs = Object.assign({}, menuInputs, ...Object.values(VIEWS).map((v) => v.inputs || {}));
 
