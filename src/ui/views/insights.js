@@ -21,7 +21,7 @@ export async function preload() {
 export function render() {
   if (!state.txs.length) return emptyState({ title: 'Suggestions appear here', body: 'Each month I compare your spending with your usual, check your budget, and look for subscriptions, fees and price rises.' });
   const { budget, recurring, months } = state.derived;
-  const list = buildInsights({ txs: state.txs, key: state.month, budget, recurring, accounts: state.accounts });
+  const list = buildInsights({ txs: state.txs, key: state.month, budget, recurring, accounts: state.accounts, today: state.derived.today });
   const potential = list.reduce((a, i) => a + (i.saving > 0 && i.level !== 'good' ? i.saving : 0), 0);
   const report = reports[state.month];
   return `

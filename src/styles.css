@@ -960,3 +960,4 @@ button.plain { border: 0; background: none; font: inherit; color: inherit; text-
 .kpi { padding: 9px 11px; border-radius: 14px; }
 .kpi b { font-size: 17px; }
 .kpi-grid { gap: 8px; }
+.mini-bar.static { cursor: default; border-bottom: 0; padding: 4px 0; }
