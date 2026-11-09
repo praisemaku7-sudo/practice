@@ -236,6 +236,12 @@ async function learnHolder(holder) {
 /** Can this statement belong to this account? Never if both have different account numbers. */
 const refOk = (a, p) => !p.accountRef || !a.ref || a.ref === p.accountRef;
 
+/** Accounts you deleted and asked not to be recreated: same bank and number, or same name. */
+export function isBlockedAccount({ name, bank, ref }) {
+  const norm = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  return (state.settings.blockedAccounts || []).some((b) => (ref && b.ref && b.ref === ref && (!b.bank || !bank || norm(b.bank) === norm(bank))) || (name && norm(b.name) === norm(name)));
+}
+
 function matchAccount(p) {
   const bank = (p.bank || '').toLowerCase();
   const type = p.accountType || 'current';
@@ -296,6 +302,8 @@ async function processItem(item) {
     const match = byDetails || ovAcc || matchAccount(parsed);
     item.accountChoice = match ? match.id : '__new';
     item.newAccount = { name: defaultName(parsed), bank: parsed.bank || '', type: parsed.accountType || 'current', owner: guessOwner(item, parsed) };
+    // An account you removed as not real (e.g. an investment statement read as savings) isn't recreated.
+    if (!match && isBlockedAccount({ name: item.newAccount.name, bank: parsed.bank, ref: parsed.accountRef })) { item.blockedAccount = true; item.include = false; }
     const seenBefore = !!item.prior || item.overlap.likelyDuplicate;
     // Seen before? If this read is verified against the statement's own balances, replace the old
     // copy (it may be an earlier bad read); otherwise leave it unticked so nothing doubles up.
