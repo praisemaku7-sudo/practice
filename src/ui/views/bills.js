@@ -198,20 +198,21 @@ function itemCard(r, status) {
   const h = helpFor(r.name);
   const last = state.txs.filter((t) => (t.merchant || '').toUpperCase() === r.name.toUpperCase() && (r.direction === 'out' ? t.amount < 0 : t.amount > 0)).sort((a, b) => (a.date < b.date ? 1 : -1))[0];
   const main = state.settings.mainAccountId;
-  const stLabel = { paid: '<span class="pos">✓ Paid</span>', due: '<span class="warn-text">Due</span>', late: '<span class="neg">Not in your statements yet</span>', missed: '<span class="neg">Not seen that month</span>', upcoming: 'Upcoming' }[status] || '';
+  const isIn = r.direction === 'in';
+  const stLabel = isIn ? { paid: '<span class="pos">✓ Received</span>', due: 'Expected', late: '<span class="warn-text">Not in your statements yet</span>', missed: '<span class="neg">Not seen that month</span>', upcoming: 'Expected' }[status] || '' : { paid: '<span class="pos">✓ Paid</span>', due: '<span class="warn-text">Due</span>', late: '<span class="neg">Not in your statements yet</span>', missed: '<span class="neg">Not seen that month</span>', upcoming: 'Upcoming' }[status] || '';
   return `<div class="act-item">
     <div class="row between">${catChip(r.category)}<b class="grow">${esc(r.name)}</b><b class="${r.direction === 'in' ? 'pos' : ''}">${fmt(r.amount)}</b></div>
-    <div class="sub">${stLabel}${stLabel ? ' · ' : ''}${esc(r.type)} · ${esc(catName(r.category))}${r.accountId ? ` · ${esc(accountName(r.accountId))}` : ''}</div>
+    <div class="sub">${stLabel}${stLabel ? ' · ' : ''}${isIn ? (r.name.match(/SALARY|PAY|WAGES|FROM/i) ? 'Pay' : 'Money in') : esc(r.type)} · ${esc(catName(r.category))}${r.accountId ? ` · ${esc(accountName(r.accountId))}` : ''}</div>
     <div class="sub">${last ? `Last ${prettyDate(last.date)} (${fmt(Math.abs(last.amount))}) · ` : ''}next ${prettyDate(r.nextDue)} · ${fmt(r.amount * 12, { whole: true })} a year${r.priceChange > 0 ? ` · <span class="warn-text">up ${fmt(r.priceChange)}</span>` : ''}</div>
     ${h ? `<div class="sub">${esc(h.how)}</div><a class="act-link" href="${esc(h.url)}" target="_blank" rel="noopener">Manage ${esc(h.label)} ↗</a>` : ''}
     <div class="row gap wrap item-actions">
-      <button class="chip" data-action="bill-remind" data-key="${esc(r.key)}">⏰ Remind me</button>
-      ${status === 'due' || status === 'late' ? `<button class="chip" data-action="bill-markpaid" data-key="${esc(r.key)}">✓ Mark paid</button>` : ''}
+      ${isIn ? '' : `<button class="chip" data-action="bill-remind" data-key="${esc(r.key)}">⏰ Remind me</button>`}
+      ${status === 'due' || status === 'late' ? `<button class="chip" data-action="bill-markpaid" data-key="${esc(r.key)}">✓ Mark ${isIn ? 'received' : 'paid'}</button>` : ''}
       ${r.direction === 'out' ? `<button class="chip" data-action="bill-movetips" data-key="${esc(r.key)}">📆 Move the date</button>
       <button class="chip ${flags[r.key] === 'cancel' ? 'sel' : ''}" data-action="act-flag" data-key="${esc(r.key)}">${flags[r.key] === 'cancel' ? '✓ On cancel list' : '＋ Cancel list'}</button>` : ''}
       ${main && r.accountId && r.accountId !== main && r.direction === 'out' ? '<a class="chip" href="#/movebills">Move to main account ›</a>' : ''}
       <a class="chip" href="#/transactions?cat=${esc(r.category)}">Transactions ›</a>
-      ${r.manual ? `<button class="chip" data-action="bill-add" data-id="${esc(r.id)}">✎ Edit</button><button class="chip" data-action="bill-delete" data-id="${esc(r.id)}">Delete</button>` : `<button class="chip" data-action="bill-hide" data-key="${esc(r.key)}">Not a regular bill</button>`}
+      ${r.manual ? `<button class="chip" data-action="bill-add" data-id="${esc(r.id)}">✎ Edit</button><button class="chip" data-action="bill-delete" data-id="${esc(r.id)}">Delete</button>` : `<button class="chip" data-action="bill-hide" data-key="${esc(r.key)}">${isIn ? 'Not regular income' : 'Not a regular bill'}</button>`}
     </div></div>`;
 }
 

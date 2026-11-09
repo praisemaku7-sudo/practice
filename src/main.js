@@ -272,6 +272,11 @@ document.addEventListener('focusout', () => { if (pendingRender) { pendingRender
     await relinkTransfers();
     await saveSettings({ transferRulesVersion: 7 });
   }
+  if (state.txs.length && (state.settings.transferRulesVersion || 1) < 8) {
+    // Savings interest stays in savings: not spendable household income (re-checked by relink).
+    await relinkTransfers();
+    await saveSettings({ transferRulesVersion: 8 });
+  }
   await route();
   sync.autoSync().then(() => render());
   // Warm up the PDF engine in the background so the first import starts instantly.

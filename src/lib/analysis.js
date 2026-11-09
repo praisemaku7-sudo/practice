@@ -99,7 +99,9 @@ export function markTransfers(txs, accountsById = {}, { ownNames = [] } = {}) {
     // Money paid onto a credit card is a repayment, never income (refunds keep their shop category).
     if (acc?.type === 'credit' && t.amount > 0 && t.category === 'income') { t.category = 'transfer'; t.autoTransfer = true; continue; }
     if (acc?.type === 'savings') {
-      if (!/\b(INTEREST|BONUS)\b/i.test(t.description)) { t.category = 'transfer'; t.autoTransfer = true; }
+      // Interest paid into savings stays there: it grows your savings but isn't money you can
+      // spend, so it isn't household income either.
+      t.category = /\b(INTEREST|BONUS)\b/i.test(t.description) && t.amount > 0 ? 'interest' : 'transfer'; t.autoTransfer = true;
       continue;
     }
     if (t.amount < 0 && acc?.type !== 'credit' && isCardRepayment(t, cardWords)) { t.category = 'transfer'; t.autoTransfer = true; t.cardRepay = true; continue; }
@@ -196,7 +198,7 @@ export function detectRecurring(txs, { today = todayISO() } = {}) {
   const groups = new Map();
   for (const t of txs) {
     // Card repayments are transfers (not spending) but the cash still leaves: keep them for the calendar.
-    if ((t.category === 'transfer' && !t.cardRepay) || t.category === 'excluded' || isSummaryLine(t.description)) continue;
+    if ((t.category === 'transfer' && !t.cardRepay) || t.category === 'excluded' || t.category === 'interest' || isSummaryLine(t.description)) continue;
     const dir = t.amount < 0 ? 'out' : 'in';
     // Month names in references ("RENT NOV", "OCTOBER RENT") would split one payee into many.
     const payee = String(t.merchant || merchantKey(t.description)).toUpperCase().replace(/\b(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|SEPT|OCT|NOV|DEC)[A-Z]*\b/g, ' ').replace(/\b\d+\b/g, ' ').replace(/\s+/g, ' ').trim() || String(t.merchant || t.description).toUpperCase();
