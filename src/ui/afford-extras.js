@@ -11,11 +11,11 @@ import { monthKey, monthLabel, prettyDate, daysBetween, nextDayOfMonth, addDays 
 
 const SUBS = new Set(['subscriptions', 'entertainment', 'fitness', 'personal_care']);
 const ui = { off: {} }; // the "what if I cancel" simulator: keys switched off (not saved)
-const live = () => {
+export const live = () => {
   const flags = state.settings.billFlags || {}, hidden = state.settings.billHidden || {};
   return state.derived.recurring.filter((r) => r.active && r.direction === 'out' && (r.category !== 'transfer' || r.cardRepay) && !hidden[r.key] && flags[r.key] !== 'cancelled');
 };
-const income = () => householdFor(state.settings, monthKey(state.derived.today)).total || state.derived.budget.income || 0;
+export const income = () => householdFor(state.settings, monthKey(state.derived.today)).total || state.derived.budget.income || 0;
 
 /** 1. What your fixed commitments take from your income, and what's left to live on. */
 export function commitmentsCard() {

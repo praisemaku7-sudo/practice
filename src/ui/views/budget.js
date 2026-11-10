@@ -1,4 +1,5 @@
 import { paydaySplitCard, runwayCard } from '../afford-extras.js';
+import { yearlyPotCard } from '../bills-extras.js';
 import { state, saveSettings, activeTempIncome, personIncome, personName, estimatedIncome } from '../../state.js';
 import { esc, openSheet, closeSheet, toast } from '../dom.js';
 import { fmt, parsePrice } from '../../lib/money.js';
@@ -75,6 +76,7 @@ export function render() {
   ${paydaySplitCard()}
   ${groups}
   ${runwayCard()}
+  ${yearlyPotCard()}
   ${Object.keys(state.eff.budgets || {}).length ? '<button class="btn ghost full" data-action="reset-budgets">Reset all custom budgets</button>' : ''}
   <div class="act-links"><a class="act-link" href="#/plan">Future planning (mortgage) ›</a><a class="act-link" href="#/categories">Categories ›</a></div>`;
 }

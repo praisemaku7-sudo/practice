@@ -15,6 +15,7 @@ import { catChip } from '../common.js';
 import { buildPath, chosenSaving } from '../../lib/path.js';
 import { diagnoseSpending } from '../../lib/diagnose.js';
 import { commitmentsCard } from '../afford-extras.js';
+import { housingCard, stressCard } from '../bills-extras.js';
 import { summarizeMonth } from '../../lib/analysis.js';
 import { schedule } from '../../lib/mortgage.js';
 
@@ -237,6 +238,8 @@ export function render() {
   </div>
 
   ${commitmentsCard()}
+  ${housingCard()}
+  ${stressCard()}
   ${enoughCard({ past, ahead, withPlan, mo, chosen, picked, mort, s })}
 
   ${pathHtml}

@@ -11,11 +11,12 @@ import { monthItems, balanceForecast, paidThisMonth, weekTotals, dayIn } from '.
 import { catChip, emptyState } from '../common.js';
 import { addBillsToCalendar } from './due.js';
 import { fairShareCard, subsAuditCard, contractsEnding, priceHistory } from '../afford-extras.js';
+import { changesCard, overlapsCard, fundAccountsCard, billTrendCard, yearlyPotCard, billNoteHtml } from '../bills-extras.js';
 
 const SUBS = new Set(['subscriptions', 'entertainment', 'fitness', 'personal_care']);
 const FLAG_LABEL = { cancel: 'To cancel', cancelled: 'Cancelled' };
 const FILTERS = [['all', 'All'], ['bills', 'Bills'], ['subs', 'Subscriptions'], ['debt', 'Cards & loans'], ['in', 'Income']];
-const ui = { month: null, filter: 'all', view: 'cal' };
+const ui = { month: null, filter: 'all', view: 'cal', per: 'mo' };
 let ctx = null; // what the last render computed, for the sheets
 
 const ord = (d) => `${d}${d % 10 === 1 && d !== 11 ? 'st' : d % 10 === 2 && d !== 12 ? 'nd' : d % 10 === 3 && d !== 13 ? 'rd' : 'th'}`;
@@ -136,20 +137,22 @@ export function render() {
   const subs = out.filter((r) => SUBS.has(r.category));
   const other = out.filter((r) => !bills.includes(r) && !subs.includes(r));
   const toCancel = all.filter((r) => flags[r.key] === 'cancel');
+  const yr = ui.per === 'yr';
   const row = (r) => {
     const f = flags[r.key];
     return `<div class="list-row ${f === 'cancelled' ? 'struck' : ''}">${catChip(r.category)}
       <button class="grow plain" data-action="bill-open" data-key="${esc(r.key)}"><div class="ellipsis">${esc(r.name)} ${r.priceChange > 0 ? `<small class="pill warn">+${fmt(r.priceChange)}</small>` : ''}${r.manual ? ' <small class="pill">added by you</small>' : ''}</div>
-      <div class="sub">${esc(r.type)} · ${r.direction === 'in' ? 'arrives' : paid.has(r.key) && month === thisMonth ? 'paid this month' : 'next'} ${prettyDate(r.nextDue)} · ${fmt(r.amount * 12, { whole: true })}/yr</div></button>
-      <div class="bill-right"><b>${fmt(r.amount)}</b>${r.direction === 'out' ? `<button class="flag ${f || ''}" data-action="bill-flag" data-key="${esc(r.key)}">${FLAG_LABEL[f] || 'Keep'}</button>` : ''}</div></div>`;
+      <div class="sub">${esc(r.type)} · ${r.direction === 'in' ? 'arrives' : paid.has(r.key) && month === thisMonth ? 'paid this month' : 'next'} ${prettyDate(r.nextDue)} · ${yr ? `${fmt(r.amount)}/mo` : `${fmt(r.amount * 12, { whole: true })}/yr`}</div></button>
+      <div class="bill-right"><b>${yr ? fmt(r.amount * 12, { whole: true }) : fmt(r.amount)}</b>${r.direction === 'out' ? `<button class="flag ${f || ''}" data-action="bill-flag" data-key="${esc(r.key)}">${FLAG_LABEL[f] || 'Keep'}</button>` : ''}</div></div>`;
   };
-  const section = (title, l) => (l.length ? `<div class="card"><h3>${title} <small class="muted">${fmt(l.reduce((a, r) => a + r.amount, 0), { whole: true })}/mo</small></h3>${l.map(row).join('')}</div>` : '');
+  const section = (title, l) => (l.length ? `<div class="card"><h3>${title} <small class="muted">${fmt(l.reduce((a, r) => a + r.amount, 0) * (yr ? 12 : 1), { whole: true })}${yr ? '/yr' : '/mo'}</small></h3>${l.map(row).join('')}</div>` : '');
   const hiddenList = all.filter((r) => hidden[r.key]);
 
   return `
   <h1 class="page-title">Bills calendar</h1>
   ${(() => { const d = all.filter((r) => r.dupIds?.length); return d.length ? `<div class="card banner bad"><b>${d.length} regular payment${d.length > 1 ? 's were' : ' was'} counted twice</b><span class="sub">${d.map((r) => `${esc(r.name)} (${(r.dupIds || []).length} cop${r.dupIds.length > 1 ? 'ies' : 'y'})`).join(', ')}: the same payment saved from two imports or accounts. They're counted once now; tap one to remove the copies.</span><div class="row gap wrap">${d.slice(0, 4).map((r) => `<button class="chip" data-action="bill-open" data-key="${esc(r.key)}">${esc(r.name)} ›</button>`).join('')}</div></div>` : ''; })()}
   <div class="card reg-sum"><div><span class="label">Regular outgoings</span><b>${fmt(out.reduce((a, r) => a + r.amount, 0), { whole: true })}<small>/mo</small></b></div><div><span class="label">A year</span><b>${fmt(out.reduce((a, r) => a + r.amount, 0) * 12, { whole: true })}</b></div><div><span class="label">Payments</span><b>${out.length}</b></div></div>
+  ${changesCard()}
   <div class="card cal-card">
     <div class="cal-nav"><button class="icon-btn small" data-action="cal-month" data-step="-1" aria-label="Previous month">‹</button>
       <div class="grow"><b>${esc(monthLabel(month))}</b>${month !== thisMonth ? ' <button class="chip" data-action="cal-month" data-step="0">Today</button>' : ''}</div>
@@ -176,9 +179,14 @@ export function render() {
     <p class="sub">Tap a dot to see that day.</p></div>` : ''}
   ${tips.length ? `<div class="card"><h3>What to do</h3>${tips.join('')}</div>` : ''}
   ${subsAuditCard()}
+  ${overlapsCard()}
   ${fairShareCard()}
+  ${fundAccountsCard()}
   ${toCancel.length ? `<div class="card tip-box"><b>Cancel list:</b> ${toCancel.map((r) => esc(r.name)).join(', ')} saves <b>${fmt(toCancel.reduce((a, r) => a + r.amount, 0))}/month</b> (${fmt(toCancel.reduce((a, r) => a + r.amount, 0) * 12, { whole: true })}/yr). Tap "To cancel" again once it's done.</div>` : ''}
+  <div class="row gap bill-tools"><div class="seg" role="radiogroup" aria-label="Amounts"><button role="radio" aria-checked="${!yr}" class="${yr ? '' : 'sel'}" data-action="bill-per" data-v="mo">Per month</button><button role="radio" aria-checked="${yr}" class="${yr ? 'sel' : ''}" data-action="bill-per" data-v="yr">Per year</button></div><button class="chip" data-action="bills-csv">⬇ Export list</button></div>
   ${section('Bills', bills)}${section('Subscriptions', subs)}${section('Other regular payments', other)}${section('Income', live.filter((r) => r.direction === 'in' && r.active))}
+  ${yearlyPotCard()}
+  ${billTrendCard()}
   ${hiddenList.length ? `<div class="card"><h3>Hidden <small class="muted">${hiddenList.length}</small></h3>${hiddenList.map((r) => `<div class="list-row"><span class="grow">${esc(r.name)} <small class="muted">${fmt(r.amount)}</small></span><button class="chip" data-action="bill-unhide" data-key="${esc(r.key)}">Show again</button></div>`).join('')}</div>` : ''}
   <div class="act-links"><a class="act-link" href="#/due">Due soon ›</a><a class="act-link" href="#/movebills">Move bills to one account ›</a><a class="act-link" href="#/track">On track ›</a></div>`;
 }
@@ -215,11 +223,13 @@ function itemCard(r, status) {
       ${isIn ? '' : `<button class="chip" data-action="bill-remind" data-key="${esc(r.key)}">⏰ Remind me</button>`}
       ${status === 'due' || status === 'late' ? `<button class="chip" data-action="bill-markpaid" data-key="${esc(r.key)}">✓ Mark ${isIn ? 'received' : 'paid'}</button>` : ''}
       ${r.direction === 'out' ? `<button class="chip" data-action="bill-movetips" data-key="${esc(r.key)}">📆 Move the date</button>
-      <button class="chip ${flags[r.key] === 'cancel' ? 'sel' : ''}" data-action="act-flag" data-key="${esc(r.key)}">${flags[r.key] === 'cancel' ? '✓ On cancel list' : '＋ Cancel list'}</button>` : ''}
+      <button class="chip ${flags[r.key] === 'cancel' ? 'sel' : ''}" data-action="act-flag" data-key="${esc(r.key)}">${flags[r.key] === 'cancel' ? '✓ On cancel list' : '＋ Cancel list'}</button>
+      <button class="chip" data-action="bill-cancelhow" data-key="${esc(r.key)}">🚫 How to cancel</button>` : ''}
+      <button class="chip" data-action="bn-open" data-key="${esc(r.key)}">📝 Note</button>
       ${main && r.accountId && r.accountId !== main && r.direction === 'out' ? '<a class="chip" href="#/movebills">Move to main account ›</a>' : ''}
       <a class="chip" href="#/transactions?cat=${esc(r.category)}">Transactions ›</a>
       ${r.manual ? `<button class="chip" data-action="bill-add" data-id="${esc(r.id)}">✎ Edit</button><button class="chip" data-action="bill-delete" data-id="${esc(r.id)}">Delete</button>` : `<button class="chip" data-action="bill-edit" data-key="${esc(r.key)}">✎ Correct it</button><button class="chip" data-action="bill-hide" data-key="${esc(r.key)}">${isIn ? 'Not regular income' : 'Not a regular bill'}</button>`}
-    </div>${paymentsSeen(r)}</div>`;
+    </div>${billNoteHtml(r)}${paymentsSeen(r)}</div>`;
 }
 
 /** The actual payments behind a regular payment, with any copies counted twice flagged. */
@@ -367,4 +377,5 @@ export const actions = {
     rerender();
   },
   'due-calendar': () => addBillsToCalendar(),
+  'bill-per': (el, rerender) => { ui.per = el.dataset.v; rerender(); },
 };
