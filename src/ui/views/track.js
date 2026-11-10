@@ -14,6 +14,8 @@ import { checkinStatus, targetMonth } from './checkin.js';
 import { catChip } from '../common.js';
 import { buildPath, chosenSaving } from '../../lib/path.js';
 import { diagnoseSpending } from '../../lib/diagnose.js';
+import { commitmentsCard } from '../afford-extras.js';
+import { housingCard, stressCard } from '../bills-extras.js';
 import { summarizeMonth } from '../../lib/analysis.js';
 import { schedule } from '../../lib/mortgage.js';
 
@@ -235,6 +237,9 @@ export function render() {
     ${over.length || heading.length ? `<div class="sub mi-movers"><span class="neg">⚠ ${[over.length && `${over.length} over budget`, heading.length && `${heading.length} heading over`].filter(Boolean).join(' · ')}</span></div>` : ''}
   </div>
 
+  ${commitmentsCard()}
+  ${housingCard()}
+  ${stressCard()}
   ${enoughCard({ past, ahead, withPlan, mo, chosen, picked, mort, s })}
 
   ${pathHtml}

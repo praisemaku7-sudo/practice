@@ -2,6 +2,7 @@
 // and only calls Claude when the on-device read can't be verified against the balances.
 import { state, recompute, relinkTransfers, ownerOf } from '../state.js';
 import { db } from '../lib/db.js';
+import { toast } from './dom.js';
 import { parseTextStatement, decodeText } from '../lib/parse/formats.js';
 import { parseStatementLines } from '../lib/parse/statementText.js';
 import { linesToPageTexts, detectAccountRef, reconcile } from '../lib/parse/layout.js';
@@ -17,7 +18,7 @@ async function cachedAI(hash, run) {
   if (hash && r?.transactions) await db.kvSet(`ai:${hash}`, r);
   return r;
 }
-import { prettyDate, monthKey, daysBetween } from '../lib/dates.js';
+import { prettyDate, monthKey, daysBetween, parseDate } from '../lib/dates.js';
 import { merchantKey } from '../lib/categorize.js';
 import { overlapReport, fileHash } from '../lib/coverage.js';
 import { matchIncoming } from '../lib/duplicates.js';
@@ -356,8 +357,46 @@ async function drain() {
   try { await Promise.all([run(), run(), run()]); } finally { draining = false; }
 }
 
-export function addFiles(files) {
+/** "applepay|date|merchant|amount|card" lines written by the iPhone Shortcut (no server needed). */
+export function parseApplePayLog(text) {
+  const rows = [];
+  for (const line of String(text).split(/\r?\n/)) {
+    const m = line.trim().split('|');
+    if (m[0]?.toLowerCase() !== 'applepay' || m.length < 4) continue;
+    const [, when, merchant, amount, card = ''] = m;
+    const w = when.trim();
+    const date = w.match(/\d{4}-\d{2}-\d{2}/)?.[0] || parseDate(w.replace(/,/g, ' ').replace(/\s+at\s+.*$/i, ''), new Date().getFullYear());
+    if (date && amount) rows.push({ date, merchant: merchant.trim() || 'Apple Pay', amount: amount.trim(), card: card.trim() });
+  }
+  return rows;
+}
+
+async function importApplePayLog(file) {
+  const rows = parseApplePayLog(await file.text());
+  const { logPurchase } = await import('./views/add.js');
+  let n = 0;
+  for (const r of rows) {
+    const id = [r.date, r.merchant, r.amount, r.card].join('|').toLowerCase().replace(/[^a-z0-9|.-]/g, '');
+    if (await logPurchase({ ...r, id })) n++;
+  }
+  recompute();
+  toast(n ? `${n} Apple Pay purchase${n === 1 ? '' : 's'} added (${rows.length - n} already logged)` : rows.length ? 'Nothing new in the Apple Pay log' : 'No Apple Pay lines found in that file', { error: !rows.length });
+  return n;
+}
+
+export async function addFiles(files) {
   if (!files.length) return;
+  // The Apple Pay log isn't a statement: log its purchases straight away.
+  const rest = [];
+  for (const f of [...files]) {
+    if (/\.(txt|log)$/i.test(f.name) || /apple ?pay/i.test(f.name)) {
+      const head = await f.slice(0, 200).text().catch(() => '');
+      if (/^\s*applepay\|/im.test(head)) { await importApplePayLog(f); continue; }
+    }
+    rest.push(f);
+  }
+  files = rest;
+  if (!files.length) { changed(); return; }
   if (queue.items.length && queue.items.every((i) => ['imported', 'skipped', 'error'].includes(i.status) || (i.status === 'ready' && !i.include))) {
     queue.items = []; // previous batch finished: start fresh
   }

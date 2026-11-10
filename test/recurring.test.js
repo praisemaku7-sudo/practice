@@ -29,3 +29,18 @@ test('groceries several times a month are still not a bill', () => {
   for (const m of ['2026-08', '2026-09', '2026-10']) for (const d of ['03', '10', '17', '24']) txs.push(tx(`${m}-${d}`, -4000, 'TESCO STORES', 'groceries'));
   assert.equal(detectRecurring(txs, { today: '2026-11-08' }).length, 0);
 });
+
+test('the same payment saved twice is counted once and listed as a duplicate', () => {
+  const txs = [];
+  for (const m of ['2026-08', '2026-09', '2026-10']) {
+    txs.push({ ...tx(`${m}-05`, -3400, 'SAMPLE CHARITY', 'gifts', 'a1'), importId: 'i1' });
+    txs.push({ ...tx(`${m}-05`, -3400, 'SAMPLE CHARITY', 'gifts', 'a2'), importId: 'i2' });
+  }
+  const r = detectRecurring(txs, { today: '2026-11-08' });
+  const c = r.find((x) => x.category === 'gifts');
+  assert.ok(c, 'detected');
+  assert.equal(c.amount, 3400);
+  assert.equal(c.dupIds.length, 3);
+  const keep = detectRecurring(txs, { today: '2026-11-08', notDup: { [c.key]: true } }).find((x) => x.category === 'gifts');
+  assert.ok(!keep || keep.dupIds.length === 0, 'kept as separate payments when you say so');
+});
