@@ -303,6 +303,18 @@ export async function aiReadMIP({ apiKey, model, text = null, images = [], media
   return fromAI(r);
 }
 
+/** Read a full mortgage application form: figures and yes/no answers only. */
+export async function aiReadApplication({ apiKey, model, text = null, images = [], mediaType = 'image/jpeg' }) {
+  const { APP_SCHEMA, fromAppAI } = await import('./mortgageApp.js');
+  const r = await structured({
+    apiKey, model, effort: 'low', maxTokens: 8000,
+    system: 'You read UK mortgage application forms. Report only the figures and yes/no answers asked for, per applicant in form order. For radio buttons, the filled dot marks the chosen answer. Use null when a value is not in the document. Never include names, addresses, dates of birth, phone numbers, emails or reference numbers.',
+    content: [...images.map((data) => ({ type: 'image', source: { type: 'base64', media_type: mediaType, data } })), { type: 'text', text: text ? `Document text:\n${text.slice(0, 40000)}` : 'Read this mortgage application.' }],
+    schema: APP_SCHEMA,
+  });
+  return fromAppAI(r);
+}
+
 /** Answer a question about your money from aggregated numbers only (no raw transactions). */
 export async function aiAsk({ apiKey, model, question, context }) {
   return structured({

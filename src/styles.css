@@ -1147,3 +1147,4 @@ button.ins-go { font-size: 14px; font-weight: 700; color: var(--accent-text, var
 .move-item.st-done, .move-item.st-cancel, .move-item.st-leave { opacity: .7; }
 .mv-seg { max-width: 280px; }
 .mv-msg pre { white-space: pre-wrap; font: inherit; font-size: 13px; background: var(--track); padding: 10px; border-radius: 10px; margin: 8px 0; overflow-wrap: anywhere; }
+.check-line .sub { color: var(--muted); font-weight: 400; margin: 2px 0 6px; }
