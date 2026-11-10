@@ -88,22 +88,21 @@ async function setTrackFrom(value, rerender) {
 function applePayCard() {
   const bs = state.settings.bankSync || {};
   const ready = bs.url && bs.token;
-  const url = bs.url || 'https://YOUR-SERVER.workers.dev';
-  const token = bs.token || 'YOUR-APP-TOKEN';
-  const prompt = `When this shortcut runs from a Wallet transaction, send the payment to my budget app without showing anything: use "Get Contents of URL" to make a POST request to ${url}/log with the header "Authorization" set to "Bearer ${token}" and a JSON request body with three text fields: "amount" = the transaction's Amount, "merchant" = the transaction's Merchant, "card" = the transaction's Card or Pass name.`;
+  const prompt = 'Make a shortcut that runs from a Wallet transaction: use "Append to Text File" to add a new line to the file "Apple Pay log.txt" in iCloud Drive (Shortcuts folder). The line is: applepay|[Current Date formatted as ISO 8601]|[Shortcut Input Merchant]|[Shortcut Input Amount]|[Shortcut Input Card]. Make a new line each time and show no notification.';
   return `<div class="card" id="applepay">
     <h3>Auto-log Apple Pay ⚡</h3>
-    <p class="muted">Every Apple Pay payment is sent to your sync server in the background and appears here next time you open the app. Statements or bank sync replace the quick entries, so nothing doubles up.</p>
-    ${ready ? '' : `<div class="alert">First set up your sync server: <b>Accounts → Live bank sync</b>, steps 2–3. For Apple Pay you only need Cloudflare and the app password, not Enable Banking.</div>`}
-    <p class="muted"><b>1. Make the shortcut.</b> In Shortcuts, tap <b>+</b> and paste this into "Describe a shortcut":</p>
-    <textarea class="url-box prompt-box" id="ap-prompt" readonly rows="6">${esc(prompt)}</textarea>
+    <p class="muted">Every Apple Pay tap is written to a small file on your iPhone. Import it here whenever you like (or with your statements): purchases appear on the right card's account, and your statements replace them later, so nothing doubles up. No server, nothing leaves your phone.</p>
+    <p class="muted"><b>1. Make the shortcut.</b> Shortcuts → <b>+</b> → paste this into "Describe a shortcut" (or build it by hand below):</p>
+    <textarea class="url-box prompt-box" id="ap-prompt" readonly rows="5">${esc(prompt)}</textarea>
     <button class="btn ghost full" data-action="copy-ap-prompt">Copy prompt</button>
-    <details class="sub"><summary>Or build it by hand</summary>
-      <ol class="tips"><li>New shortcut → add <b>Get Contents of URL</b>.</li><li>URL: <code>${esc(url)}/log</code>, Method <b>POST</b>.</li>
-      <li>Headers: <code>Authorization</code> = <code>Bearer ${esc(token)}</code>.</li>
-      <li>Request Body <b>JSON</b>: <code>amount</code>, <code>merchant</code>, <code>card</code> → pick <b>Shortcut Input</b> → Amount / Merchant / Card.</li></ol></details>
-    <p class="muted"><b>2. Run it on every tap.</b> Shortcuts → <b>Automation</b> → <b>+</b> → <b>Transaction</b> → choose your cards → <b>Run Immediately</b> → Next → pick the shortcut you just made.</p>
-    ${ready ? '<button class="btn ghost full" data-action="ap-test">Check for new Apple Pay purchases now</button>' : ''}
+    <details class="sub"><summary>Build it by hand</summary>
+      <ol class="tips"><li>New shortcut → add <b>Text</b> with: <code>applepay|</code> Current Date (tap it → Format: ISO 8601) <code>|</code> Shortcut Input → Merchant <code>|</code> Shortcut Input → Amount <code>|</code> Shortcut Input → Card.</li>
+      <li>Add <b>Append to Text File</b>: file <code>Apple Pay log.txt</code>, folder Shortcuts, <b>Make New Line</b> on.</li></ol></details>
+    <p class="muted"><b>2. Run it on every tap.</b> Shortcuts → <b>Automation</b> → <b>+</b> → <b>Transaction</b> (called <b>Wallet</b> on newer iOS) → choose your cards → <b>Run Immediately</b> → pick the shortcut.</p>
+    <p class="muted"><b>3. Bring them in.</b> Tap below and choose <b>Apple Pay log.txt</b> (iCloud Drive → Shortcuts). Do it as often as you like.</p>
+    <button class="btn primary full" data-action="import">Import Apple Pay log</button>
+    ${ready ? '<details class="sub"><summary>Using a sync server instead</summary><button class="btn ghost full" data-action="ap-test">Check the server for new Apple Pay purchases</button></details>' : ''}
+    <p class="sub">Only Apple Pay taps are seen: Direct Debits, online payments and transfers still come from your statements.</p>
   </div>`;
 }
 

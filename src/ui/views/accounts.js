@@ -162,9 +162,10 @@ function renderStatements() {
       }).join('')}</div></div>`).join('')}
     ${missingCount ? `<div class="list-gap"></div>${coverage.missing.map((m) => `<div class="list-row"><span class="bank-badge warn">!</span><div class="grow"><b>${esc(m.accountName)}</b> · ${esc(monthLabel(m.month))}<div class="sub">${m.reason === 'latest' ? 'Latest statement should be ready in the bank app' : m.reason === 'start' ? 'Needed from your tracking start month' : 'Gap between imported statements'}</div></div><div class="cov-btns"><button class="link" data-action="cov-toggle" data-key="${esc(m.accountId + '|' + m.month)}">No statement</button>${m.reason === 'start' && m.month === c0(m.accountId) ? `<button class="link" data-action="acc-started" data-id="${esc(m.accountId)}">Opened later</button>` : ''}</div></div>`).join('')}
       <button class="btn primary full" data-action="import">Import missing statements</button>` : ''}
-    <h4>Import log: how each statement checked out</h4>
-    ${[...state.imports].sort((a, b) => b.at - a.at).slice(0, 15).map((i) => `<details class="log-row"><summary class="list-row"><span class="vbadge ${i.validation?.level || 'old'}">${{ ok: '✓', partial: '~', fail: '!', unchecked: '–' }[i.validation?.level] || '·'}</span><div class="grow"><div class="ellipsis">${esc(i.fileName)}</div><div class="sub">${esc(accName(i.accountId))}${i.periodStart ? ` · ${prettyDate(i.periodStart)}–${prettyDate(i.periodEnd)}` : ''} · ${new Date(i.at).toLocaleDateString('en-GB')}</div></div><span class="sub">${i.count} new${i.dupes ? ` · ${i.dupes} dup` : ''}</span></summary><div class="checks">${i.validation ? `<b>${esc(i.validation.summary)}</b>${i.validation.checks.map((c) => `<div class="check-line ${c.ok === true ? 'ok' : c.ok === false ? 'bad' : ''}">${c.ok === true ? '✓' : c.ok === false ? '✗' : '–'} ${esc(c.text.replace(/ ?✓/g, ''))}</div>`).join('')}` : '<span class="sub">Imported before checks were recorded. Re-import to check it.</span>'}</div></details>`).join('') || '<p class="sub">No imports yet.</p>'}
-    <p class="sub">✓ the statement's own figures agree · ~ partly checked · ! didn't add up · – nothing printed to check against. Tap a file to see each check.</p>
+    <details class="imp-log"><summary><b>Import log</b> <span class="muted">· ${state.imports.length} file${state.imports.length === 1 ? '' : 's'}${state.imports.some((i) => i.validation?.level === 'fail') ? ` · <span class="neg">${state.imports.filter((i) => i.validation?.level === 'fail').length} didn't add up</span>` : ''}</span></summary>
+    ${[...state.imports].sort((a, b) => b.at - a.at).slice(0, ui.logAll ? 200 : 3).map((i) => `<details class="log-row"><summary class="list-row"><span class="vbadge ${i.validation?.level || 'old'}">${{ ok: '✓', partial: '~', fail: '!', unchecked: '–' }[i.validation?.level] || '·'}</span><div class="grow"><div class="ellipsis">${esc(i.fileName)}</div><div class="sub">${esc(accName(i.accountId))}${i.periodStart ? ` · ${prettyDate(i.periodStart)}–${prettyDate(i.periodEnd)}` : ''} · ${new Date(i.at).toLocaleDateString('en-GB')}</div></div><span class="sub">${i.count} new${i.dupes ? ` · ${i.dupes} dup` : ''}</span></summary><div class="checks">${i.validation ? `<b>${esc(i.validation.summary)}</b>${i.validation.checks.map((c) => `<div class="check-line ${c.ok === true ? 'ok' : c.ok === false ? 'bad' : ''}">${c.ok === true ? '✓' : c.ok === false ? '✗' : '–'} ${esc(c.text.replace(/ ?✓/g, ''))}</div>`).join('')}` : '<span class="sub">Imported before checks were recorded. Re-import to check it.</span>'}</div></details>`).join('') || '<p class="sub">No imports yet.</p>'}
+    ${state.imports.length > 3 ? `<button class="link small-link" data-action="acc-log-all">${ui.logAll ? 'Show fewer' : `Show all ${state.imports.length}`}</button>` : ''}
+    <p class="sub">✓ figures agree · ~ partly checked · ! didn't add up · – nothing to check against. Tap a file for its checks.</p></details>
   </div>`;
 }
 
@@ -260,7 +261,10 @@ function ghostAccounts() {
     && ((counts[a.id] || 0) <= 10 || invest.some((v) => Math.abs(v - Math.abs(a.balance)) <= v * 0.03)));
 }
 
+const ui = { logAll: false };
+
 export const actions = {
+  'acc-log-all': (_, rerender) => { ui.logAll = !ui.logAll; rerender(); },
   'card-open': (el) => { const a = (state.allAccounts || state.accounts).find((x) => x.id === el.dataset.id); if (a) cardSheet(a); },
   'acc-ghost-remove': async (el, rerender) => {
     const a = state.accounts.find((x) => x.id === el.dataset.id);

@@ -10,6 +10,7 @@ import { billsCalendar } from '../../lib/ics.js';
 import { monthItems, balanceForecast, paidThisMonth, weekTotals, dayIn } from '../../lib/cashflow.js';
 import { catChip, emptyState } from '../common.js';
 import { addBillsToCalendar } from './due.js';
+import { fairShareCard, subsAuditCard, contractsEnding, priceHistory } from '../afford-extras.js';
 
 const SUBS = new Set(['subscriptions', 'entertainment', 'fitness', 'personal_care']);
 const FLAG_LABEL = { cancel: 'To cancel', cancelled: 'Cancelled' };
@@ -108,6 +109,7 @@ export function render() {
   const main = s.mainAccountId;
   const offMain = main ? out.filter((r) => r.accountId && r.accountId !== main).length : 0;
   if (offMain) tips.push(`<div class="cal-tip"><b>${offMain} bill${offMain > 1 ? 's' : ''} come from other accounts</b><span>One account for every bill means one balance to watch.</span><a class="chip" href="#/movebills">Move bills ›</a></div>`);
+  for (const c of contractsEnding()) tips.unshift(`<div class="cal-tip ${c.left <= 14 ? 'bad' : ''}"><b>${esc(c.r.name)} contract ${c.left < 0 ? `ended ${-c.left} days ago` : `ends in ${c.left} days`}</b><span>Out of contract prices usually go up. Compare deals now and ask them to match: <a href="https://www.uswitch.com/" target="_blank" rel="noopener">Uswitch ↗</a></span><button class="chip" data-action="bill-open" data-key="${esc(c.r.key)}">Details</button></div>`);
   if (!sb) tips.push('<div class="cal-tip"><b>Want bounce warnings?</b><span>Import a recent current-account statement: the app reads the closing balance and forecasts it day by day.</span><a class="chip" href="#/import">Import</a></div>');
 
   // Forecast chart.
@@ -146,6 +148,8 @@ export function render() {
 
   return `
   <h1 class="page-title">Bills calendar</h1>
+  ${(() => { const d = all.filter((r) => r.dupIds?.length); return d.length ? `<div class="card banner bad"><b>${d.length} regular payment${d.length > 1 ? 's were' : ' was'} counted twice</b><span class="sub">${d.map((r) => `${esc(r.name)} (${(r.dupIds || []).length} cop${r.dupIds.length > 1 ? 'ies' : 'y'})`).join(', ')}: the same payment saved from two imports or accounts. They're counted once now; tap one to remove the copies.</span><div class="row gap wrap">${d.slice(0, 4).map((r) => `<button class="chip" data-action="bill-open" data-key="${esc(r.key)}">${esc(r.name)} ›</button>`).join('')}</div></div>` : ''; })()}
+  <div class="card reg-sum"><div><span class="label">Regular outgoings</span><b>${fmt(out.reduce((a, r) => a + r.amount, 0), { whole: true })}<small>/mo</small></b></div><div><span class="label">A year</span><b>${fmt(out.reduce((a, r) => a + r.amount, 0) * 12, { whole: true })}</b></div><div><span class="label">Payments</span><b>${out.length}</b></div></div>
   <div class="card cal-card">
     <div class="cal-nav"><button class="icon-btn small" data-action="cal-month" data-step="-1" aria-label="Previous month">‹</button>
       <div class="grow"><b>${esc(monthLabel(month))}</b>${month !== thisMonth ? ' <button class="chip" data-action="cal-month" data-step="0">Today</button>' : ''}</div>
@@ -171,6 +175,8 @@ export function render() {
       <p class="sub">${sb.stale ? '⚠ These balances are from your last imported statements, not today. Import recent statements (or type today\'s balance in Accounts) for a true picture.' : 'From statements in the last 10 days.'} Card spending, shopping and anything not regular aren't included, so keep a buffer.</p></details>
     <p class="sub">Tap a dot to see that day.</p></div>` : ''}
   ${tips.length ? `<div class="card"><h3>What to do</h3>${tips.join('')}</div>` : ''}
+  ${subsAuditCard()}
+  ${fairShareCard()}
   ${toCancel.length ? `<div class="card tip-box"><b>Cancel list:</b> ${toCancel.map((r) => esc(r.name)).join(', ')} saves <b>${fmt(toCancel.reduce((a, r) => a + r.amount, 0))}/month</b> (${fmt(toCancel.reduce((a, r) => a + r.amount, 0) * 12, { whole: true })}/yr). Tap "To cancel" again once it's done.</div>` : ''}
   ${section('Bills', bills)}${section('Subscriptions', subs)}${section('Other regular payments', other)}${section('Income', live.filter((r) => r.direction === 'in' && r.active))}
   ${hiddenList.length ? `<div class="card"><h3>Hidden <small class="muted">${hiddenList.length}</small></h3>${hiddenList.map((r) => `<div class="list-row"><span class="grow">${esc(r.name)} <small class="muted">${fmt(r.amount)}</small></span><button class="chip" data-action="bill-unhide" data-key="${esc(r.key)}">Show again</button></div>`).join('')}</div>` : ''}
@@ -212,8 +218,37 @@ function itemCard(r, status) {
       <button class="chip ${flags[r.key] === 'cancel' ? 'sel' : ''}" data-action="act-flag" data-key="${esc(r.key)}">${flags[r.key] === 'cancel' ? '✓ On cancel list' : '＋ Cancel list'}</button>` : ''}
       ${main && r.accountId && r.accountId !== main && r.direction === 'out' ? '<a class="chip" href="#/movebills">Move to main account ›</a>' : ''}
       <a class="chip" href="#/transactions?cat=${esc(r.category)}">Transactions ›</a>
-      ${r.manual ? `<button class="chip" data-action="bill-add" data-id="${esc(r.id)}">✎ Edit</button><button class="chip" data-action="bill-delete" data-id="${esc(r.id)}">Delete</button>` : `<button class="chip" data-action="bill-hide" data-key="${esc(r.key)}">${isIn ? 'Not regular income' : 'Not a regular bill'}</button>`}
-    </div></div>`;
+      ${r.manual ? `<button class="chip" data-action="bill-add" data-id="${esc(r.id)}">✎ Edit</button><button class="chip" data-action="bill-delete" data-id="${esc(r.id)}">Delete</button>` : `<button class="chip" data-action="bill-edit" data-key="${esc(r.key)}">✎ Correct it</button><button class="chip" data-action="bill-hide" data-key="${esc(r.key)}">${isIn ? 'Not regular income' : 'Not a regular bill'}</button>`}
+    </div>${paymentsSeen(r)}</div>`;
+}
+
+/** The actual payments behind a regular payment, with any copies counted twice flagged. */
+function paymentsSeen(r) {
+  if (r.manual || !r.txIds) return '';
+  const all = state.allTxs || state.txs;
+  const byId = new Map(all.map((t) => [t.id, t]));
+  const rows = [...(r.txIds || []).map((id) => [byId.get(id), false]), ...(r.dupIds || []).map((id) => [byId.get(id), true])].filter(([t]) => t).sort((a, b) => b[0].date.localeCompare(a[0].date));
+  const dups = (r.dupIds || []).length;
+  return `${priceHistory(r)}${(state.settings.recurringEdits || {})[r.key]?.contractEnd ? `<div class="sub">Contract ends ${prettyDate(state.settings.recurringEdits[r.key].contractEnd)} ${state.settings.recurringEdits[r.key].contractEnd.slice(0, 4)}</div>` : ''}<details class="seen" ${dups ? 'open' : ''}><summary>Payments seen (${rows.length})${dups ? ` · <span class="neg">${dups} counted twice</span>` : ''}${r.edited ? ' · ✎ corrected by you' : ''}</summary>
+    ${dups ? `<div class="cal-tip bad"><b>${dups} payment${dups > 1 ? 's look' : ' looks'} like ${dups > 1 ? 'copies' : 'a copy'} of another</b><span>Same amount, same days, from another import or account, so this bill was showing more than you pay. They're only counted once now.</span>
+      <div class="row gap wrap"><button class="chip sel" data-action="bill-dups-remove" data-key="${esc(r.key)}">Remove the ${dups} cop${dups > 1 ? 'ies' : 'y'}</button><button class="chip" data-action="bill-notdup" data-key="${esc(r.key)}">They're separate payments</button></div></div>` : ''}
+    ${rows.map(([t, dup]) => `<div class="pv-row ${dup ? 'dup' : ''}"><span>${prettyDate(t.date)} ${t.date.slice(2, 4)}</span><span class="ellipsis grow">${esc(accountName(t.accountId))}${dup ? ' · copy' : ''}</span><b>${fmt(Math.abs(t.amount))}</b></div>`).join('')}</details>`;
+}
+
+function editSheet(key) {
+  const r = find(key);
+  if (!r) return;
+  const cats = ['housing', 'bills', 'insurance', 'debt', 'subscriptions', 'entertainment', 'fitness', 'gifts', 'childcare', 'transport', 'other'].filter((c) => CAT[c]);
+  openSheet(`<h2>Correct ${esc(r.name)}</h2>
+    <p class="muted">If the app has this bill wrong (amount, day or category), set it here. It's used everywhere: calendar, budgets, forecasts.</p>
+    <label class="field"><span>Name</span><input id="be-name" value="${esc(r.name)}"></label>
+    <div class="plan-grid"><label class="field"><span>Amount £ a month</span><input id="be-amt" inputmode="decimal" value="${(r.amount / 100).toFixed(2)}"></label>
+      <label class="field"><span>Day of month</span><input id="be-day" inputmode="numeric" value="${r.day}"></label></div>
+    <label class="field"><span>Contract ends (optional)</span><input id="be-end" type="date" value="${esc((state.settings.recurringEdits || {})[key]?.contractEnd || '')}"></label>
+    <label class="field select"><span>Category</span><select id="be-cat">${cats.map((c) => `<option value="${c}" ${r.category === c ? 'selected' : ''}>${esc(catName(c))}</option>`).join('')}</select></label>
+    <button class="btn primary full" data-action="bill-edit-save" data-key="${esc(key)}">Save</button>
+    ${r.edited ? `<button class="btn ghost full" data-action="bill-edit-reset" data-key="${esc(key)}">Undo my correction</button>` : ''}
+    <button class="btn ghost full" data-action="close-sheet">Cancel</button>`);
 }
 
 function billSheet(key) {
@@ -284,6 +319,27 @@ export const actions = {
     marked[m] = { ...(marked[m] || {}), [el.dataset.key]: true };
     await save({ billPaid: marked }, 'Marked as paid'); closeSheet(); rerender();
   },
+  'bill-edit': (el) => editSheet(el.dataset.key),
+  'bill-edit-save': async (el, rerender) => {
+    const v = (id) => document.getElementById(id).value.trim();
+    const amount = parsePrice(v('be-amt')), day = parseInt(v('be-day'), 10);
+    if (!amount) return toast('Enter the amount', { error: true });
+    if (!(day >= 1 && day <= 31)) return toast('Day should be 1–31', { error: true });
+    await save({ recurringEdits: { ...(state.settings.recurringEdits || {}), [el.dataset.key]: { name: v('be-name'), amount, day, category: v('be-cat'), ...(v('be-end') ? { contractEnd: v('be-end') } : {}) } } }, 'Corrected');
+    closeSheet(); rerender();
+  },
+  'bill-edit-reset': async (el, rerender) => { const e = { ...(state.settings.recurringEdits || {}) }; delete e[el.dataset.key]; await save({ recurringEdits: e }, 'Back to what the statements say'); closeSheet(); rerender(); },
+  'bill-dups-remove': async (el, rerender) => {
+    const r = find(el.dataset.key);
+    if (!r?.dupIds?.length) return;
+    const { db } = await import('../../lib/db.js');
+    for (const id of r.dupIds) await db.del('tx', id);
+    const gone = new Set(r.dupIds);
+    state.txs = state.txs.filter((t) => !gone.has(t.id));
+    if (state.allTxs) state.allTxs = state.allTxs.filter((t) => !gone.has(t.id));
+    recompute(); toast(`Removed ${gone.size} duplicate payment${gone.size > 1 ? 's' : ''}`); closeSheet(); rerender();
+  },
+  'bill-notdup': async (el, rerender) => { await save({ recurringNotDup: { ...(state.settings.recurringNotDup || {}), [el.dataset.key]: true } }, 'Kept as separate payments'); closeSheet(); rerender(); },
   'bill-hide': async (el, rerender) => { await save({ billHidden: { ...(state.settings.billHidden || {}), [el.dataset.key]: true } }, 'Hidden from the calendar'); closeSheet(); rerender(); },
   'bill-unhide': async (el, rerender) => { const h = { ...(state.settings.billHidden || {}) }; delete h[el.dataset.key]; await save({ billHidden: h }); rerender(); },
   'bill-add': (el) => addSheet({ day: el.dataset.day ? +el.dataset.day : null, id: el.dataset.id || null }),

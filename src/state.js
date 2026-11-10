@@ -186,6 +186,17 @@ function effectiveSettings() {
   return { ...mine, income: base == null ? (extra || null) : base + extra };
 }
 
+/** Your corrections to detected regular payments (amount, name, day, category). */
+function applyRecurringEdits(list) {
+  const edits = state.settings.recurringEdits || {};
+  return list.map((r) => {
+    const e = edits[r.key];
+    if (!e) return r;
+    const day = e.day || r.day;
+    return { ...r, ...e, day, edited: true, nextDue: e.day ? nextDayOfMonth(todayISO(), day) : r.nextDue };
+  });
+}
+
 /** Regular payments you added by hand (e.g. rent not found in statements yet). */
 function withManualBills(detected, today) {
   const ids = new Set(state.accounts.map((a) => a.id));
@@ -203,7 +214,7 @@ export function recompute() {
   clearAnalysisCache(); // data may have changed (categories, imports…)
   const today = todayISO();
   state.eff = effectiveSettings();
-  const recurring = withManualBills(detectRecurring(state.txs, { today }), today);
+  const recurring = applyRecurringEdits(withManualBills(detectRecurring(state.txs, { today, notDup: state.settings.recurringNotDup || {} }), today));
   const detected = detectPayday(recurring);
   const payday = state.eff.payday ?? detected?.day ?? null;
   const byIdAll = Object.fromEntries((state.allAccounts || state.accounts).map((a) => [a.id, a]));
@@ -221,7 +232,11 @@ export function recompute() {
       incomplete.add(m);
     }
   }
-  const budget = buildBudget(state.txs, { ...state.eff, goalsMonthly: gm }, { today, incomplete });
+  // What the regular payments add up to per category (cancelled or hidden ones left out).
+  const flags = state.settings.billFlags || {}, hidden = state.settings.billHidden || {};
+  const commitments = {};
+  for (const r of recurring) if (r.active && r.direction === 'out' && r.category !== 'transfer' && !hidden[r.key] && flags[r.key] !== 'cancelled') commitments[r.category] = (commitments[r.category] || 0) + r.amount;
+  const budget = buildBudget(state.txs, { ...state.eff, goalsMonthly: gm }, { today, incomplete, commitments });
   const currentAccounts = state.accounts.filter((a) => a.type === 'current' && a.balance != null);
   // A balance older than ~10 days is too stale to trust for the bills check.
   const fresh = currentAccounts.filter((a) => a.balanceDate && daysBetween(a.balanceDate, today) <= 10);

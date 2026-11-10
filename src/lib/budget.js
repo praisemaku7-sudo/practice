@@ -24,7 +24,7 @@ export function baselineMonths(txs, { today = todayISO(), n = 3, incomplete = nu
  *    proportion to how you've actually spent, but capped so the savings target holds.
  * settings.budgets[cat] overrides any category.
  */
-export function buildBudget(txs, settings = {}, { today = todayISO(), incomplete = null } = {}) {
+export function buildBudget(txs, settings = {}, { today = todayISO(), incomplete = null, commitments = {} } = {}) {
   const months = baselineMonths(txs, { today, incomplete });
   const sums = months.map((m) => summarizeMonth(txs, m));
   const n = Math.max(sums.length, 1);
@@ -46,8 +46,12 @@ export function buildBudget(txs, settings = {}, { today = todayISO(), incomplete
     const kind = c.kind;
     if (!['fixed', 'essential'].includes(kind)) continue;
     const h = Math.max(0, Math.round(hist[c.id] || 0));
-    const budget = overrides[c.id] ?? (kind === 'fixed' ? roundUp(h, 100) : roundUp(h));
-    if (budget > 0 || h > 0) lines.push({ category: c.id, kind, hist: h, budget, overridden: overrides[c.id] != null });
+    // Bills come from the regular payments you actually make (rent £2,000 is £2,000), not from an
+    // average that a partial or misread month can drag down. No regular payment: the average.
+    const due = commitments[c.id] || 0;
+    const auto = kind === 'fixed' ? (due || roundUp(h, 100)) : Math.max(roundUp(h), due ? roundUp(due) : 0);
+    const budget = overrides[c.id] ?? auto;
+    if (budget > 0 || h > 0) lines.push({ category: c.id, kind, hist: h, budget, committed: due, overridden: overrides[c.id] != null });
     committed += budget;
   }
 

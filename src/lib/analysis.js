@@ -194,7 +194,7 @@ const median = (arr) => {
  */
 const SPLIT_CATS = new Set(['housing', 'bills', 'insurance', 'debt', 'childcare', 'education']);
 
-export function detectRecurring(txs, { today = todayISO() } = {}) {
+export function detectRecurring(txs, { today = todayISO(), notDup = {} } = {}) {
   const groups = new Map();
   for (const t of txs) {
     // Card repayments are transfers (not spending) but the cash still leaves: keep them for the calendar.
@@ -207,8 +207,17 @@ export function detectRecurring(txs, { today = todayISO() } = {}) {
     groups.get(key).push(t);
   }
   const out = [];
-  for (const [key, list] of groups) {
-    list.sort((a, b) => a.date.localeCompare(b.date));
+  for (const [key, all] of groups) {
+    all.sort((a, b) => a.date.localeCompare(b.date));
+    // The same payment saved twice (two imports of one statement, or a copy in another account):
+    // same amount within 2 days from a different import or account. Counted once, and listed so
+    // you can remove the copy. "They're separate payments" (notDup) keeps both.
+    const list = [], dups = [];
+    for (const t of all) {
+      // Rent or bills split between two accounts are real; elsewhere a copy in another account isn't.
+      const twin = !notDup[key] && list.find((k) => k.amount === t.amount && Math.abs(daysBetween(k.date, t.date)) <= 2 && (k.accountId === t.accountId ? !!(k.importId && t.importId && k.importId !== t.importId) : !SPLIT_CATS.has(t.category)));
+      if (twin) dups.push(t); else list.push(t);
+    }
     const months = new Set(list.map((t) => monthKey(t.date)));
     if (months.size < 2) continue;
     // Roughly one payment per month, at a fairly stable interval.
@@ -270,6 +279,9 @@ export function detectRecurring(txs, { today = todayISO() } = {}) {
       type: typeLabel,
       split,
       cardRepay,
+      txIds: list.slice(-12).map((t) => t.id),
+      dupIds: dups.map((t) => t.id),
+      accounts: [...new Set(list.map((t) => t.accountId))],
       priceChange: prevAmt && Math.abs(lastAmt - prevAmt) > Math.max(prevAmt * 0.04, 50) ? lastAmt - prevAmt : 0,
       // Considered lapsed if it hasn't appeared for ~2 intervals.
       active: daysBetween(last.date, today) <= g * 2 + 5,

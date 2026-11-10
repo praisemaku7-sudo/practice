@@ -54,6 +54,8 @@ export function buildAlerts() {
   // New regular payments that started in the last two months (new subscriptions, new Direct Debits).
   const fresh = d.recurring.filter((r) => r.active && r.direction === 'out' && r.months === 2 && !r.manual && r.category !== 'transfer' && r.lastDate >= addDays(today, -45));
   if (fresh.length) out.push({ id: 'newbills', icon: '🆕', label: 'New bills', count: fresh.length, tone: 'info', title: `${fresh.length} new regular payment${fresh.length > 1 ? 's' : ''}`, detail: `${fresh.map((r) => `${r.name} ${fmt(r.amount)}/month`).join(', ')}. Started recently: check you meant to sign up, and cancel any free trials you don't want.`, href: '#/bills', go: 'See bills', sig: fresh.map((r) => r.key).join(',') });
+  const ending = d.recurring.filter((r) => { const e = (state.settings.recurringEdits || {})[r.key]?.contractEnd; return e && e >= addDays(today, -30) && e <= addDays(today, 45); });
+  if (ending.length) out.push({ id: 'contracts', icon: '📃', label: 'Contracts', count: ending.length, tone: 'warn', title: `${ending.length} contract${ending.length > 1 ? 's' : ''} ending soon`, detail: `${ending.map((r) => r.name).join(', ')}: compare deals before the price goes up.`, href: '#/bills', go: 'See bills', sig: ending.map((r) => r.key).join(',') });
   const rises = d.recurring.filter((r) => r.active && r.direction === 'out' && r.priceChange > 0);
   if (rises.length) out.push({ id: 'rises', icon: '📈', label: 'Price rises', count: rises.length, tone: 'info', title: `${rises.length} bill${rises.length > 1 ? 's' : ''} went up`, detail: rises.map((r) => `${r.name} +${fmt(r.priceChange)}`).join(', '), href: '#/bills', go: 'See bills', sig: rises.map((r) => r.key).join(',') });
   const hiddenB = state.settings.hiddenBanners || {};
@@ -71,6 +73,7 @@ const ICONS = {
   cards: '<rect x="3" y="5.5" width="18" height="13" rx="2.5"/><path d="M3 10h18M7 15h3"/>',
   checkin: '<circle cx="12" cy="12" r="8.5"/><path d="m8.5 12.2 2.4 2.4 4.6-4.8"/>',
   newbills: '<rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M4 10h16M12 13v4M10 15h4"/>',
+  contracts: '<path d="M7 3h8l4 4v14H7z"/><path d="M15 3v4h4M10 12h6M10 16h6"/>',
   rises: '<path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
 };
 const icon = (id) => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[id] || ICONS.off}</svg>`;

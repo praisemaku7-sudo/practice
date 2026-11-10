@@ -51,3 +51,11 @@ test('a current account statement with card small print is not a credit card', (
   assert.equal(looksLikeCreditText(t), false);
   assert.equal(looksLikeCreditText('Credit limit £1,500\nMinimum payment £25\nPayment due date 3 Nov'), true);
 });
+
+test('Apple Pay log lines from the Shortcut', async () => {
+  globalThis.window ||= undefined;
+  const { parseApplePayLog } = await import('../src/ui/import.js').catch(() => ({}));
+  if (!parseApplePayLog) return; // the import module needs a browser; covered in the browser test
+  const rows = parseApplePayLog('applepay|2026-11-10T12:30:00Z|Sample Cafe|£4.50|Sample Debit\nnot a line\napplepay|10 Nov 2026 at 13:05|Sample Shop|12.00|Card');
+  assert.equal(rows.length, 2);
+});

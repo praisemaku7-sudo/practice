@@ -2,6 +2,7 @@
 import { state, saveSettings } from '../../state.js';
 import { esc, toast } from '../dom.js';
 import { mipCard, biSection, biActions, biChanges } from '../plan-bi.js';
+import { readinessCard } from '../afford-extras.js';
 import { fmt, parsePrice } from '../../lib/money.js';
 import { monthKey, monthLabel, addMonths } from '../../lib/dates.js';
 import { schedule, projection, byYear, monthlyPayment, propertyTax, borrowingRange, ltvBands, savingTimeline } from '../../lib/mortgage.js';
@@ -149,6 +150,7 @@ export function render() {
   else results = results.replace('<!--buying-->', buying);
   return `<h1 class="page-title">Future planning</h1>
   ${mipCard()}
+  ${readinessCard()}
   <div class="card">
     <h3>Your mortgage</h3>
     <div class="plan-grid"><label class="field slim"><span>Starts</span><input id="pl-start" type="month" value="${esc(m.startMonth)}"></label>
