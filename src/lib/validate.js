@@ -39,12 +39,21 @@ export function validateStatement(p) {
     checks.push({ ok: null, text: 'No opening and closing balance on the statement to check the total against' });
   }
   // 2. Running balance on each row.
-  let rows = 0, good = 0, prev = p.openingBalance;
-  for (const t of txs) {
-    if (t.balance != null && prev != null) { rows += 1; if (Math.abs(prev + t.amount - t.balance) <= 1) good += 1; }
+  // A row that doesn't follow on from the one before but that the next row follows on from is the
+  // start of a new section (Revolut lists the main account and each pocket separately).
+  let rows = 0, good = 0, sections = 0, prev = p.openingBalance;
+  txs.forEach((t, i) => {
+    if (t.balance != null && prev != null) {
+      rows += 1;
+      if (Math.abs(prev + t.amount - t.balance) <= 1) good += 1;
+      else {
+        const nx = txs.slice(i + 1).find((x) => x.balance != null);
+        if (nx && Math.abs(t.balance + nx.amount - nx.balance) <= 1) { good += 1; sections += 1; }
+      }
+    }
     if (t.balance != null) prev = t.balance; else if (prev != null) prev += t.amount;
-  }
-  if (rows) checks.push({ ok: good === rows, text: `Running balance agrees on ${good} of ${rows} rows${good === rows ? ' ✓' : ''}` });
+  });
+  if (rows) checks.push({ ok: good === rows, text: `Running balance agrees on ${good} of ${rows} rows${sections ? ` (${sections} new section${sections > 1 ? 's' : ''}, e.g. pockets)` : ''}${good === rows ? ' ✓' : ''}` });
   // 3. Totals printed on the statement.
   const pr = p.printed || { in: [], out: [] };
   const matchIn = pr.in.find((v) => Math.abs(v - inSum) <= 1);

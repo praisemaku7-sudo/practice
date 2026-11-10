@@ -82,7 +82,7 @@ async function readPdf(item, buf) {
   // Bank from the statement header (cross-checked with the sort code), product, holder, last 4 digits.
   const details = extractDetails(text, item.name);
   const bank = details.bank || guessBank(text);
-  const meta = { headText: text.slice(0, 3000), details, bank, accountType: isCardIssuer(bank) && !/current account/i.test(text) ? 'credit' : guessType(text), accountRef: details.last4 || detectAccountRef(text) };
+  const meta = { headText: text.slice(0, 3000), details, bank, accountType: isCardIssuer(bank) && !/current account|e-money account/i.test(text) && looksLikeCreditText(text) ? 'credit' : guessType(text), accountRef: details.last4 || detectAccountRef(text) };
   const { apiKey, model, pdfMode } = state.settings;
   const printed = res.hasText ? printedTotals(text) : { in: [], out: [] };
   // Credit reports (Checkmyfile, ClearScore…): read on the phone for the credit-health check.
@@ -305,10 +305,13 @@ async function processItem(item) {
     // An account you removed as not real (e.g. an investment statement read as savings) isn't recreated.
     if (!match && isBlockedAccount({ name: item.newAccount.name, bank: parsed.bank, ref: parsed.accountRef })) { item.blockedAccount = true; item.include = false; }
     const seenBefore = !!item.prior || item.overlap.likelyDuplicate;
-    // Seen before? If this read is verified against the statement's own balances, replace the old
-    // copy (it may be an earlier bad read); otherwise leave it unticked so nothing doubles up.
     // Seen before (maybe misfiled or read badly the first time): replace the old copy by default.
-    item.replace = seenBefore && parsed.transactions.length > 0;
+    // A read that the statement's own balances prove also replaces whatever is saved for that
+    // account over its dates: it's the truth, and older reads may have had money in/out swapped.
+    const ds = parsed.transactions.map((t) => t.date).sort();
+    const holdsPeriod = match && ds.length && state.txs.some((t) => t.accountId === match.id && !t.manual && t.date >= ds[0] && t.date <= ds[ds.length - 1]);
+    item.replace = parsed.transactions.length > 0 && (seenBefore || (parsed.verified && holdsPeriod));
+    item.replaceAuto = item.replace;
     item.include = parsed.transactions.length > 0 && item.doc.isStatement;
     // A balance-only screenshot is still worth importing: it updates the account's balance.
     if (parsed.screenshot && !parsed.transactions.length && parsed.closingBalance != null && item.doc.isStatement) item.include = true;

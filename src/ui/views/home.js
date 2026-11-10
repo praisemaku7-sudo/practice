@@ -9,6 +9,7 @@ import { donut, trendBars, progressBar, paceChart } from '../charts.js';
 import { monthSwitcher, catChip, delta, emptyState } from '../common.js';
 import { goalPlan } from '../../lib/goals.js';
 import { dashboard } from '../dashboard.js';
+import { paydayLine } from '../overview-extras.js';
 import { alertStrip } from '../alerts.js';
 import { balanceForecast, paidThisMonth } from '../../lib/cashflow.js';
 import { monthOutlook, budgetAlerts } from '../../lib/forecast.js';
@@ -41,7 +42,7 @@ export function render() {
   if (!state.txs.length) {
     return emptyState({ title: 'Start with a statement', body: 'Import the PDF or CSV statements from each bank app. Everything stays on this phone.' });
   }
-  const { budget, recurring, payday, balance, months, today } = derived;
+  const { budget, months, today } = derived;
   const cmp = compareMonths(state.txs, month);
   const s = cmp.cur;
   const isCurrent = month === monthKey(today);
@@ -50,9 +51,6 @@ export function render() {
   const totalBudget = budget.lines.reduce((a, l) => a + l.budget, 0);
 
 
-  const nextPay = payday ? nextDayOfMonth(today, payday) : null;
-  const upcoming = recurring.filter((r) => r.direction === 'out' && r.active && (!nextPay || r.nextDue < nextPay)).sort((a, b) => a.nextDue.localeCompare(b.nextDue));
-  const upcomingTotal = upcoming.reduce((a, r) => a + r.amount, 0);
 
   // Daily spend this month vs last month, for the pace line.
   const dailySpend = (key) => {
@@ -84,7 +82,9 @@ export function render() {
         ${cmp.hasPrev ? (isCurrent
           ? `<div class="sub">${delta(paceDelta)} vs this point in ${esc(monthLabel(addMonths(month, -1), { short: true }))}</div>`
           : `<div class="sub">${delta(s.spend - cmp.prev.spend)} vs ${esc(monthLabel(addMonths(month, -1), { short: true }))}</div>`) : ''}</div>
+      <button class="icon-btn small share-btn" data-action="ov-share" aria-label="Share this month's summary"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     </div>
+    ${isCurrent && paydayLine() ? `<div class="payday-line">${esc(paydayLine())}</div>` : ''}
     ${totalBudget ? `${progressBar(s.spend / totalBudget)}<div class="sub">${fmt(s.spend, { whole: true })} of ${fmt(totalBudget, { whole: true })} monthly budget</div>` : ''}
     ${cmp.hasPrev ? `<div class="pace-wrap tap-chart" data-action="dash-pace" role="button" tabindex="0" aria-label="Spending day by day: tap for the numbers">${paceChart(curDaily, prevDaily, daysSoFar)}
       <div class="pace-legend"><span><i class="sw cur"></i>${esc(monthLabel(month, { short: true }))}</span><span><i class="sw prev"></i>${esc(monthLabel(addMonths(month, -1), { short: true }))}</span>
@@ -112,20 +112,14 @@ export function render() {
       return `<button class="list-row tap" data-action="dash-cat" data-cat="${c.category}">${catChip(c.category)}
         <div class="grow"><div class="row between"><span>${esc(c.name)}</span><b>${fmt(c.total)}</b></div>
         ${line?.budget ? progressBar(c.total / line.budget) : ''}
-        <div class="sub row between"><span>${line?.budget ? `${fmt(line.budget, { whole: true })} budget` : 'no budget'}</span>${cmp.hasPrev && row ? delta(row.delta) : ''}</div></div></button>`;
+        <div class="sub row between"><span>${line?.budget ? `${fmt(line.budget, { whole: true })} budget` : 'no budget'}${row?.average ? ` · usually ${fmt(row.average, { whole: true })}` : ''}</span>${cmp.hasPrev && row ? delta(row.delta) : ''}</div></div></button>`;
     }).join('')}` : '<p class="muted">No spending this month.</p>'}
   </div>
-  ${isCurrent && upcoming.length ? `<div class="card"><h3>Due before ${nextPay ? 'payday · ' + prettyDate(nextPay) : 'month end'}</h3>
-    ${upcoming.slice(0, 8).map((r) => `<div class="list-row">${catChip(r.category)}<div class="grow">${esc(r.name)}<div class="sub">${esc(r.type)} · ${prettyDate(r.nextDue)}</div></div><b>${fmt(r.amount)}</b></div>`).join('')}
-    <div class="list-row total"><span class="grow">Total</span><b>${fmt(upcomingTotal)}</b></div>
-    ${balance != null ? `<p class="sub">Current-account balance ${fmt(balance)} → ${fmt(balance - upcomingTotal)} after these.</p>` : ''}
-    <a class="btn ghost full" href="#/bills">Bills calendar &amp; subscriptions</a>
-  </div>` : ''}
   ${trendData.length > 1 ? `<div class="card"><h3>Last ${trendData.length} months</h3>${trendBars(trendData)}<p class="sub tap-hint">Tap a month for its breakdown and transactions.</p>
     <div class="legend"><span><i class="sw in"></i>Income</span><span><i class="sw out"></i>Spent</span></div>
     <a class="btn ghost full" href="#/history">Monthly record &amp; trends</a></div>` : ''}
   <div class="card"><h3>Top merchants</h3>
-    ${s.merchants.slice(0, 6).map((m) => `<div class="list-row">${catChip(m.category)}<div class="grow">${esc(m.name)}<div class="sub">${m.count} payment${m.count > 1 ? 's' : ''}</div></div><b>${fmt(m.total)}</b></div>`).join('')}
+    ${s.merchants.slice(0, 8).map((m) => `<button class="list-row tap" data-action="mer-open" data-m="${esc(m.name)}">${catChip(m.category)}<div class="grow">${esc(m.name)}<div class="sub">${m.count} payment${m.count > 1 ? 's' : ''} · tap for history</div></div><b>${fmt(m.total)}</b></button>`).join('')}
     <button class="btn ghost full" data-action="go" data-to="transactions">All transactions</button>
   </div>`;
 }

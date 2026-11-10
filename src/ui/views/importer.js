@@ -80,40 +80,42 @@ function itemCard(it) {
     body = `<div class="sub">${it.result.added} transaction${it.result.added === 1 ? '' : 's'} → ${esc(it.result.account)}${it.result.replaced ? ` · replaced ${it.result.replaced} saved before` : ''}${it.result.moved ? ` · moved ${it.result.moved} out of the wrong account` : ''}${it.result.dupes ? ` · ${it.result.dupes} already there` : ''}</div>`;
   } else if (p) {
     const v = txs.length || p.screenshot ? validateStatement({ ...p, accountType: it.accountChoice === '__new' ? it.newAccount.type : (state.allAccounts || state.accounts).find((a) => a.id === it.accountChoice)?.type || p.accountType }) : null;
-    const badge = !v ? '' : v.level === 'ok' ? `<span class="pill ok">✓ Balances check out</span>` : v.level === 'fail' ? `<span class="pill warn">Check the amounts</span>` : `<span class="pill">${v.level === 'partial' ? 'Partly checked' : 'Not checkable'}</span>`;
-    const checksHtml = v && it.doc?.isStatement !== false ? `<details class="checks ${v.level}" ${v.level === 'fail' ? 'open' : ''}><summary>${v.level === 'ok' ? '✅' : v.level === 'fail' ? '⚠️' : 'ℹ️'} ${esc(v.summary)}</summary>${v.checks.map((c) => `<div class="check-line ${c.ok === true ? 'ok' : c.ok === false ? 'bad' : ''}">${c.ok === true ? '✓' : c.ok === false ? '✗' : '–'} ${esc(c.text.replace(/ ?✓/g, ''))}</div>`).join('')}</details>` : '';
+    const verdict = v && it.doc?.isStatement !== false ? `<details class="imp-verdict ${v.level}" ${v.level === 'fail' ? 'open' : ''}><summary>${v.level === 'ok' ? '✅ Read correctly: the statement\'s own figures agree' : v.level === 'fail' ? '⚠️ Something doesn\'t add up: check before importing' : 'ℹ️ ' + esc(v.summary)}</summary>${v.checks.map((c) => `<div class="check-line ${c.ok === true ? 'ok' : c.ok === false ? 'bad' : ''}">${c.ok === true ? '✓' : c.ok === false ? '✗' : '–'} ${esc(c.text.replace(/ ?✓/g, ''))}</div>`).join('')}</details>` : '';
+    // Everything worth knowing about this file, as one short list.
+    const notes = [
+      it.blockedAccount && 'You removed this account before as not real, so it isn\'t imported. Tick Import to bring it back.',
+      it.misfiledIn && `These payments were saved in <b>${esc(it.misfiledIn.name)}</b> by mistake: they'll move to the account below.`,
+      it.doc && !it.doc.isStatement && `<b>Not a bank statement?</b> ${esc(it.doc.reason)} Only imported if you tick Import.`,
+      it.include && it.replace && txs.length && `Replaces what's saved for this account from ${prettyDate(dates[0])} to ${prettyDate(dates[dates.length - 1])}${it.prior ? ` (imported before on ${new Date(it.prior.at).toLocaleDateString('en-GB')})` : ''}, so nothing doubles up.`,
+      !it.include && (it.prior || it.overlap?.likelyDuplicate) && `Already saved${ovAcc ? ` in ${esc(ovAcc.name)}` : ''}. Tick <b>Import</b> to replace it with this read.`,
+      !it.replace && !it.prior && it.overlap?.partialOverlap && `${it.overlap.matched} overlap an earlier statement: only ${it.overlap.total - it.overlap.matched} new will be added.`,
+      p.details?.bankMismatch && `The sort code ${esc(p.details.sortCode)} belongs to <b>${esc(p.details.bankFromSort)}</b>, not ${esc(p.details.bank)}. Check it's the right file.`,
+      p.screenshot && p.closingBalance != null && `📸 Balance shown: <b>${fmt(Math.abs(p.closingBalance))}</b>${p.accountType === 'credit' ? ' owed' : ''}. It updates the account you choose.`,
+      ...(p.warnings || []).map((w) => esc(w)),
+    ].filter(Boolean);
+    const accSelect = `<label class="field select slim grow"><select data-change="imp-acc" data-id="${it.id}" aria-label="Account">
+      ${state.accounts.map((a) => `<option value="${esc(a.id)}" ${it.accountChoice === a.id ? 'selected' : ''}>${esc(a.name)}${a.type === 'credit' ? ' 💳' : ''}${state.settings.people.length > 1 ? ` · ${esc(personName(ownerOf(a)))}` : ''}</option>`).join('')}
+      <option value="__new" ${it.accountChoice === '__new' ? 'selected' : ''}>+ New: ${esc(it.newAccount.name)}</option></select></label>`;
     body = `
-      ${it.blockedAccount ? '<div class="tip-box">You removed this account before as not real, so it isn\'t imported. Tick it if you want it back.</div>' : ''}
-      ${it.misfiledIn ? `<div class="tip-box">These payments were saved in <b>${esc(it.misfiledIn.name)}</b>, but this is a ${esc(p.bank || 'different')} statement. They'll be moved to the account below.</div>` : ''}
-      ${it.doc && !it.doc.isStatement ? `<div class="alert"><b>Not a statement?</b> ${esc(it.doc.reason)} It won't be imported unless you tick Import.</div>` : ''}
-      ${(it.prior || it.overlap?.likelyDuplicate) ? `<div class="tip-box">${it.prior ? `Imported before on ${new Date(it.prior.at).toLocaleDateString('en-GB')}.` : `Already saved${ovAcc ? ` in ${esc(ovAcc.name)}` : ''}.`} ${it.include ? 'This read checks out, so it will <b>replace</b> the saved copy (nothing doubles up).' : 'Tick <b>Import</b> to replace the saved copy with this read.'}</div>` : ''}
-      ${it.include && it.replace && txs.length ? `<div class="sub warn-text">Will replace the saved transactions for this account from ${prettyDate(dates[0])} to ${prettyDate(dates[dates.length - 1])}.</div>` : ''}
-      ${!it.prior && it.overlap?.partialOverlap ? `<div class="tip-box">${it.overlap.matched} overlap an earlier statement. Only ${it.overlap.total - it.overlap.matched} new will be added.</div>` : ''}
-      ${p.details?.bankMismatch ? `<div class="alert">The sort code ${esc(p.details.sortCode)} belongs to <b>${esc(p.details.bankFromSort)}</b>, but the statement says <b>${esc(p.details.bank)}</b>. Check this is the right file and account.</div>` : ''}
-      ${p.details && (p.details.holder || p.details.sortCode || p.details.product) ? `<div class="details-line">🏦 ${esc([p.details.bank, p.details.product].filter(Boolean).join(' · '))}${p.details.sortCode ? ` · ${esc(p.details.sortCode)}${p.details.bankFromSort ? (p.details.bankMismatch ? ' ⚠︎' : ' ✓') : ''}` : ''}${p.details.last4 ? ` · ••${esc(p.details.last4)}` : ''}${p.details.holder ? ` · 👤 ${esc(p.details.holder)}` : ''}</div>` : ''}
-      ${checksHtml}
-      ${(p.warnings || []).map((w) => `<div class="sub warn-text">• ${esc(w)}</div>`).join('')}
-      ${p.screenshot && p.closingBalance != null ? `<div class="tip-box">📸 Balance shown: <b>${fmt(Math.abs(p.closingBalance))}</b>${p.accountType === 'credit' ? ' owed' : ''}. It will update the account you choose.</div>` : ''}
-      ${!txs.length && p.screenshot ? `<label class="field select slim grow"><select data-change="imp-acc" data-id="${it.id}">${state.accounts.map((a) => `<option value="${esc(a.id)}" ${it.accountChoice === a.id ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}<option value="__new" ${it.accountChoice === '__new' ? 'selected' : ''}>+ New: ${esc(it.newAccount.name)}</option></select></label>` : ''}
-      ${txs.length ? `<div class="imp-stats"><b>${txs.length}</b> transaction${txs.length === 1 ? "" : "s"} · ${prettyDate(dates[0])}–${prettyDate(dates[dates.length - 1])} · <span class="pos">${fmt(inSum, { whole: true })} in</span> · ${fmt(outSum, { whole: true })} out</div>
-      <div class="row gap wrap-sm">
-        <label class="field select slim grow"><select data-change="imp-acc" data-id="${it.id}">
-          ${state.accounts.map((a) => `<option value="${esc(a.id)}" ${it.accountChoice === a.id ? 'selected' : ''}>${esc(a.name)}${a.type === 'credit' ? ' 💳' : ''}${state.settings.people.length > 1 ? ` · ${esc(personName(ownerOf(a)))}` : ''}</option>`).join('')}
-          <option value="__new" ${it.accountChoice === '__new' ? 'selected' : ''}>+ New: ${esc(it.newAccount.name)}</option></select></label>
-      </div>
-      ${it.accountChoice === '__new' ? `<div class="imp-new">
+      ${verdict}
+      ${txs.length ? `<div class="imp-stats"><b>${txs.length}</b> transaction${txs.length === 1 ? '' : 's'} · ${prettyDate(dates[0])}–${prettyDate(dates[dates.length - 1])} · <span class="pos">${fmt(inSum, { whole: true })} in</span> · ${fmt(outSum, { whole: true })} out</div>` : ''}
+      ${notes.length ? `<ul class="imp-notes">${notes.map((n) => `<li>${n}</li>`).join('')}</ul>` : ''}
+      ${txs.length || p.screenshot ? `<div class="row gap">${accSelect}</div>` : ''}
+      ${it.accountChoice === '__new' && (txs.length || p.screenshot) ? `<div class="imp-new">
         <label class="field slim imp-new-name"><span>Name</span><input value="${esc(it.newAccount.name)}" placeholder="Account name" data-input="imp-name" data-id="${it.id}"></label>
-        <label class="field select slim"><select data-change="imp-type" data-id="${it.id}">
+        <label class="field select slim"><select data-change="imp-type" data-id="${it.id}" aria-label="Type">
           ${['current', 'credit', 'savings'].map((t) => `<option value="${t}" ${it.newAccount.type === t ? 'selected' : ''}>${{ current: 'Current', credit: 'Credit card', savings: 'Savings' }[t]}</option>`).join('')}</select></label>
-        ${state.settings.people.length > 1 ? `<label class="field select slim"><select data-change="imp-owner" data-id="${it.id}">${[...state.settings.people.map((pp) => [pp.id, pp.name]), ['joint', 'Joint']].map(([id, n]) => `<option value="${id}" ${it.newAccount.owner === id ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label>` : ''}</div>` : ''}
-      <div class="row between imp-actions">
+        ${state.settings.people.length > 1 ? `<label class="field select slim"><select data-change="imp-owner" data-id="${it.id}" aria-label="Whose">${[...state.settings.people.map((pp) => [pp.id, pp.name]), ['joint', 'Joint']].map(([id, n]) => `<option value="${id}" ${it.newAccount.owner === id ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label>` : ''}</div>` : ''}
+      ${txs.length ? `<div class="row between imp-actions">
         <label class="toggle"><input type="checkbox" data-change="imp-include" data-id="${it.id}" ${it.include ? 'checked' : ''}> Import</label>
-        <label class="toggle"><input type="checkbox" data-change="imp-flip" data-id="${it.id}" ${it.flip ? 'checked' : ''}> In/out swapped</label>
         <button class="link" data-action="imp-preview" data-id="${it.id}">${it.showPreview ? 'Hide' : 'Preview'}</button>
-      </div>
-      ${it.showPreview ? `<div class="preview">${txs.slice(0, 60).map((t) => { const a = it.flip ? -t.amount : t.amount; return `<div class="pv-row"><span>${prettyDate(t.date)}</span><span class="ellipsis grow">${esc(t.description)}</span><b class="${a > 0 ? 'pos' : ''}">${fmt(a, { sign: true })}</b></div>`; }).join('')}${txs.length > 60 ? `<p class="sub center">…and ${txs.length - 60} more</p>` : ''}</div>` : ''}
-      ` : ''}
-      <div class="sub faint">${badge} ${esc(p.method)}${it.ms != null ? ` · ${(it.ms / 1000).toFixed(1)}s` : ''}</div>`;
+        <button class="link" data-action="imp-more" data-id="${it.id}">${it.showMore ? 'Less' : 'Details'}</button>
+      </div>` : ''}
+      ${it.showMore ? `<div class="imp-more">
+        ${p.details && (p.details.holder || p.details.sortCode || p.details.product) ? `<div class="details-line">🏦 ${esc([p.details.bank, p.details.product].filter(Boolean).join(' · '))}${p.details.sortCode ? ` · ${esc(p.details.sortCode)}` : ''}${p.details.last4 ? ` · ••${esc(p.details.last4)}` : ''}${p.details.holder ? ` · 👤 ${esc(p.details.holder)}` : ''}</div>` : ''}
+        <label class="toggle"><input type="checkbox" data-change="imp-flip" data-id="${it.id}" ${it.flip ? 'checked' : ''}> Money in and out are swapped</label>
+        <div class="sub faint">Read ${esc(p.method)}${it.ms != null ? ` in ${(it.ms / 1000).toFixed(1)}s` : ''}</div></div>` : ''}
+      ${it.showPreview ? `<div class="preview">${txs.slice(0, 60).map((t) => { const a = it.flip ? -t.amount : t.amount; return `<div class="pv-row"><span>${prettyDate(t.date)}</span><span class="ellipsis grow">${esc(t.description)}</span><b class="${a > 0 ? 'pos' : ''}">${fmt(a, { sign: true })}</b></div>`; }).join('')}${txs.length > 60 ? `<p class="sub center">…and ${txs.length - 60} more</p>` : ''}</div>` : ''}`;
   }
   return `<div class="card imp-card ${it.status}">
     <div class="row between"><b class="ellipsis grow">${esc(it.name)}</b><span class="status ${cls}">${label}</span></div>
@@ -130,6 +132,7 @@ export function render() {
       <p class="muted">Pick everything at once: PDF statements, CSV/OFX/QIF exports and screenshots from any bank or card app, all months. They're read at the same time, checked against the printed balances, and duplicates are caught.</p>
       <button class="btn primary" data-action="import">Choose files</button>
     </div>
+    ${toFetch()}
     ${tips()}`;
   }
   const busy = busyCount();
@@ -159,6 +162,20 @@ export function render() {
   </div>` : ''}`;
 }
 
+/** What to import next: statements missing per account, and earlier reads that didn't add up. */
+function toFetch() {
+  const missing = state.derived?.coverage?.missing || [];
+  const seen = new Set();
+  const redo = [...state.imports].sort((a, b) => b.at - a.at).filter((i) => i.validation?.level === 'fail' && !seen.has(i.fileName) && seen.add(i.fileName));
+  if (!missing.length && !redo.length) return state.txs.length ? '<div class="card"><p class="good-note">✓ Every account is up to date</p></div>' : '';
+  const byAcc = {};
+  for (const m of missing) (byAcc[m.accountName] ||= []).push(m.month);
+  return `<div class="card"><h3>To import next</h3>
+    ${Object.entries(byAcc).map(([name, ms]) => `<div class="list-row"><span class="bank-badge warn">!</span><div class="grow"><b>${esc(name)}</b><div class="sub">${ms.map((m) => esc(monthLabel(m, { short: true }))).join(', ')}</div></div></div>`).join('')}
+    ${redo.length ? `<h4>Didn't add up when first read: import again</h4><p class="sub">Reading has improved, and a re-import replaces the old transactions for those dates.</p>${redo.slice(0, 10).map((i) => `<div class="list-row"><span class="bank-badge">↻</span><div class="grow ellipsis">${esc(i.fileName)}<div class="sub">${new Date(i.at).toLocaleDateString('en-GB')}</div></div></div>`).join('')}` : ''}
+    <button class="btn primary full" data-action="import">Choose files</button></div>`;
+}
+
 function tips() {
   return `<div class="card"><h3>Fastest way to import</h3>
     <ul class="tips">
@@ -174,6 +191,7 @@ const find = (el) => queue.items.find((i) => i.id === el.dataset.id);
 export const actions = {
   'imp-commit': async (_, rerender) => { await commitAll(); rerender(); window.scrollTo(0, 0); },
   'imp-preview': (el, rerender) => { const it = find(el); it.showPreview = !it.showPreview; rerender(); },
+  'imp-more': (el, rerender) => { const it = find(el); it.showMore = !it.showMore; rerender(); },
   'imp-done': () => { clearQueue(); location.hash = '#/home'; },
   'imp-retry': (el, rerender) => { retryFailed(el.dataset.id); rerender(); },
   'imp-clean': async (_, rerender) => { const n = await removeEmptyAccounts(); rerender(); toast(`Removed ${n} empty account${n === 1 ? '' : 's'}`); },
@@ -224,7 +242,7 @@ export const changes = {
     const it = find(el);
     it.include = el.checked;
     // Ticking a file that was imported before means "read it again and replace the old data".
-    it.replace = el.checked && !!(it.prior || it.overlap?.likelyDuplicate);
+    it.replace = el.checked && (it.replaceAuto || !!(it.prior || it.overlap?.likelyDuplicate));
     rerender();
   },
   'imp-flip': (el, rerender) => { find(el).flip = el.checked; rerender(); },

@@ -28,6 +28,7 @@ import { enhanceSections, sectionActions } from './ui/sections.js';
 import { insightActions } from './ui/insight-actions.js';
 import { dashActions } from './ui/dashboard.js';
 import { alertActions, updateBell } from './ui/alerts.js';
+import { extrasActions } from './ui/overview-extras.js';
 import { menuActions, menuInputs, closeMenu, menuIsOpen, setMenuCurrent, applyTheme } from './ui/menu.js';
 import * as sync from './ui/views/sync.js';
 import * as add from './ui/views/add.js';
@@ -140,7 +141,7 @@ const globalActions = {
   },
 };
 
-const allActions = Object.assign({}, globalActions, lockActions, sectionActions, insightActions, menuActions, dashActions, alertActions, ...Object.values(VIEWS).map((v) => v.actions || {}));
+const allActions = Object.assign({}, globalActions, lockActions, sectionActions, insightActions, menuActions, dashActions, alertActions, extrasActions, ...Object.values(VIEWS).map((v) => v.actions || {}));
 const allChanges = Object.assign({}, ...Object.values(VIEWS).map((v) => v.changes || {}));
 const allInputs = Object.assign({}, menuInputs, ...Object.values(VIEWS).map((v) => v.inputs || {}));
 
@@ -224,9 +225,9 @@ document.addEventListener('focusout', () => { if (pendingRender) { pendingRender
   await initLock();
   requestPersistence();
   // One-off: re-run transfer detection on existing data when the rules improve.
-  if ((state.settings.junkCleanVersion || 0) < 1) {
+  if ((state.settings.junkCleanVersion || 0) < 2) {
     const junk = await removeSummaryLines();
-    await saveSettings({ junkCleanVersion: 1 });
+    await saveSettings({ junkCleanVersion: 2 });
     if (junk.length) {
       recompute();
       setTimeout(() => toast(`Removed ${junk.length} statement summary line${junk.length > 1 ? 's' : ''} (e.g. "${junk[0].description.slice(0, 24)}") that were wrongly counted as payments`), 600);
@@ -289,6 +290,45 @@ document.addEventListener('focusout', () => { if (pendingRender) { pendingRender
     if (fixed9.length) { await db.putMany('tx', fixed9); setTimeout(() => toast(`${fixed9.length} payments moved out of Other into proper categories`), 1500); }
     await relinkTransfers();
     await saveSettings({ transferRulesVersion: 9 });
+  }
+  if (state.txs.length && (state.settings.transferRulesVersion || 1) < 10) {
+    // Reading fixes (Nov 2026): foreign-currency lines ("Revolut Rate … 2,561.00 TRY") were saved as
+    // sterling payments, and a statement could create a second copy of an account typed differently.
+    const all10 = await db.all('tx');
+    const fx = all10.filter((t) => !t.manual && /\b(REVOLUT RATE|ECB RATE\*?)\b/i.test(t.description));
+    for (const t of fx) await db.del('tx', t.id);
+    const accs = await db.all('accounts');
+    const norm = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const key = (a) => (a.ref || a.details?.last4) && a.bank ? `${norm(a.bank)}|${a.ref || a.details?.last4}` : null;
+    const groups = {};
+    for (const a of accs) { const k = key(a); if (k) (groups[k] ||= []).push(a); }
+    let merged = 0;
+    const left = all10.filter((t) => !fx.includes(t));
+    for (const list of Object.values(groups)) {
+      if (list.length < 2) continue;
+      const count = (a) => left.filter((t) => t.accountId === a.id).length;
+      const keep = list.find((a) => a.typeLocked) || list.sort((x, y) => count(y) - count(x))[0];
+      for (const dup of list.filter((a) => a !== keep && !a.typeLocked)) {
+        const moved = left.filter((t) => t.accountId === dup.id);
+        const have = new Set(left.filter((t) => t.accountId === keep.id).map((t) => `${t.date}|${t.amount}|${t.description}`));
+        for (const t of moved) { if (have.has(`${t.date}|${t.amount}|${t.description}`)) await db.del('tx', t.id); else { t.accountId = keep.id; await db.put('tx', t); } }
+        for (const i of state.imports.filter((x) => x.accountId === dup.id)) { i.accountId = keep.id; await db.put('imports', i); }
+        await db.del('accounts', dup.id); merged++;
+      }
+    }
+    // "BP <payee>" (HSBC bill payment) was read as BP fuel: re-sort rows with a bank payment code
+    // that you haven't categorised yourself.
+    const all10b = await db.all('tx');
+    const resorted = [];
+    for (const t of all10b) {
+      if (t.userCategory || t.pairId || t.autoTransfer || !/^\s*(BP|CR|DR|DD|SO|STO|VIS|\)\)\)|OBP|TFR)\s/i.test(t.description)) continue;
+      const c = categorize(t.description, t.amount, state.settings.userRules);
+      if (c !== t.category) { t.category = c; resorted.push(t); }
+    }
+    if (resorted.length) await db.putMany('tx', resorted);
+    await saveSettings({ transferRulesVersion: 10 });
+    if (fx.length || merged) { await load(); setTimeout(() => toast(`Fixed: ${fx.length} foreign-currency lines that were counted as payments removed${merged ? `, ${merged} duplicate account${merged > 1 ? 's' : ''} merged` : ''}. Re-import statements listed on the Import page.`), 1800); }
+    await relinkTransfers();
   }
   await route();
   sync.autoSync().then(() => render());

@@ -62,13 +62,17 @@ function sortOtherCard() {
     <div class="row gap wrap">${ready.length ? `<button class="btn primary grow" data-action="ins-sort-all">Accept ${ready.length} confident suggestion${ready.length === 1 ? '' : 's'}</button>` : ''}<a class="btn ghost grow" href="#/categories">${groups.length === 1 ? 'Open Categories' : `All ${groups.length} merchants`}${state.settings.apiKey ? ' · look up with Claude' : ''}</a></div></div>`;
 }
 
-function askCard() {
+/** One card for Claude: ask a question, or get a written review of the month. */
+function claudeCard(report) {
   const a = ui.ask;
-  return `<div class="card ask-card"><h3>Ask about your money</h3>
-    <div class="ask-row"><input id="ins-q" placeholder="e.g. How can we cut £300 a month?" value="${esc(a?.q || '')}" enterkeyhint="send"><button class="btn primary" data-action="ins-ask" ${ui.asking ? 'disabled' : ''}>${ui.asking ? '…' : 'Ask'}</button></div>
-    <div class="cal-filters">${['Where is most of our money going?', 'How do we stop going over each month?', 'What should we cut first?', 'Can we afford to save for a house deposit?'].map((q) => `<button class="chip" data-action="ins-ask-q" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div>
+  const key = !!state.settings.apiKey;
+  return `<div class="card ai-card"><h3>Ask Claude</h3>
+    ${key ? `<div class="ask-row"><input id="ins-q" placeholder="e.g. How can we cut £300 a month?" value="${esc(a?.q || '')}" enterkeyhint="send"><button class="btn primary" data-action="ins-ask" ${ui.asking ? 'disabled' : ''}>${ui.asking ? '…' : 'Ask'}</button></div>
+    <div class="cal-filters">${['What should we cut first?', 'Where is most of our money going?', 'How do we stop going over each month?', 'Can we afford to save for a house deposit?'].map((q) => `<button class="chip" data-action="ins-ask-q" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div>
     ${a?.r ? `<div class="ask-answer"><p>${esc(a.r.answer)}</p>${a.r.steps?.length ? `<ol class="act-steps">${a.r.steps.map((x) => `<li>${esc(x)}</li>`).join('')}</ol>` : ''}</div>` : ''}
-    <p class="sub">${state.settings.apiKey ? 'Claude sees this month\'s totals by category, your regular payments and top merchants: never raw transactions, names or account numbers.' : '<a href="#/settings">Add your Claude key in Settings</a> to ask questions.'}</p></div>`;
+    ${report ? `<div class="row between"><h4>Review of ${esc(monthLabel(state.month))}</h4><button class="link" data-action="ai-report">Refresh</button></div>${renderReport(report)}` : `<button class="btn ghost full" data-action="ai-report" ${loadingReport ? 'disabled' : ''}>${loadingReport ? 'Writing your review…' : `Write a review of ${esc(monthLabel(state.month, { short: true }))}`}</button>`}
+    <p class="sub">Claude sees totals by category, your regular payments and top merchant names: never raw transactions, names or account numbers.</p>`
+    : '<p class="muted">Ask questions about your money and get a written monthly review. Add your Claude key in Settings first.</p><a class="btn ghost full" href="#/settings">Settings</a>'}</div>`;
 }
 
 const SEC_ICONS = {
@@ -163,21 +167,15 @@ export function render() {
   ${monthSwitcher(state.month, months)}
   ${hideable('missing-ins:' + state.month, state.derived.coverage.missing.filter((m) => m.month === state.month).length, state.derived.coverage.missing.some((m) => m.month === state.month) ? `<div class="card banner"><b>This month is missing a statement</b><span class="sub">Suggestions may be off until it's imported. See Accounts → Statements.</span></div>` : '')}
   <div class="ins-sum">
-    <div><span class="label">To do</span><b>${todo.length}</b></div>
-    <div><span class="label">Realistic saving</span><b class="pos">${fmt(real.total, { whole: true })}<small>/mo</small></b></div>
-    <div><span class="label">Done</span><b>${done.length}</b></div>
+    <button data-action="ins-filter" data-f="todo"><span class="label">To do</span><b>${todo.length}</b></button>
+    <a href="#/track"><span class="label">Realistic saving ›</span><b class="pos">${fmt(real.total, { whole: true })}<small>/mo</small></b></a>
+    <button data-action="ins-filter" data-f="done"><span class="label">Done</span><b>${done.length}</b></button>
   </div>
-  ${real.total ? `<a class="plan-link" href="#/track">Turn these into a plan you can tick off ›</a>` : ''}
   ${sortOtherCard()}
   <div class="cal-filters ins-filters" role="radiogroup" aria-label="Show">${[['todo', `To do · ${todo.length}`], ['saving', `Saving ideas · ${saving.length}`], ['good', `Good news · ${good.length}`], ['done', `Done · ${done.length}`], ['all', 'All']].map(([v, l]) => `<button class="chip ${ui.filter === v ? 'sel' : ''}" role="radio" aria-checked="${ui.filter === v}" data-action="ins-filter" data-f="${v}">${l}</button>`).join('')}</div>
   ${sections(shown, card)}
   ${dismissed ? `<button class="link small-link" data-action="ins-undismiss">Show ${dismissed} dismissed</button>` : ''}
-  ${askCard()}
-  <div class="card ai-card">
-    <div class="row between"><h3>Monthly review by Claude</h3>${report ? `<button class="link" data-action="ai-report">Refresh</button>` : ''}</div>
-    ${report ? renderReport(report) : `<p class="muted">A written review of ${esc(monthLabel(state.month))}: what changed, what to fix, and a plan for next month. Only totals are sent, never your raw transactions.</p>
-      <button class="btn primary full" data-action="ai-report" ${loadingReport ? 'disabled' : ''}>${loadingReport ? 'Writing your review…' : state.settings.apiKey ? 'Write my monthly review' : 'Add API key in Settings first'}</button>`}
-  </div>
+  ${claudeCard(report)}
   ${supportCard()}`;
 }
 
@@ -261,7 +259,7 @@ export const actions = {
     recompute(); toast(`${n} payments sorted into categories`); rerender();
   },
   'ins-ask': (_, rerender) => ask(document.getElementById('ins-q')?.value.trim(), rerender),
-  'ins-ask-q': async (el, rerender) => { closeSheet(); await ask(el.dataset.q, rerender); document.querySelector('.ask-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
+  'ins-ask-q': async (el, rerender) => { closeSheet(); await ask(el.dataset.q, rerender); document.querySelector('.ai-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
   'ins-open': (el) => { const i = lastList[+el.dataset.n]; if (i) openInsight(i); },
   'ai-report': async (_, rerender) => {
     if (!state.settings.apiKey) { location.hash = '#/settings'; return; }
