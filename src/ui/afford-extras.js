@@ -16,7 +16,20 @@ export const live = () => {
   const flags = state.settings.billFlags || {}, hidden = state.settings.billHidden || {};
   return state.derived.recurring.filter((r) => r.active && r.direction === 'out' && (r.category !== 'transfer' || r.cardRepay) && !hidden[r.key] && flags[r.key] !== 'cancelled');
 };
-export const income = () => householdFor(state.settings, monthKey(state.derived.today)).total || state.derived.budget.income || 0;
+export const income = () => {
+  const h = householdFor(state.settings, monthKey(state.derived.today));
+  const e = state.settings.earners;
+  // Planning on one income: only that person's pay, plus household extras (Child Benefit…).
+  if (e?.length) return e.reduce((a, id) => a + personIncome(id, h), 0) + h.lines.filter((l) => l.kind === 'other').reduce((a, l) => a + l.monthly, 0);
+  return h.total || state.derived.budget.income || 0;
+};
+/** One person's take-home: from Income, else the regular pay landing in accounts they own. */
+export function personIncome(id, h = householdFor(state.settings, monthKey(state.derived.today))) {
+  const line = h.lines.find((l) => l.who === id && l.kind !== 'other');
+  if (line?.monthly) return line.monthly;
+  const byId = Object.fromEntries((state.allAccounts || state.accounts).map((a) => [a.id, a]));
+  return state.derived.recurring.filter((r) => r.active && r.direction === 'in' && r.category === 'income' && ownerOf(byId[r.accountId]) === id).reduce((a, r) => a + r.amount, 0);
+}
 
 /** 1. What your fixed commitments take from your income, and what's left to live on. */
 export function commitmentsCard() {
