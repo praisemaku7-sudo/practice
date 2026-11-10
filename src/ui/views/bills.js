@@ -8,6 +8,7 @@ import { monthKey, monthLabel, daysInMonth, prettyDate, addMonths, nextDayOfMont
 import { helpFor } from '../../lib/directory.js';
 import { billsCalendar } from '../../lib/ics.js';
 import { monthItems, balanceForecast, paidThisMonth, weekTotals, dayIn } from '../../lib/cashflow.js';
+import { likelyNewRegular } from '../../lib/analysis.js';
 import { catChip, emptyState } from '../common.js';
 import { addBillsToCalendar } from './due.js';
 import { fairShareCard, subsAuditCard, contractsEnding, priceHistory } from '../afford-extras.js';
@@ -150,7 +151,7 @@ export function render() {
 
   return `
   <h1 class="page-title">Bills calendar</h1>
-  ${suggestions(all)}
+  ${suggestions()}
   ${(() => { const d = all.filter((r) => r.dupIds?.length); return d.length ? `<div class="card banner bad"><b>${d.length} regular payment${d.length > 1 ? 's were' : ' was'} counted twice</b><span class="sub">${d.map((r) => `${esc(r.name)} (${(r.dupIds || []).length} cop${r.dupIds.length > 1 ? 'ies' : 'y'})`).join(', ')}: the same payment saved from two imports or accounts. They're counted once now; tap one to remove the copies.</span><div class="row gap wrap">${d.slice(0, 4).map((r) => `<button class="chip" data-action="bill-open" data-key="${esc(r.key)}">${esc(r.name)} ›</button>`).join('')}</div></div>` : ''; })()}
   <div class="card reg-sum"><div><span class="label">Regular outgoings</span><b>${fmt(out.reduce((a, r) => a + r.amount, 0), { whole: true })}<small>/mo</small></b></div><div><span class="label">A year</span><b>${fmt(out.reduce((a, r) => a + r.amount, 0) * 12, { whole: true })}</b></div><div><span class="label">Payments</span><b>${out.length}</b></div></div>
   ${changesCard()}
@@ -192,26 +193,14 @@ export function render() {
   <div class="act-links"><a class="act-link" href="#/due">Due soon ›</a><a class="act-link" href="#/movebills">Move bills to one account ›</a><a class="act-link" href="#/track">On track ›</a></div>`;
 }
 
-/** One-off loan or car finance payments that are probably monthly: add them as regular bills in one tap. */
-const CARDS_ETC = /\b(AMEX|AMERICAN EXPRESS|BARCLAYCARD|CAPITAL ONE|MBNA|VANQUIS|AQUA|NEWDAY|CREDIT CARD|KLARNA|CLEARPAY|LAYBUY|PAY IN 3|PAYPAL|STUDENT LOANS?)\b/i;
-function suggestions(all) {
+/** Payments seen once that are probably regular (Direct Debits, standing orders, subscriptions, loans). */
+function suggestions() {
   const s = state.settings;
-  const since = addDays(state.derived.today, -50);
-  const known = all.map((r) => r.name.toUpperCase());
-  const matches = (s.manualBills || []).map((x) => String(x.match || x.name).toUpperCase());
-  const by = {};
-  for (const t of state.txs) {
-    if (t.date < since || t.amount > -5000 || t.category !== 'debt' || t.cardRepay) continue;
-    const k = (t.merchant || t.description).trim();
-    const K = k.toUpperCase();
-    if (CARDS_ETC.test(K + ' ' + t.description) || known.some((n) => n === K || K.includes(n) || n.includes(K)) || matches.some((m) => m && (K.includes(m) || t.description.toUpperCase().includes(m))) || (s.suggestDismissed || {})[K]) continue;
-    if (!by[K] || by[K].date < t.date) by[K] = { name: k, K, amount: -t.amount, date: t.date, accountId: t.accountId };
-  }
-  const list = Object.values(by);
+  const list = likelyNewRegular(state.txs, state.derived.recurring, { today: state.derived.today, dismissed: s.suggestDismissed || {}, manual: s.manualBills || [] });
   if (!list.length) return '';
-  return `<div class="card"><h3>Looks like a monthly payment</h3><p class="sub">Loan or finance payments seen once so far. Add them now so budgets and forecasts include them; they're tracked automatically once the next statement shows them.</p>
-    ${list.map((x) => `<div class="list-row"><div class="grow"><b>${esc(x.name)}</b><div class="sub">${fmt(x.amount)} on ${prettyDate(x.date)} · ${esc(accountName(x.accountId))}</div></div>
-      <div class="row gap"><button class="chip sel" data-action="bill-sugg-add" data-name="${esc(x.name)}" data-amount="${x.amount}" data-day="${+x.date.slice(8)}" data-acc="${esc(x.accountId || '')}">＋ Add</button><button class="chip" data-action="bill-sugg-no" data-k="${esc(x.K)}">Not regular</button></div></div>`).join('')}</div>`;
+  return `<div class="card"><h3>New regular payments? <small class="muted">${list.length}</small></h3><p class="sub">Seen once so far, but they look regular. Add them now so budgets and forecasts include them; once the next statement shows them they're tracked automatically under the name you give.</p>
+    ${list.map((x) => `<div class="list-row"><div class="grow"><b>${esc(x.name)}</b><div class="sub">${esc(x.why)} · ${fmt(x.amount)} on ${prettyDate(x.date)} · ${esc(accountName(x.accountId))}</div></div>
+      <div class="row gap"><button class="chip sel" data-action="bill-sugg-add" data-name="${esc(x.name)}" data-amount="${x.amount}" data-day="${+x.date.slice(8)}" data-acc="${esc(x.accountId || '')}" data-cat="${esc(x.category)}" data-type="${esc(x.why === 'Standing order' ? 'Standing Order' : x.why === 'Subscription' ? 'Card / Subscription' : 'Direct Debit')}">＋ Add</button><button class="chip" data-action="bill-sugg-no" data-k="${esc(x.key)}">Not regular</button></div></div>`).join('')}</div>`;
 }
 
 // ---------- Sheets ----------
@@ -406,7 +395,7 @@ export const actions = {
   'bill-sugg-add': (el) => {
     addSheet({ day: +el.dataset.day });
     const set = (id, v) => { const i = document.getElementById(id); if (i) i.value = v; };
-    set('mb-name', el.dataset.name); set('mb-match', el.dataset.name); set('mb-amt', (+el.dataset.amount / 100).toFixed(2)); set('mb-cat', 'debt'); set('mb-type', 'Direct Debit'); set('mb-acc', el.dataset.acc);
+    set('mb-name', el.dataset.name); set('mb-match', el.dataset.name); set('mb-amt', (+el.dataset.amount / 100).toFixed(2)); set('mb-cat', ['entertainment', 'fitness'].includes(el.dataset.cat) ? 'subscriptions' : el.dataset.cat || 'debt'); set('mb-type', el.dataset.type || 'Direct Debit'); set('mb-acc', el.dataset.acc);
   },
   'bill-sugg-no': async (el, rerender) => { await save({ suggestDismissed: { ...(state.settings.suggestDismissed || {}), [el.dataset.k]: true } }); rerender(); },
 };
