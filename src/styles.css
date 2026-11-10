@@ -1141,3 +1141,9 @@ button.ins-go { font-size: 14px; font-weight: 700; color: var(--accent-text, var
 .st-range > span { display: flex !important; justify-content: space-between; gap: 8px; margin-bottom: 6px; width: 100% !important; max-width: none !important; }
 .st-range > span b { white-space: nowrap; margin-left: auto; }
 .bill-tools { align-items: center; justify-content: space-between; margin: 4px 0 10px; flex-wrap: wrap; }
+/* Move bills */
+.move-item { padding: 12px 0; border-top: 1px solid var(--line); display: grid; gap: 8px; }
+.move-item:first-of-type { border-top: 0; }
+.move-item.st-done, .move-item.st-cancel, .move-item.st-leave { opacity: .7; }
+.mv-seg { max-width: 280px; }
+.mv-msg pre { white-space: pre-wrap; font: inherit; font-size: 13px; background: var(--track); padding: 10px; border-radius: 10px; margin: 8px 0; overflow-wrap: anywhere; }
