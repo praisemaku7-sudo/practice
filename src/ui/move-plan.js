@@ -4,7 +4,7 @@
 import { state, saveSettings } from '../state.js';
 import { esc, toast } from './dom.js';
 import { fmt } from '../lib/money.js';
-import { catKind } from '../lib/categories.js';
+import { catKind, isSpendCategory } from '../lib/categories.js';
 import { householdFor } from '../lib/income.js';
 import { monthKey, monthLabel, prettyDate, addDays, addMonths, daysBetween } from '../lib/dates.js';
 import { schedule } from '../lib/mortgage.js';
@@ -41,12 +41,32 @@ function mortgageNow() {
   return { m, e, principal, pay: e?.payFixed ?? sc.payment, after: e?.payAfter ?? sc.afterFix?.payment ?? null, fixEnd, start: m.startMonth, sc };
 }
 
-/** Everyday spending from your budgets: essentials (food, travel…) and everything else. */
+/**
+ * Everyday spending as it really is: a typical month (the middle of the last three complete months)
+ * of everything that isn't a regular payment, split into essentials and everything else.
+ * Falls back to your budgets when there's no full month yet.
+ */
 function everyday() {
-  const lines = state.derived.budget?.lines || [];
-  const ess = sum(lines.filter((l) => catKind(l.category) === 'essential'), (l) => l.budget);
-  const other = sum(lines.filter((l) => !['fixed', 'essential'].includes(catKind(l.category)) && !['transfer', 'savings', 'debt', 'income'].includes(l.category)), (l) => l.budget);
-  return { ess, other };
+  const d = state.derived;
+  const cur = monthKey(d.today);
+  const regular = new Set(d.recurring.flatMap((r) => [...(r.txIds || []), ...(r.dupIds || [])]));
+  const past = (d.months || []).filter((m) => m < cur);
+  const complete = past.filter((m) => !d.incomplete?.has(m)).slice(-3);
+  const use = complete.length ? complete : past.slice(-3);
+  if (!use.length) {
+    const lines = d.budget?.lines || [];
+    return { ess: sum(lines.filter((l) => catKind(l.category) === 'essential'), (l) => l.budget), other: sum(lines.filter((l) => !['fixed', 'essential'].includes(catKind(l.category)) && !['transfer', 'savings', 'debt', 'income'].includes(l.category)), (l) => l.budget), months: [], budget: true };
+  }
+  const per = use.map((m) => {
+    let ess = 0, other = 0;
+    for (const t of state.txs) {
+      if (!t.date.startsWith(m) || t.amount >= 0 || regular.has(t.id) || t.cardRepay || !isSpendCategory(t.category)) continue;
+      if (catKind(t.category) === 'essential') ess -= t.amount; else other -= t.amount;
+    }
+    return { ess, other };
+  });
+  const mid = (k) => { const v = per.map((x) => x[k]).sort((a, b) => a - b); return v[(v.length - 1) >> 1]; };
+  return { ess: mid('ess'), other: mid('other'), months: use, complete: complete.length > 0 };
 }
 
 export function moveCard() {
@@ -60,7 +80,8 @@ export function moveCard() {
   const declared = app ? sum(app.applicants.flatMap((a) => a.debts).filter((x) => !/student/i.test(x.type)), (x) => x.monthly) : 0;
   const debt = Math.max(debtSt, declared);
   const bills = sum(items) - rent - debtSt;
-  const { ess, other } = everyday();
+  const ev = everyday();
+  const { ess, other } = ev;
   const cols = [['Now', 'renting', rent]];
   if (mo) cols.push([mo.start ? monthLabel(mo.start, { short: true }) : 'Mortgage', 'mortgage starts', mo.pay]);
   if (mo?.after) cols.push([mo.fixEnd ? monthLabel(mo.fixEnd.slice(0, 7), { short: true }) : 'After fix', 'fix ends, if no new deal', mo.after]);
@@ -74,19 +95,19 @@ export function moveCard() {
   const housePct = Math.round((main[2] / inc) * 100);
   return `<div class="card mv-card keep-open">
     <h3>Can we afford the move?</h3>
-    <div class="mv-verdict ${tone(lv)}"><b>${word(lv)}</b><span>${mo ? `With the mortgage, about <b>${fmt(lv, { whole: true, sign: true })}</b> a month is left after everything${isOneIncome() ? ' on one income' : ''}. The mortgage takes ${housePct}% of take-home.` : 'Add your mortgage in Future planning (or upload the illustration) to see the month after the move.'}</span></div>
+    <div class="mv-verdict ${tone(lv)}"><b>${word(lv)}</b><span>${mo ? `With the mortgage, about <b>${fmt(lv, { whole: true, sign: true })}</b> a month is left after everything${isOneIncome() ? ' on one income' : ''}. The mortgage takes ${housePct}% of take-home.` : `Today, about <b>${fmt(lv, { whole: true, sign: true })}</b> a month is left after everything${isOneIncome() ? ' on one income' : ''}; rent takes ${housePct}% of take-home. Add your mortgage in <a href="#/plan">Future planning</a> (or upload the illustration) to see the month after the move.`}</span></div>
     <div class="mv-grid" style="--cols:${cols.length}">
       ${row('', cols.map(([h, s]) => `<span class="mv-h"><b>${esc(h)}</b><small>${esc(s)}</small></span>`), 'head')}
       ${row('Take-home', cols.map(() => cell(inc, 'pos')))}
       ${row('Rent / mortgage', cols.map(([, , h]) => cell(-h)))}
-      ${row('Bills', cols.map(() => cell(-bills)))}
+      ${row('Bills & regular payments', cols.map(() => cell(-bills)))}
       ${row(`Cards & loans${declared > debtSt ? ' <small>as declared</small>' : ''}`, cols.map(() => cell(-debt)))}
-      ${row('Food, travel, essentials', cols.map(() => cell(-ess)))}
-      ${row('Everything else', cols.map(() => cell(-other)))}
+      ${row('Food, travel, essentials <small>typical month</small>', cols.map(() => cell(-ess)))}
+      ${row('Everything else <small>typical month</small>', cols.map(() => cell(-other)))}
       ${row('Left each month', cols.map(([, , h]) => `<span class="${tone(left(h))}"><b>${fmt(left(h), { whole: true, sign: true })}</b></span>`), 'total')}
       <div class="mv-row bars"><span></span>${cols.map(([, , h]) => { const v = left(h); return `<span><i class="mv-bar ${tone(v)}" style="width:${Math.max(4, Math.min(100, Math.abs(v / inc) * 300)).toFixed(0)}%"></i></span>`; }).join('')}</div>
     </div>
-    <p class="sub">Essentials and everything else come from your <a href="#/budget">budgets</a>. Council tax and energy usually change with a move: check the new band and update the bill once you know.</p></div>`;
+    <p class="sub">${ev.budget ? 'Everyday spending comes from your <a href="#/budget">budgets</a> until a full month of statements is in.' : `Everyday spending is what you actually spent in a typical month (${ev.months.map((m) => monthLabel(m, { short: true })).join(', ')}${ev.complete ? '' : ', some statements missing'}), not counting regular payments. Your <a href="#/budget">budget</a> is the target; this is reality.`} Council tax and energy usually change with a move: check the new band and update the bill once you know.</p></div>`;
 }
 
 /** What moves the number most, ranked by £ a month, each with where to act. */
@@ -108,7 +129,7 @@ export function leversCard() {
   if ((d0.cards?.totalOwed || 0) > 0) out.push({ v: Math.round(d0.cards.totalOwed * 0.03), t: `Clear ${fmt(d0.cards.totalOwed, { whole: true })} on cards before you complete`, s: 'Lower balances help the mortgage offer and free the minimum payments. Pay the highest rate first.', href: '#/cards', go: 'Payoff plan' });
   if (mo?.after && mo.fixEnd) out.push({ v: mo.after - mo.pay, t: `Book your next deal from ${d(addDays(mo.fixEnd, -182))}`, s: `Or pay ${fmt(mo.after - mo.pay, { whole: true })} a month more from ${d(mo.fixEnd)} on the standard rate. Put a reminder in your calendar now.` });
   // Emergency fund on the income you're planning on.
-  const need = sum(items) + everyday().ess;
+  const need = sum(items) + everyday().ess;  // bills plus typical essentials
   const saved = state.accounts.filter((a) => a.type === 'savings' && !a.excluded).reduce((x, a) => x + Math.max(0, a.balance || 0), 0);
   if (need && saved < need * 3) out.push({ v: Math.round((need * 3 - saved) / 12), t: `Emergency fund: ${saved ? `${(saved / need).toFixed(1)} months` : 'none yet'}, aim for 3`, s: `${fmt(need * 3, { whole: true })} covers 3 months of bills and essentials${isOneIncome() ? ': with one income this matters more' : ''}. ${fmt(Math.round((need * 3 - saved) / 12), { whole: true })} a month gets you there in a year.`, href: '#/goals', go: 'Make it a goal' });
   if (!out.length) return '';

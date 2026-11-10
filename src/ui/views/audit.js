@@ -68,9 +68,8 @@ export function render() {
     <button class="btn primary full" data-action="au-names">Save &amp; recheck</button>
   </div>
 
-  ${dupes.length ? `<div class="card banner"><b>${dupes.length} payment${dupes.length > 1 ? 's appear' : ' appears'} in two accounts</b>
-    <span class="sub">e.g. ${esc(dupes[0][0].description)} ${fmt(dupes[0][0].amount)} in ${esc(accountName(dupes[0][0].accountId))} and ${esc(accountName(dupes[0][1].accountId))}. That usually means one real account was imported under two names, and it's counted twice.</span>
-    <a class="btn primary full" href="#/setup">Merge them in Fix accounts</a></div>` : ''}
+  ${dupes.length ? `<div class="card ${dupes.length >= 5 ? 'banner' : ''}"><b>${dupes.length} payment${dupes.length > 1 ? 's appear' : ' appears'} in two accounts</b>
+    <span class="sub">e.g. ${esc(dupes[0][0].description)} ${fmt(dupes[0][0].amount)} in ${esc(accountName(dupes[0][0].accountId))} and ${esc(accountName(dupes[0][1].accountId))}. ${dupes.length >= 5 ? 'That many usually means one real account was imported under two names, and it\'s counted twice.</span>\n    <a class="btn primary full" href="#/setup">Merge them in Fix accounts</a>' : 'Probably two real purchases (the same coffee from each account). If one is a copy, delete it in Transactions.</span>'}</div>` : ''}
 
   <div class="card"><h3>By account</h3>
     <div class="month-table">

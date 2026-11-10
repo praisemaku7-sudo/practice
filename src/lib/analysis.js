@@ -192,9 +192,25 @@ const median = (arr) => {
  * Returns [{ key, name, category, amount (pence, positive), direction, accountId, day, lastDate,
  *            nextDue, months, type, priceChange }]
  */
+/** A readable name: the payee after Revolut's "To:", else the merchant. */
+export function displayName(t) {
+  const to = String(t.description).match(/\bTo:\s*([^,]+)/);
+  if (to && merchantKey(to[1])) return merchantKey(to[1]);
+  const n = t.merchant || merchantKey(t.description);
+  // Too short to read ("C C" after the town was stripped): the statement's own words instead.
+  if (n.replace(/[^A-Z0-9]/gi, '').length < 4) {
+    const words = String(t.description).replace(/^\s*(DD|SO|STO|BP|VIS|CR|DR|OBP|TFR|\)\)\))\s+/i, '').replace(/\s+/g, ' ').trim().toUpperCase().split(' ').slice(0, 4).join(' ');
+    if (words.length >= 4) return words;
+  }
+  return n;
+}
+
 /** The payee for grouping: one name per company, whatever the month, reference or payment route. */
 function payeeOf(t) {
   let base = String(t.merchant || merchantKey(t.description));
+  // Revolut: "Audaciouschurch To: Audaciouschurch, Manchester": the payee is the part after "To:".
+  const to = String(t.description).match(/\bTo:\s*([^,]+)/);
+  if (to && merchantKey(to[1])) base = merchantKey(to[1]);
   // Paid through PayPal / Square etc.: "PAYPAL *SPOTIFY" is Spotify.
   const via = String(t.description).match(/\b(?:PAYPAL|PP|SQ|SUMUP|ZETTLE|IZ)\s*\*\s*([A-Z0-9][A-Z0-9 .&'-]{2,})/i);
   if (via && /^(PAYPAL|PP|SQ|SUMUP|ZETTLE|IZ)$/i.test(base.trim())) base = via[1];
@@ -250,6 +266,7 @@ export function detectRecurring(txs, { today = todayISO(), notDup = {} } = {}) {
 }
 
 
+const SHOPS = new Set(['groceries', 'eating_out', 'takeaway', 'shopping', 'cash']);
 const BILL_CATS = new Set(['housing', 'bills', 'insurance', 'debt', 'childcare', 'education', 'subscriptions', 'fitness']);
 const VARIABLE_CATS = new Set(['bills', 'insurance', 'debt', 'subscriptions', 'childcare', 'education', 'housing']);
 const FREQ_PER_MONTH = { monthly: 1, weekly: 52 / 12, fortnightly: 26 / 12, quarterly: 1 / 3, yearly: 1 / 12 };
@@ -286,6 +303,8 @@ function analyseGroup(key, list, dups, today, fromCluster = false) {
   const cat = list[list.length - 1].category;
   const billLike = key.startsWith('in') ? cat === 'income' : BILL_CATS.has(cat) || /\b(DD|DIRECT DEBIT|D\/D|SO|STO|STANDING ORDER)\b/.test(desc0);
   if (freq && freq !== 'monthly' && !billLike) freq = null;
+  // A shop or café you happen to visit about monthly isn't a bill; nor are tiny repeat purchases.
+  if (!key.startsWith('in') && !/\b(DD|DIRECT DEBIT|D\/D|SO|STO|STANDING ORDER)\b/.test(desc0) && (SHOPS.has(cat) || (med < 300 && !BILL_CATS.has(cat)))) return null;
   if (fromCluster && !billLike) return null;
   if (!freq || (stable < 0.6 && !variable)) {
     if (fromCluster) return null;
@@ -309,6 +328,7 @@ function analyseGroup(key, list, dups, today, fromCluster = false) {
     : last.category === 'fees' || /\bINTEREST\b/.test(desc) ? 'Interest / fee'
     : /\b(DD|DIRECT DEBIT|D\/D)\b/.test(desc) ? 'Direct Debit'
     : /\b(SO|STO|STANDING ORDER|S\/O)\b/.test(desc) ? 'Standing Order'
+    : /(^|\s)(BP|OBP|FPO|TFR|IBP|BANK TRANSFER|FASTER PAYMENT)\s/.test(desc) || /\bTRANSFER TO\b/.test(desc) ? 'Bank transfer'
     : 'Card / Subscription';
   const cardRepay = list.some((t) => t.cardRepay);
   const typeLabel0 = cardRepay ? 'Card repayment' : type;
@@ -318,7 +338,8 @@ function analyseGroup(key, list, dups, today, fromCluster = false) {
   let nextDue = addDays(last.date, Math.round(g));
   while (nextDue < today) nextDue = addDays(nextDue, Math.round(g));
   if (split || (freq === 'monthly' && g >= 26 && g <= 35)) nextDue = nextDayOfMonth(addDays(last.date, 1) > today ? addDays(last.date, 1) : today, +last.date.slice(8));
-  let lastAmt = Math.abs(last.amount), prevAmt = Math.abs(prev.amount);
+  // Compare with the usual earlier amount, so one catch-up or double payment isn't a 'price change'.
+  let lastAmt = Math.abs(last.amount), prevAmt = median(list.slice(-4, -1).map((t) => Math.abs(t.amount)));
   if (split) {
     const sumIn = (mk) => list.filter((t) => monthKey(t.date) === mk).reduce((a, t) => a + Math.abs(t.amount), 0);
     const mks = [...months].sort();
@@ -330,7 +351,7 @@ function analyseGroup(key, list, dups, today, fromCluster = false) {
   const factor = FREQ_PER_MONTH[freq] || 1;
   return {
     key,
-    name: last.merchant || merchantKey(last.description),
+    name: displayName(last),
     description: last.description,
     category: last.category,
     amount: Math.round(lastAmt * factor),

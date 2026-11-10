@@ -4,7 +4,7 @@
 //   Date | Description | Amount (signed)                   (Monzo, Starling, Revolut)
 //   Date | Date | Description | Amount [CR]               (credit cards)
 
-import { matchLeadingDate, findNamedDates, iso } from '../dates.js';
+import { matchLeadingDate, findNamedDates, iso, monthIndex } from '../dates.js';
 import { parseMoney, AMOUNT_TOKEN } from '../money.js';
 import { isSummaryLine, CLOSING_LINE, OPENING_LINE } from './junk.js';
 import { linesToPageTexts } from './layout.js';
@@ -95,7 +95,32 @@ function detectColumns(lines) {
   return null;
 }
 
+/** "Statement period from 11 August to 10 September 2026", "9 September to 8 October 2026", "1 Jun 2026 - 9 Nov 2026". */
+export function statedPeriod(text) {
+  const M = '(\\d{1,2})(?:st|nd|rd|th)?\\s+([A-Za-z]{3,9})\\.?';
+  const re = new RegExp(`${M}(?:,?\\s+(\\d{4}))?\\s*(?:to|until|-|–|—)\\s*${M},?\\s+(\\d{4})`, 'gi');
+  const found = [];
+  let m;
+  while ((m = re.exec(text))) {
+    const sm = monthIndex(m[2]), em = monthIndex(m[5]);
+    if (!sm || !em) continue;
+    const ey = +m[6], sy = m[3] ? +m[3] : sm > em ? ey - 1 : ey;
+    const start = `${sy}-${String(sm).padStart(2, '0')}-${String(+m[1]).padStart(2, '0')}`, end = `${ey}-${String(em).padStart(2, '0')}-${String(+m[4]).padStart(2, '0')}`;
+    const days = (new Date(end) - new Date(start)) / 864e5;
+    if (days < 6 || days > 400) continue;
+    // Prefer one labelled as the statement period.
+    found.push({ start, end, label: text.slice(Math.max(0, m.index - 40), m.index) });
+  }
+  // A labelled statement period wins; a statement made of monthly sections spans all of them.
+  const lab = found.find((f) => /statement period/i.test(f.label || '')) || null;
+  if (lab) return lab;
+  if (!found.length) return null;
+  return { start: found.map((f) => f.start).sort()[0], end: found.map((f) => f.end).sort().at(-1) };
+}
+
 function inferPeriod(fullText, fallbackYear) {
+  const stated = statedPeriod(fullText);
+  if (stated) return { start: stated.start, end: stated.end, year: +stated.end.slice(0, 4) };
   const dates = findNamedDates(fullText).sort();
   const years = dates.map((d) => +d.slice(0, 4));
   const counts = {};
@@ -314,6 +339,12 @@ export function parseStatementLines(lines, { fallbackYear = new Date().getFullYe
     closingBalance = res.closingBalance;
     balanceProven = true;
     if (res.added.length) warnings.push(`Added ${res.added.map((t) => `${t.description.split(' (')[0].toLowerCase()} £${(-t.amount / 100).toFixed(2)}`).join(' and ')} from the statement summary (not listed as transactions).`);
+  }
+  // Statements with a per-product balance summary (Revolut: account + pockets): the main account's
+  // closing figure in the latest summary, not the running balance of whichever section came last.
+  if (closingBalance == null) {
+    const rows = [...fullText.matchAll(/^account \((?:current|savings) account\)[^\n]*?(-?£[\d,]+\.\d{2})\s*$/gim)];
+    if (rows.length) { const p = parseMoney(rows[rows.length - 1][1]); closingBalance = p.negative ? -p.pence : p.pence; }
   }
   if (prevBal != null && closingBalance == null) closingBalance = prevBal;
   if (!transactions.length) warnings.push('No transactions recognised. If this is a scanned PDF, turn on AI reading in Settings.');

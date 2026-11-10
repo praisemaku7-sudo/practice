@@ -260,6 +260,9 @@ function matchAccount(p) {
 
 /** Whose statement is it? Looks for a household member's name in the file name or statement header. */
 function guessOwner(item, p) {
+  // Two account holders printed ("Mr A Smith & Mrs B Smith") or a joint account named as such.
+  const head = `${p.details?.holder || ''}\n${p.headText || ''}`;
+  if (state.settings.people.length > 1 && (/\b(MR|MRS|MS|MISS|MX|DR)\b[^&\n]{2,60}(&|\bAND\b)\s*(MR|MRS|MS|MISS|MX|DR)\b/i.test(head) || /\bjoint\b/i.test(item.name) || /\bjoint (account|bank)\b/i.test(head))) return 'joint';
   // The account holder printed on the statement is the best evidence.
   const byHolder = personForName(p.details?.holder);
   if (byHolder) return byHolder;
