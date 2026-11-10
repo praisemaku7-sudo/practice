@@ -6,6 +6,7 @@ import { fmt } from '../lib/money.js';
 import { daysBetween, prettyDate, monthLabel } from '../lib/dates.js';
 import { schedule, byYear, monthlyPayment, propertyTax } from '../lib/mortgage.js';
 import { isMIP, parseMIP } from '../lib/mip.js';
+import { isESIS, parseESIS } from '../lib/esis.js';
 
 const ui = { over: null };
 const charts = {};
@@ -43,6 +44,7 @@ async function readFile(file) {
     const buf = await file.arrayBuffer();
     const res = await extractPdfLines(buf);
     text = res.lines.map((l) => l.items.map((i) => i.str).join(' ')).join('\n');
+    if (res.hasText && isESIS(text, file.name)) { const esis = parseESIS(text); if (esis) return { esis }; }
     if (res.hasText) found = parseMIP(text);
     if ((!found || !found.amount) && key) {
       const { aiReadMIP } = await import('../lib/ai.js');
@@ -76,6 +78,19 @@ function reviewSheet(f, how) {
   pending = f;
 }
 let pending = null;
+let pendingEsis = null;
+function esisReview(e) {
+  const row = (label, v) => (v == null || v === '' ? '' : `<div class="pt-row two"><span>${label}</span><b>${v}</b></div>`);
+  const d = (x) => (x ? `${prettyDate(x)} ${x.slice(0, 4)}` : null);
+  openSheet(`<h2>Your mortgage illustration</h2>
+    <p class="muted">Read on your phone. Check these, then use them for your plan and readiness. Only figures are kept.</p>
+    <div class="plan-table">${row('Lender', esc(e.lender || ''))}${row('Borrowing', e.loan ? fmt(e.loan, { whole: true }) : null)}${row('Price', e.price ? fmt(e.price, { whole: true }) : null)}${row('Term', e.termYears ? `${e.termYears} years` : null)}${row('Type', e.interestOnly ? 'Interest only' : 'Repayment')}
+      ${row('Rate', e.rate ? `${e.rate}%${e.fixedUntil ? ` fixed until ${d(e.fixedUntil)}` : ''}` : null)}${row('Monthly payment', e.payFixed ? fmt(e.payFixed) : null)}${row('Then', e.followRate ? `${e.followRate}%${e.payAfter ? ` · ${fmt(e.payAfter)} a month` : ''}` : null)}
+      ${row('APRC', e.aprc ? `${e.aprc}%` : null)}${e.fees.map((f) => row(esc(f.label), fmt(f.amount))).join('')}${e.ercs.map((x) => row(`Early repayment ${x.pct}%`, `until ${d(x.to)}`)).join('')}${row('Overpay without charge', e.overpayPct ? `${e.overpayPct}% a year` : null)}</div>
+    <button class="btn primary full" data-action="esis-use">Use for my plan and readiness</button>
+    <button class="btn ghost full" data-action="close-sheet">Cancel</button>`, { wide: true });
+  pendingEsis = e;
+}
 
 // ---------- Charts ----------
 const W = 320, H = 150, PAD = 6;
@@ -238,6 +253,17 @@ export const biActions = {
   },
   'pl-over': (el, rerender) => { ui.over = +el.dataset.v; rerender(); },
   'pl-over-save': async (_, rerender) => { await saveSettings({ mortgage: { ...current(), overpay: ui.over } }); ui.over = null; toast('Overpayment added to your plan'); rerender(); },
+  'esis-use': async (_, rerender) => {
+    const e = pendingEsis;
+    if (!e) return;
+    const m = current();
+    const start = m.startMonth || (e.produced ? e.produced.slice(0, 7) : '2027-01');
+    const fixM = e.fixedUntil ? (+e.fixedUntil.slice(0, 4) - +start.slice(0, 4)) * 12 + (+e.fixedUntil.slice(5, 7) - +start.slice(5, 7)) : null;
+    const price = e.price ?? m.price ?? null;
+    const mortgage = { ...m, startMonth: start, principal: e.loan ?? m.principal, price, deposit: price && e.loan ? price - e.loan : m.deposit, termYears: e.termYears || m.termYears, rate: e.rate ?? m.rate, fixedYears: fixM != null && fixM > 0 ? Math.round((fixM / 12) * 100) / 100 : m.fixedYears, followRate: e.followRate ?? m.followRate, interestOnly: !!e.interestOnly };
+    await saveSettings({ mortgage, esis: e });
+    pendingEsis = null; closeSheet(); toast('Plan updated from your mortgage illustration'); rerender();
+  },
   'mip-use': async (_, rerender) => {
     const f = pending;
     if (!f) return;
@@ -257,7 +283,8 @@ export const biChanges = {
     if (!file) return;
     toast('Reading your document…');
     try {
-      const { found, how, looksRight } = await readFile(file);
+      const { found, how, looksRight, esis } = await readFile(file);
+      if (esis) return esisReview(esis);
       if (!found || (!found.amount && !found.lender)) return toast(state.settings.apiKey ? 'Couldn\'t find the mortgage figures in that file' : 'Couldn\'t read figures from that PDF. Add your Claude key in Settings to read scans and photos.', { error: true });
       if (!looksRight) toast('This doesn\'t look like a mortgage in principle: check the figures', { error: true });
       reviewSheet(found, how);

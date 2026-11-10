@@ -3,7 +3,8 @@
 // emergency-fund runway, a payday split plan, contract end dates, price history, mortgage
 // readiness, and a summary to share with a mortgage broker.
 import { state, saveSettings, ownerOf } from '../state.js';
-import { esc, toast, shareFile } from './dom.js';
+import { esc, toast, shareFile, openSheet, closeSheet } from './dom.js';
+import { assessApplication } from '../lib/mortgageApp.js';
 import { fmt } from '../lib/money.js';
 import { catKind, catName } from '../lib/categories.js';
 import { householdFor } from '../lib/income.js';
@@ -122,8 +123,51 @@ export function priceHistory(r) {
   return `<div class="sub ${pc > 0 ? 'warn-text' : 'pos'}">${pc > 0 ? 'Up' : 'Down'} ${Math.abs(pc)}% since ${prettyDate(rows[0].date)} ${rows[0].date.slice(0, 4)} (${fmt(first)} → ${fmt(last)}).</div>`;
 }
 
+/** 8a. The mortgage illustration (ESIS): rate, payment, what happens after the fix, charges. */
+const esisInput = '<input type="file" id="esis-file" accept="application/pdf" data-change="mip-file" hidden>';
+function esisBlock(e) {
+  if (!e) return `<label for="esis-file" class="btn ghost full">Upload your mortgage illustration (ESIS)</label>${esisInput}<p class="sub">The rate, monthly payment and charges come from it, read on your phone.</p>`;
+  const d = (x) => (x ? `${prettyDate(x)} ${x.slice(0, 4)}` : '');
+  const rise = e.payAfter && e.payFixed ? e.payAfter - e.payFixed : null;
+  const book = e.fixedUntil ? addDays(e.fixedUntil, -182) : null;
+  const lastErc = e.ercs.length ? e.ercs[e.ercs.length - 1] : null;
+  const fees = e.fees.reduce((a, f) => a + f.amount, 0);
+  return `<div class="label">Your mortgage illustration${e.lender ? ` · ${esc(e.lender)}` : ''}</div>
+    <div class="stat-grid"><div><span class="label">${e.rate}% fixed${e.fixedUntil ? ` to ${esc(d(e.fixedUntil))}` : ''}</span><b>${fmt(e.payFixed)}/mo</b></div>${e.payAfter ? `<div><span class="label">Then ${e.followRate}% (standard rate)</span><b class="warn-text">${fmt(e.payAfter)}/mo</b></div>` : ''}</div>
+    ${rise ? `<div class="cal-tip"><b>${fmt(rise, { whole: true })} a month more when the fix ends${e.fixedUntil ? ` on ${esc(d(e.fixedUntil))}` : ''}</b><span>Most people move to a new deal instead of paying the standard rate.${book ? ` You can usually choose one up to 6 months ahead: from <b>${esc(d(book))}</b>.` : ''}${lastErc ? ` Early repayment charges (${e.ercs.map((x) => `${x.pct}% to ${esc(d(x.to))}`).join(', ')}) mean leaving before ${esc(d(lastErc.to))} costs up to ${fmt(Math.max(...e.ercs.map((x) => x.amount)), { whole: true })}.` : ''}${e.perPoint ? ` Each 1% rise in the standard rate adds about ${fmt(e.perPoint, { whole: true })} a month.` : ''}</span></div>` : ''}
+    ${e.overpayPct && e.loan ? `<div class="sub">Overpay up to ${e.overpayPct}% a year without a charge (about ${fmt(Math.round((e.loan * e.overpayPct) / 100), { whole: true })} in the first year).</div>` : ''}
+    <div class="sub">${fees ? `Fees ${e.fees.map((f) => `${esc(f.label.toLowerCase())} ${fmt(f.amount, { whole: true })}`).join(', ')}. ` : ''}${e.aprc ? `APRC ${e.aprc}%. ` : ''}${e.total && e.loan ? `Total to repay ${fmt(e.total, { whole: true })} (${(e.total / e.loan).toFixed(2)} for every £1 borrowed).` : ''}</div>
+    <div class="row gap wrap"><label for="esis-file" class="chip">Replace illustration</label>${esisInput}</div>`;
+}
+
+/** 8b. The full mortgage application, read from the form: what the lender will check. */
+const appInput = '<input type="file" id="app-file" accept="application/pdf,image/*" multiple data-change="app-file" hidden>';
+function applicationCard(app, ctx) {
+  const a = assessApplication(app, ctx);
+  const docsDone = state.settings.mortgageDocs || {};
+  const done = a.checks.filter((c) => c.ok === true).length;
+  const bad = a.checks.filter((c) => c.ok === false).length;
+  return `<div class="card"><h3>Mortgage readiness <small class="pill ${bad ? 'warn' : 'ok'}">${done}/${a.checks.length}</small></h3>
+    <div class="sub">From your application${app.lender ? ` to <b>${esc(app.lender)}</b>` : ''}${app.submitted ? `, ${prettyDate(app.submitted)} ${app.submitted.slice(0, 4)}` : ''} · ${app.applicants.length} applicant${app.applicants.length > 1 ? 's' : ''}${app.newBuild ? ' · new build' : ''}</div>
+    <div class="stat-grid"><div><span class="label">Borrowing</span><b>${fmt(app.loan, { whole: true })}</b></div><div><span class="label">Price</span><b>${fmt(a.price, { whole: true })}</b></div><div><span class="label">Deposit</span><b>${fmt(a.deposit, { whole: true })}</b></div><div><span class="label">Term</span><b>${a.term} years</b></div></div>
+    ${a.checks.map((c) => `<div class="check-line ${c.ok === true ? 'ok' : c.ok === false ? 'bad' : ''}"><b>${c.ok === true ? '✓' : c.ok === false ? '✗' : '!'} ${esc(c.title)}</b>${c.detail ? `<div class="sub">${esc(c.detail)}</div>` : ''}</div>`).join('')}
+    ${esisBlock(state.settings.esis)}
+    ${a.pay25 && a.interest > a.interest25 ? `<div class="cal-tip"><b>A ${a.term}-year term costs about ${fmt(a.interest - a.interest25, { whole: true })} more interest than 25 years</b><span>The long term keeps the payment at ${fmt(a.pay, { whole: true })} instead of ${fmt(a.pay25, { whole: true })}. Most deals allow 10% overpayment a year: paying ${fmt(a.pay25 - a.pay, { whole: true })} a month extra clears it in about 25 years, and you can stop if money gets tight.</span></div>` : ''}
+    ${app.docs.length ? `<div class="label">Documents the lender wants</div>${app.docs.map((d, i) => `<label class="check-row"><input type="checkbox" data-change="app-doc" data-doc="${esc(d)}" ${docsDone[d] ? 'checked' : ''}><span class="grow">${esc(d)}</span></label>`).join('')}` : ''}
+    <div class="row gap wrap"><label for="app-file" class="chip">Replace application</label>${appInput}<button class="chip" data-action="app-clear">Remove</button><button class="chip" data-action="aff-broker">Share summary with broker</button></div>
+    <p class="sub">Read from your application: only figures and yes/no answers are kept, never names or addresses. Not regulated advice: your broker has the final word.</p></div>`;
+}
+
 /** 8. Mortgage readiness: what lenders look at, from your own data. */
 export function readinessCard() {
+  if (state.settings.mortgageApp) {
+    const since = addDays(state.derived.today, -92);
+    const fees = state.txs.filter((t) => t.date >= since && t.amount < 0 && (t.category === 'fees' || /\b(LATE|RETURNED|UNPAID|OVERDRAFT)\b/i.test(t.description))).length;
+    const gambling = state.txs.filter((t) => t.date >= since && /\b(BET365|BETFAIR|PADDY ?POWER|SKY ?BET|WILLIAM HILL|LADBROKES|CORAL|BETFRED|888|POKERSTARS|LOTTERY|GAMBL)\b/i.test(t.description)).length;
+    const debt = live().filter((r) => r.category === 'debt' || r.cardRepay).reduce((a, r) => a + r.amount, 0);
+    const e = state.settings.esis;
+    return applicationCard(state.settings.mortgageApp, { today: state.derived.today, rate: e?.rate || (state.settings.mortgage || {}).rate || 4.5, pay: e?.payFixed ?? null, termYears: e?.termYears ?? null, takeHome: income() || null, statementDebtMonthly: state.txs.length ? debt : null, fees: state.txs.length ? fees : null, gambling });
+  }
   const d = state.derived, s = state.settings, m = s.mortgage || {};
   const inc = income();
   const owed = d.cards.totalOwed || 0;
@@ -147,7 +191,38 @@ export function readinessCard() {
   return `<div class="card"><h3>Mortgage readiness <small class="pill ${done >= 5 ? 'ok' : 'warn'}">${done}/${checks.length}</small></h3>
     ${checks.map(([ok, t]) => `<div class="check-line ${ok === true ? 'ok' : ok === false ? 'bad' : ''}">${ok === true ? '✓' : ok === false ? '✗' : '–'} ${esc(t)}</div>`).join('')}
     <p class="sub">Lenders usually ask for 3 months of payslips and bank statements, and check your credit file. Fix the ✗ items in the months before you apply.</p>
+    ${esisBlock(state.settings.esis)}
+    <label for="app-file" class="btn primary full">Upload your mortgage application</label>${appInput}
+    <p class="sub">Fills in the checks above from the form instead of typing. Scanned forms are read with your Claude key (Settings); only figures and yes/no answers are kept.</p>
     <button class="btn ghost full" data-action="aff-broker">Share a summary with a mortgage broker</button></div>`;
+}
+
+let pendingApp = null;
+async function readApplication(files) {
+  const key = state.settings.apiKey;
+  if (!key) throw new Error('This form is scanned pages, so it needs your Claude key: add it in Settings, then upload again.');
+  const { aiReadApplication } = await import('../lib/ai.js');
+  const first = files[0];
+  if (/pdf/i.test(first.type) || /\.pdf$/i.test(first.name)) {
+    const { extractPdfLines, renderPageImages } = await import('../lib/parse/pdf.js');
+    const buf = await first.arrayBuffer();
+    const res = await extractPdfLines(buf);
+    const text = res.lines.map((l) => l.items.map((i) => i.str).join(' ')).join('\n');
+    return aiReadApplication({ apiKey: key, model: state.settings.model, text: res.hasText ? text : null, images: res.hasText ? [] : await renderPageImages(buf.slice(0), { maxDim: 1400 }) });
+  }
+  const images = await Promise.all(files.map((f) => new Promise((ok, bad) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.onerror = bad; r.readAsDataURL(f); })));
+  return aiReadApplication({ apiKey: key, model: state.settings.model, images, mediaType: first.type || 'image/jpeg' });
+}
+function appReview(app) {
+  const row = (l, v) => (v == null || v === '' ? '' : `<div class="pt-row two"><span>${l}</span><b>${v}</b></div>`);
+  const yn = (v) => (v == null ? '–' : v ? 'Yes' : 'No');
+  openSheet(`<h2>Found in your application</h2>
+    <p class="muted">Check these. Only figures and yes/no answers are kept, never names or addresses.</p>
+    <div class="plan-table">${row('Lender', esc(app.lender || ''))}${row('Borrowing', app.loan != null ? fmt(app.loan, { whole: true }) : null)}${row('Price', app.price != null ? fmt(app.price, { whole: true }) : null)}${row('Term', app.termYears ? `${app.termYears} years` : null)}${row('Type', app.repayment ? 'Repayment' : 'Interest only')}
+      ${app.deposits.map((d) => row(`Deposit: ${esc(d.source)}`, fmt(d.amount, { whole: true }))).join('')}${row('Builder incentive', app.incentive ? fmt(app.incentive, { whole: true }) : null)}</div>
+    ${app.applicants.map((a, i) => `<div class="label">Applicant ${i + 1} · ${esc(a.employment || '')}</div><div class="plan-table">${row('Income on the form', a.gross != null ? fmt(a.gross, { whole: true }) + '/yr' : null)}${row('Self-employed: latest · previous', a.seLatest ? `${fmt(a.seLatest, { whole: true })} · ${fmt(a.sePrevious || 0, { whole: true })}` : null)}${row('Current job since', a.jobStart ? prettyDate(a.jobStart) + ' ' + a.jobStart.slice(0, 4) : null)}${row('Debts declared', a.debts.length ? `${a.debts.length} · ${fmt(a.debts.reduce((x, d) => x + (d.monthly || 0), 0), { whole: true })}/mo` : 'None')}${row('Missed payments declared', yn(a.missed))}${row('Other credit info', yn(a.otherInfo))}${row('Dependants', a.dependants)}</div>`).join('')}
+    <button class="btn primary full" data-action="app-use">Use for readiness and my plan</button><button class="btn ghost full" data-action="close-sheet">Cancel</button>`, { wide: true });
+  pendingApp = app;
 }
 
 /** 10. Plain summary of income and commitments for a mortgage broker or adviser. */
@@ -167,6 +242,17 @@ function brokerText() {
 }
 
 export const affordActions = {
+  'app-use': async (_, rerender) => {
+    const app = pendingApp;
+    if (!app) return;
+    const deposit = app.deposits.reduce((a, d) => a + (d.amount || 0), 0) + (app.incentive || 0);
+    const price = app.price || (app.loan ? app.loan + deposit : null);
+    const gross = app.applicants.reduce((a, x) => a + (x.seAverage && x.seLatest ? Math.min(x.seAverage, x.seLatest) : x.gross || x.seLatest || 0), 0);
+    const m = state.settings.mortgage || {};
+    await saveSettings({ mortgageApp: app, mortgage: { ...m, principal: app.loan ?? m.principal, price: price ?? m.price, deposit: price && app.loan ? price - app.loan : m.deposit, termYears: app.termYears || m.termYears, interestOnly: !app.repayment, firstTime: app.firstTime ?? m.firstTime, grossIncome: gross || m.grossIncome } });
+    pendingApp = null; closeSheet(); toast('Readiness and plan updated from your application'); rerender();
+  },
+  'app-clear': async (_, rerender) => { await saveSettings({ mortgageApp: null, mortgageDocs: {} }); toast('Application removed'); rerender(); },
   'aud-commit': async (_, rerender) => {
     const flags = { ...(state.settings.billFlags || {}) };
     for (const k of Object.keys(ui.off)) if (ui.off[k]) flags[k] = 'cancel';
@@ -180,5 +266,17 @@ export const affordActions = {
   },
 };
 export const affordChanges = {
+  'app-file': async (el) => {
+    const files = [...(el.files || [])];
+    el.value = '';
+    if (!files.length) return;
+    toast('Reading your application… (about 30 seconds)');
+    try {
+      const app = await readApplication(files);
+      if (!app.loan && !app.applicants.length) return toast('Couldn\'t find the application figures in that file', { error: true });
+      appReview(app);
+    } catch (e) { toast(e.message || String(e), { error: true }); }
+  },
+  'app-doc': async (el) => { await saveSettings({ mortgageDocs: { ...(state.settings.mortgageDocs || {}), [el.dataset.doc]: el.checked } }); },
   'aud-toggle': (el, rerender) => { ui.off[el.dataset.key] = !el.checked; rerender(); },
 };
