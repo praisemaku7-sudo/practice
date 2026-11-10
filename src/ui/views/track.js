@@ -16,6 +16,7 @@ import { buildPath, chosenSaving } from '../../lib/path.js';
 import { diagnoseSpending } from '../../lib/diagnose.js';
 import { commitmentsCard } from '../afford-extras.js';
 import { housingCard, stressCard } from '../bills-extras.js';
+import { scenarioBar, moveCard, leversCard, oneIncomeCard } from '../move-plan.js';
 import { summarizeMonth } from '../../lib/analysis.js';
 import { schedule } from '../../lib/mortgage.js';
 
@@ -223,6 +224,10 @@ export function render() {
   ];
 
   return `<h1 class="page-title">On track</h1>
+  ${scenarioBar()}
+  ${moveCard()}
+  ${leversCard()}
+  ${oneIncomeCard()}
   <div class="card hero">
     <div class="label">${esc(monthLabel(mo.key))} at today's pace · day ${mo.day} of ${mo.days}</div>
     <div class="big ${wcls}">${word}</div>
@@ -237,9 +242,9 @@ export function render() {
     ${over.length || heading.length ? `<div class="sub mi-movers"><span class="neg">⚠ ${[over.length && `${over.length} over budget`, heading.length && `${heading.length} heading over`].filter(Boolean).join(' · ')}</span></div>` : ''}
   </div>
 
+  ${stressCard()}
   ${commitmentsCard()}
   ${housingCard()}
-  ${stressCard()}
   ${enoughCard({ past, ahead, withPlan, mo, chosen, picked, mort, s })}
 
   ${pathHtml}

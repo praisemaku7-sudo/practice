@@ -1148,3 +1148,41 @@ button.ins-go { font-size: 14px; font-weight: 700; color: var(--accent-text, var
 .mv-seg { max-width: 280px; }
 .mv-msg pre { white-space: pre-wrap; font: inherit; font-size: 13px; background: var(--track); padding: 10px; border-radius: 10px; margin: 8px 0; overflow-wrap: anywhere; }
 .check-line .sub { color: var(--muted); font-weight: 400; margin: 2px 0 6px; }
+
+/* The move: plan on one income or both, the month after, the mortgage at a glance */
+.scen .seg { margin-top: 0; }
+.scen .row { gap: 10px; }
+.mv-verdict { display: grid; gap: 4px; padding: 12px 14px; border-radius: 14px; background: var(--track); margin: 8px 0 12px; border-left: 4px solid currentColor; }
+.mv-verdict b { font-size: 22px; }
+.mv-verdict span { color: var(--ink); font-size: 14px; }
+.mv-grid { display: grid; gap: 0; font-size: 13.5px; }
+.mv-row { display: grid; grid-template-columns: minmax(0, 1.25fr) repeat(var(--cols), minmax(0, 1fr)); gap: 6px; align-items: center; padding: 7px 0; border-top: 1px solid var(--line); }
+.mv-row > span:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+.mv-row > span:first-child { color: var(--muted); }
+.mv-row small { font-size: 11px; color: var(--muted); }
+.mv-row.head { border-top: 0; }
+.mv-h { display: grid; justify-items: end; line-height: 1.2; }
+.mv-h small { font-size: 10.5px; }
+.mv-row.total { border-top: 2px solid var(--ink); font-size: 15px; }
+.mv-row.total > span:first-child { color: var(--ink); font-weight: 650; }
+.mv-row.bars { border-top: 0; padding-top: 0; }
+.mv-bar { display: block; height: 6px; border-radius: 99px; margin-left: auto; background: currentColor; }
+.mv-bar.pos { color: var(--good); } .mv-bar.neg { color: var(--bad); } .mv-bar.warn-text { color: var(--warn); }
+.lever { display: flex; gap: 12px; align-items: flex-start; padding: 11px 0; border-top: 1px solid var(--line); }
+.lever:first-of-type { border-top: 0; }
+.lv-n { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--track); font-weight: 700; font-size: 13px; }
+.lever.good .lv-n { background: var(--good); color: #fff; }
+.lever .chip { flex: none; }
+.mh-top { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.mh-pay { font-size: 34px; font-weight: 800; letter-spacing: -.02em; line-height: 1.1; }
+.mh-pay small { font-size: 14px; font-weight: 600; color: var(--muted); }
+.mh-ring { flex: none; width: 92px; height: 92px; border-radius: 50%; display: grid; place-content: center; text-align: center; background: radial-gradient(closest-side, var(--card) 76%, transparent 77%), conic-gradient(var(--accent) calc(var(--p) * 1%), var(--track) 0); }
+.mh-ring b { font-size: 20px; } .mh-ring small { font-size: 10px; color: var(--muted); max-width: 70px; line-height: 1.15; }
+.mh-dates { margin: 12px 0 4px; display: grid; }
+.mh-date { display: flex; gap: 12px; position: relative; padding: 0 0 14px; }
+.mh-date i { flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--accent); margin-top: 4px; position: relative; z-index: 1; }
+.mh-date:not(:last-child)::before { content: ''; position: absolute; left: 5px; top: 14px; bottom: 0; width: 2px; background: var(--line); }
+.mh-date.past i { background: var(--muted); }
+.mh-date b { display: block; } .mh-date span { font-size: 13px; color: var(--muted); }
+@media (max-width: 380px) { .mv-grid { font-size: 12.5px; } .mh-pay { font-size: 28px; } .mh-ring { width: 78px; height: 78px; } }
+.scen .seg { margin: 6px 0 8px; }

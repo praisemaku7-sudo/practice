@@ -3,6 +3,7 @@ import { state, saveSettings } from '../../state.js';
 import { esc, toast } from '../dom.js';
 import { mipCard, biSection, biActions, biChanges } from '../plan-bi.js';
 import { readinessCard } from '../afford-extras.js';
+import { mortgageHero, scenarioBar } from '../move-plan.js';
 import { fmt, parsePrice } from '../../lib/money.js';
 import { monthKey, monthLabel, addMonths } from '../../lib/dates.js';
 import { schedule, projection, byYear, monthlyPayment, propertyTax, borrowingRange, ltvBands, savingTimeline } from '../../lib/mortgage.js';
@@ -149,6 +150,8 @@ export function render() {
   if (!(principal > 0 && m.rate > 0) && buying) results = buying;
   else results = results.replace('<!--buying-->', buying);
   return `<h1 class="page-title">Future planning</h1>
+  ${mortgageHero()}
+  ${scenarioBar()}
   ${mipCard()}
   ${readinessCard()}
   <div class="card">
