@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DAX Doctor</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #5d6676; --border: #dde1e7;
+    --accent: #2f6fdb; --accent-text: #ffffff; --code-bg: #f1f3f6;
+    --err: #c62828; --err-bg: #fdecec; --warn: #9a6200; --warn-bg: #fff4dc; --info: #2357a8; --info-bg: #e8f0fd; --ok: #1e7b3a; --ok-bg: #e6f5ea;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171c; --panel: #1c2027; --text: #e6e9ee; --muted: #9aa3b2; --border: #2e343e;
+      --accent: #6b9cf0; --accent-text: #0d1117; --code-bg: #12151a;
+      --err: #ff8a80; --err-bg: #3a1d1d; --warn: #ffcc66; --warn-bg: #3a2f17; --info: #9cc0ff; --info-bg: #1b2a44; --ok: #7ed69a; --ok-bg: #173022;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { padding: 20px 16px 8px; max-width: 1200px; margin: 0 auto; }
+  h1 { margin: 0; font-size: 22px; }
+  header p { margin: 4px 0 0; color: var(--muted); }
+  main { max-width: 1200px; margin: 0 auto; padding: 8px 16px 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; min-width: 0; }
+  .panel h2 { margin: 0 0 8px; font-size: 15px; }
+  textarea, input[type=password], input[type=text] { width: 100%; background: var(--code-bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 10px; font: 13px/1.45 ui-monospace, "Cascadia Code", Menlo, Consolas, monospace; }
+  textarea#code { min-height: 300px; resize: vertical; tab-size: 4; }
+  textarea#context { min-height: 54px; resize: vertical; font-family: inherit; font-size: 14px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
+  button { border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: 8px; padding: 8px 14px; font: inherit; cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: .55; cursor: default; }
+  button.small { padding: 3px 9px; font-size: 13px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .finding { border: 1px solid var(--border); border-left-width: 4px; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
+  .finding.error { border-left-color: var(--err); background: var(--err-bg); }
+  .finding.warning { border-left-color: var(--warn); background: var(--warn-bg); }
+  .finding.info { border-left-color: var(--info); background: var(--info-bg); }
+  .finding .t { font-weight: 600; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 1px 6px; border-radius: 4px; margin-right: 6px; vertical-align: 1px; }
+  .error .badge { color: var(--err); border: 1px solid var(--err); }
+  .warning .badge { color: var(--warn); border: 1px solid var(--warn); }
+  .info .badge { color: var(--info); border: 1px solid var(--info); }
+  .finding p { margin: 4px 0 0; }
+  pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px; overflow-x: auto; margin: 6px 0 0; font: 13px/1.45 ui-monospace, "Cascadia Code", Menlo, Consolas, monospace; }
+  .codewrap { position: relative; }
+  .codewrap button { position: absolute; top: 6px; right: 6px; }
+  .codewrap pre { padding-right: 72px; }
+  .summary { padding: 10px 12px; border-radius: 8px; margin-bottom: 10px; font-weight: 600; }
+  .summary.good { background: var(--ok-bg); color: var(--ok); }
+  .summary.bad { background: var(--warn-bg); color: var(--warn); }
+  #ai-out h3 { font-size: 15px; margin: 14px 0 4px; }
+  #ai-out p { margin: 6px 0; }
+  #ai-out ul, #ai-out ol { margin: 6px 0; padding-left: 22px; }
+  #ai-out code { background: var(--code-bg); padding: 0 4px; border-radius: 4px; font-size: 13px; }
+  #ai-out pre code { background: none; padding: 0; }
+  details { margin-top: 10px; }
+  summary { cursor: pointer; color: var(--muted); }
+  .full { grid-column: 1 / -1; }
+  .hidden { display: none; }
+  .status { font-size: 13px; color: var(--muted); }
+  .status.err { color: var(--err); }
+</style>
+</head>
+<body>
+<header>
+  <h1>DAX Doctor</h1>
+  <p>Paste a Power BI measure or calculated column. It checks for common mistakes and slow patterns, formats the code, and can ask Claude for a faster rewrite.</p>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>1. Paste your DAX</h2>
+    <textarea id="code" spellcheck="false" placeholder="Sales YoY % =
+VAR Current = [Total Sales]
+VAR Previous = CALCULATE ( [Total Sales], SAMEPERIODLASTYEAR ( 'Date'[Date] ) )
+RETURN
+    DIVIDE ( Current - Previous, Previous )"></textarea>
+    <div class="row">
+      <button class="primary" id="btn-check">Check</button>
+      <button id="btn-format">Format</button>
+      <button id="btn-example">Load a bad example</button>
+      <span class="muted">Ctrl+Enter / ⌘+Enter to check</span>
+    </div>
+    <div id="format-box" class="hidden">
+      <h2 style="margin-top:14px">Formatted</h2>
+      <div class="codewrap"><pre id="formatted"></pre><button class="small" data-copy="formatted">Copy</button></div>
+      <div class="muted" id="format-note"></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>2. Instant checks <span class="muted">(free, offline)</span></h2>
+    <div id="findings"><p class="muted">Paste code and press Check.</p></div>
+  </section>
+
+  <section class="panel full">
+    <h2>3. Improve with Claude <span class="muted">(uses your Anthropic API key)</span></h2>
+    <label class="muted" for="context">Optional: what's wrong or slow? Which visual uses it? How many rows in the big table?</label>
+    <textarea id="context" placeholder="e.g. This matrix takes 20 seconds to load. Sales has 40 million rows."></textarea>
+    <div class="row">
+      <button class="primary" id="btn-ai">Improve with Claude</button>
+      <button id="btn-stop" class="hidden">Stop</button>
+      <span class="status" id="ai-status"></span>
+    </div>
+    <details id="key-box">
+      <summary>API key settings</summary>
+      <p class="muted">Get a key at console.anthropic.com (API usage is billed separately from a Claude.ai subscription; one review usually costs roughly 5 to 15 US cents). The key stays in this browser and is sent only to api.anthropic.com.</p>
+      <input type="password" id="api-key" placeholder="sk-ant-..." autocomplete="off">
+      <div class="row"><label class="muted"><input type="checkbox" id="remember"> Remember the key on this computer</label></div>
+    </details>
+    <div id="ai-out"></div>
+  </section>
+</main>
+
+<script src="engine.js"></script>
+<script src="vendor/anthropic-sdk-1.1.0.min.js"></script>
+<script>
+(function () {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const codeEl = $("code");
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+    del(k) { try { localStorage.removeItem(k); } catch (e) {} },
+  };
+
+  // ------------------------------------------------------------ offline checks
+  let lastFindings = [];
+  function runCheck() {
+    const src = codeEl.value;
+    const box = $("findings");
+    if (!src.trim()) { box.innerHTML = '<p class="muted">Paste code and press Check.</p>'; lastFindings = []; return; }
+    const lang = DaxDoctor.detectLanguage(src);
+    if (lang !== "dax") {
+      box.innerHTML = '<div class="summary bad">This looks like ' + (lang === "m" ? "Power Query (M)" : "SQL") + ', not DAX.</div><p class="muted">The instant checks only understand DAX. "Improve with Claude" below can still review it.</p>';
+      lastFindings = [];
+      return;
+    }
+    const findings = DaxDoctor.check(src);
+    lastFindings = findings;
+    const counts = { error: 0, warning: 0, info: 0 };
+    findings.forEach((f) => counts[f.severity]++);
+    let html = "";
+    if (!counts.error && !counts.warning) {
+      html += '<div class="summary good">No problems found' + (counts.info ? " — " + counts.info + " suggestion" + (counts.info > 1 ? "s" : "") : "") + '.</div>';
+    } else {
+      const parts = [];
+      if (counts.error) parts.push(counts.error + " error" + (counts.error > 1 ? "s" : ""));
+      if (counts.warning) parts.push(counts.warning + " warning" + (counts.warning > 1 ? "s" : ""));
+      if (counts.info) parts.push(counts.info + " suggestion" + (counts.info > 1 ? "s" : ""));
+      html += '<div class="summary bad">' + parts.join(", ") + "</div>";
+    }
+    const label = { error: "Error", warning: "Slow / risky", info: "Tip" };
+    findings.forEach((f, i) => {
+      html += '<div class="finding ' + f.severity + '"><div class="t"><span class="badge">' + label[f.severity] + "</span>" + esc(f.title) + ' <span class="muted">line ' + f.line + "</span></div><p>" + esc(f.detail) + "</p>";
+      if (f.fix) html += '<div class="codewrap"><pre id="fix-' + i + '">' + esc(f.fix) + '</pre><button class="small" data-copy="fix-' + i + '">Copy</button></div>';
+      html += "</div>";
+    });
+    html += '<p class="muted">These checks read the code only. They cannot see your data model, which is where most slowness comes from (see the Claude review for model checks).</p>';
+    box.innerHTML = html;
+  }
+
+  function runFormat() {
+    const r = DaxDoctor.format(codeEl.value);
+    $("format-box").classList.remove("hidden");
+    $("formatted").textContent = r.text;
+    $("format-note").textContent = r.ok ? "" : r.reason;
+  }
+
+  $("btn-check").onclick = () => { runCheck(); runFormat(); };
+  $("btn-format").onclick = runFormat;
+  codeEl.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); runCheck(); runFormat(); }
+    if (e.key === "Tab" && !e.shiftKey) {
+      e.preventDefault();
+      const s = codeEl.selectionStart;
+      codeEl.setRangeText("    ", s, codeEl.selectionEnd, "end");
+    }
+  });
+  codeEl.addEventListener("paste", () => setTimeout(() => { runCheck(); runFormat(); }, 0));
+  $("btn-example").onclick = () => {
+    codeEl.value = 'Sales YoY % = \nvar cur = calculate(sum(Sales[Amount]), filter(Sales, Sales[Region]="West"))\nvar prev = calculate(sum(Sales[Amount]), filter(Sales, Sales[Region]="West"), sameperiodlastyear(\'Date\'[Date]))\nreturn iferror((cur - prev)/prev, 0)';
+    runCheck(); runFormat();
+  };
+
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-copy]");
+    if (!b) return;
+    const text = $(b.dataset.copy).textContent;
+    const done = () => { const old = b.textContent; b.textContent = "Copied"; setTimeout(() => (b.textContent = old), 1200); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, () => fallbackCopy(text, done));
+    else fallbackCopy(text, done);
+  });
+  function fallbackCopy(text, done) {
+    const t = document.createElement("textarea");
+    t.value = text; document.body.appendChild(t); t.select();
+    try { document.execCommand("copy"); done(); } catch (e) {}
+    t.remove();
+  }
+
+  // ------------------------------------------------------------ Claude review
+  const keyEl = $("api-key");
+  const rememberEl = $("remember");
+  const saved = store.get("daxdoctor.key");
+  if (saved) { keyEl.value = saved; rememberEl.checked = true; } else { $("key-box").open = true; }
+  rememberEl.onchange = () => { if (rememberEl.checked && keyEl.value) store.set("daxdoctor.key", keyEl.value.trim()); else store.del("daxdoctor.key"); };
+  keyEl.onchange = () => { if (rememberEl.checked) store.set("daxdoctor.key", keyEl.value.trim()); };
+
+  const SYSTEM = [
+    "You review DAX code (occasionally Power Query M) that a Power BI user pasted. Many users are beginners, so explain in plain language.",
+    "The goal is code that is correct, fast, and readable.",
+    "",
+    "Answer with these sections, using ### headings:",
+    "### Verdict - one or two sentences: does it look correct, and is it likely to be slow? If the code is already good, say so and keep the rest short.",
+    "### Problems - bullets, most important first. For each: what is wrong and why it matters.",
+    "### Improved version - the complete rewritten code in a single ```dax block, formatted like SQLBI's DAX Formatter (uppercase functions, a space before '(', one argument per line when long). Keep the user's table, column and measure names; never invent new ones. Keep the same results unless the original is a bug. If any change could alter the numbers shown (for example blanks vs zeros, or filter behavior), say exactly how.",
+    "### Check in your model - only if relevant: things that cannot be seen from the code but likely affect speed, such as relationship direction, high-cardinality columns, calculated columns, or measures that never return blank.",
+    "",
+    "Automated checks already ran and their findings are included. Some may be false positives; say so when one is.",
+  ].join("\n");
+
+  let current = null;
+  $("btn-stop").onclick = () => { if (current) current.abort(); };
+
+  $("btn-ai").onclick = async () => {
+    const src = codeEl.value.trim();
+    const status = $("ai-status");
+    const out = $("ai-out");
+    status.className = "status";
+    if (!src) { status.textContent = "Paste some code first."; return; }
+    const apiKey = keyEl.value.trim();
+    if (!apiKey) { $("key-box").open = true; keyEl.focus(); status.textContent = "Add your Anthropic API key first."; return; }
+    if (rememberEl.checked) store.set("daxdoctor.key", apiKey);
+    if (!window.AnthropicSDK) { status.className = "status err"; status.textContent = "The Claude library did not load. Keep the vendor folder next to index.html."; return; }
+
+    runCheck();
+    const findingsText = lastFindings.length
+      ? lastFindings.map((f) => "- [" + f.severity + "] line " + f.line + ": " + f.title + " - " + f.detail).join("\n")
+      : "- none";
+    const context = $("context").value.trim();
+    const userText =
+      "<code>\n" + src + "\n</code>\n\n<automated_findings>\n" + findingsText + "\n</automated_findings>" +
+      (context ? "\n\n<user_notes>\n" + context + "\n</user_notes>" : "") +
+      "\n\nReview this and give me a better version.";
+
+    const { Anthropic, AuthenticationError, PermissionDeniedError, RateLimitError, BadRequestError, APIConnectionError, APIError } = window.AnthropicSDK;
+    const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
+
+    $("btn-ai").disabled = true;
+    $("btn-stop").classList.remove("hidden");
+    status.textContent = "Claude is reviewing your code...";
+    out.innerHTML = "";
+    let text = "";
+    try {
+      const stream = client.beta.messages.stream({
+        model: "claude-opus-5-5",
+        max_tokens: 32000,
+        thinking: { type: "adaptive" },
+        output_config: { effort: "medium" },
+        // If a safety check declines the request, the API retries it on a fallback model automatically.
+        betas: ["server-side-fallback-2026-07-01"],
+        fallbacks: "default",
+        system: SYSTEM,
+        messages: [{ role: "user", content: userText }],
+      });
+      current = stream;
+      stream.on("text", (delta) => {
+        text += delta;
+        out.innerHTML = renderMarkdown(text);
+        status.textContent = "Writing...";
+      });
+      const msg = await stream.finalMessage();
+      if (msg.stop_reason === "refusal") {
+        status.className = "status err";
+        status.textContent = "Claude declined to answer this request" + (msg.stop_details && msg.stop_details.explanation ? ": " + msg.stop_details.explanation : ".");
+      } else if (msg.stop_reason === "max_tokens") {
+        status.textContent = "The answer was cut off because it got too long. Try pasting a smaller piece of code.";
+      } else {
+        const u = msg.usage || {};
+        status.textContent = "Done." + (u.output_tokens ? " (" + (u.input_tokens + u.output_tokens).toLocaleString() + " tokens)" : "");
+      }
+      if (!text.trim() && msg.stop_reason !== "refusal") out.innerHTML = '<p class="muted">No answer text was returned.</p>';
+    } catch (err) {
+      status.className = "status err";
+      if (err && err.name === "APIUserAbortError") { status.className = "status"; status.textContent = "Stopped."; }
+      else if (err instanceof AuthenticationError) status.textContent = "Your API key was rejected. Check it in API key settings.";
+      else if (err instanceof PermissionDeniedError) status.textContent = "This API key is not allowed to use this model.";
+      else if (err instanceof RateLimitError) status.textContent = "Too many requests or out of credit. Wait a minute or check your billing at console.anthropic.com.";
+      else if (err instanceof BadRequestError) status.textContent = "The request was rejected: " + (err.message || "bad request");
+      else if (err instanceof APIConnectionError) status.textContent = "Could not reach api.anthropic.com. Check your internet connection.";
+      else if (err instanceof APIError) status.textContent = "Claude API error (" + err.status + "). Try again in a moment.";
+      else status.textContent = "Something went wrong: " + (err && err.message ? err.message : err);
+    } finally {
+      current = null;
+      $("btn-ai").disabled = false;
+      $("btn-stop").classList.add("hidden");
+    }
+  };
+
+  // Minimal, safe markdown: code fences, ### headings, bullets, numbered lists, **bold**, `code`.
+  let blockId = 0;
+  function renderMarkdown(md) {
+    const parts = md.split(/```/);
+    let html = "";
+    parts.forEach((part, i) => {
+      if (i % 2 === 1) {
+        const nl = part.indexOf("\n");
+        const body = nl === -1 ? "" : part.slice(nl + 1).replace(/\n$/, "");
+        const id = "ai-code-" + (blockId++);
+        html += '<div class="codewrap"><pre id="' + id + '"><code>' + esc(body) + '</code></pre><button class="small" data-copy="' + id + '">Copy</button></div>';
+        return;
+      }
+      let list = null;
+      const close = () => { if (list) { html += "</" + list + ">"; list = null; } };
+      part.split("\n").forEach((line) => {
+        const inline = (s) => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+        let m;
+        if ((m = line.match(/^#{1,4}\s+(.*)/))) { close(); html += "<h3>" + inline(m[1]) + "</h3>"; }
+        else if ((m = line.match(/^\s*[-*]\s+(.*)/))) { if (list !== "ul") { close(); html += "<ul>"; list = "ul"; } html += "<li>" + inline(m[1]) + "</li>"; }
+        else if ((m = line.match(/^\s*\d+[.)]\s+(.*)/))) { if (list !== "ol") { close(); html += "<ol>"; list = "ol"; } html += "<li>" + inline(m[1]) + "</li>"; }
+        else if (line.trim() === "") { close(); }
+        else { close(); html += "<p>" + inline(line) + "</p>"; }
+      });
+      close();
+    });
+    return html;
+  }
+})();
+</script>
+</body>
+</html>
