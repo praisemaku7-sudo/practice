@@ -51,6 +51,9 @@ export function buildAlerts() {
   if (d.suspects.length) out.push({ id: 'cards', icon: '💳', label: 'Card?', count: d.suspects.length, tone: 'info', title: `${d.suspects.length} account${d.suspects.length > 1 ? 's' : ''} may be a credit card`, detail: 'Confirm so card spending and balances are counted correctly.', href: '#/cards', go: 'Confirm', sig: d.suspects.length });
   const ci = checkinStatus();
   if (!ci.complete && d.months.includes(ci.month)) out.push({ id: 'checkin', icon: '✅', label: 'Check-in', count: 4 - ci.done, tone: 'info', title: `${monthLabel(ci.month)} check-in: ${ci.done}/4 done`, detail: 'Import, tidy up, review, plan: about 10 minutes.', href: '#/checkin', go: 'Start', sig: ci.done });
+  // New regular payments that started in the last two months (new subscriptions, new Direct Debits).
+  const fresh = d.recurring.filter((r) => r.active && r.direction === 'out' && r.months === 2 && !r.manual && r.category !== 'transfer' && r.lastDate >= addDays(today, -45));
+  if (fresh.length) out.push({ id: 'newbills', icon: '🆕', label: 'New bills', count: fresh.length, tone: 'info', title: `${fresh.length} new regular payment${fresh.length > 1 ? 's' : ''}`, detail: `${fresh.map((r) => `${r.name} ${fmt(r.amount)}/month`).join(', ')}. Started recently: check you meant to sign up, and cancel any free trials you don't want.`, href: '#/bills', go: 'See bills', sig: fresh.map((r) => r.key).join(',') });
   const rises = d.recurring.filter((r) => r.active && r.direction === 'out' && r.priceChange > 0);
   if (rises.length) out.push({ id: 'rises', icon: '📈', label: 'Price rises', count: rises.length, tone: 'info', title: `${rises.length} bill${rises.length > 1 ? 's' : ''} went up`, detail: rises.map((r) => `${r.name} +${fmt(r.priceChange)}`).join(', '), href: '#/bills', go: 'See bills', sig: rises.map((r) => r.key).join(',') });
   const hiddenB = state.settings.hiddenBanners || {};
@@ -67,6 +70,7 @@ const ICONS = {
   numbers: '<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2M11 8v3.5M11 14h.01"/>',
   cards: '<rect x="3" y="5.5" width="18" height="13" rx="2.5"/><path d="M3 10h18M7 15h3"/>',
   checkin: '<circle cx="12" cy="12" r="8.5"/><path d="m8.5 12.2 2.4 2.4 4.6-4.8"/>',
+  newbills: '<rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M4 10h16M12 13v4M10 15h4"/>',
   rises: '<path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
 };
 const icon = (id) => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[id] || ICONS.off}</svg>`;

@@ -2,6 +2,8 @@
 // and Light / Dark / Auto appearance. Drops down from the top bar.
 import { state, saveSettings } from '../state.js';
 import { esc } from './dom.js';
+import { fmt } from '../lib/money.js';
+import { merchantSheet } from './overview-extras.js';
 
 export const PAGES = [
   ['Everyday', [
@@ -78,6 +80,7 @@ function menuHtml() {
         <button class="menu-gh" data-action="menu-group" data-group="${esc(group)}" aria-expanded="${isOpen}"><span class="grow">${group}</span>${hasCur && !isOpen ? '<span class="mi-dot" aria-hidden="true"></span>' : ''}<small>${items.length}</small><span class="mg-chev" aria-hidden="true">›</span></button>
         <div class="menu-items">${items.map(([v, ic, label, sub]) => `<a class="menu-item ${v === current ? 'cur' : ''}" href="#/${v}" data-action="menu-go" data-to="${v}" data-q="${esc((label + ' ' + sub + ' ' + group).toLowerCase())}"${v === current ? ' aria-current="page"' : ''}><span class="mi-ic" aria-hidden="true">${ic}</span><span class="grow"><b>${esc(label)}</b><small>${esc(sub)}</small></span>${v === current ? '<span class="mi-dot" aria-hidden="true"></span>' : ''}</a>`).join('')}</div></div>`; }).join('')}
       <p class="menu-empty sub" hidden>No page matches.</p>
+      <div id="menu-pay" class="menu-pay"></div>
     </nav>
   </div>`;
 }
@@ -104,6 +107,7 @@ export const menuIsOpen = () => open;
 export const menuActions = {
   'menu-toggle': () => (open ? closeMenu() : openMenu()),
   'menu-close': () => closeMenu(),
+  'menu-pay': (el) => { closeMenu(); merchantSheet(el.dataset.m); },
   'menu-group': (el) => {
     const g = el.dataset.group;
     let opened = openGroups();
@@ -137,6 +141,15 @@ export const menuInputs = {
       g.classList.toggle('searching', !!q);
     });
     const empty = document.querySelector('.menu-empty');
-    if (empty) empty.hidden = shown > 0;
+    if (empty) empty.hidden = shown > 0 || q.length >= 3;
+    // Payments matching the search, across every month: tap for that merchant's history.
+    const box = document.getElementById('menu-pay');
+    if (box) {
+      if (q.length < 3) { box.innerHTML = ''; return; }
+      const by = {};
+      for (const t of state.txs) { const k = t.merchant || t.description; if (String(k).toLowerCase().includes(q) || String(t.description).toLowerCase().includes(q)) { (by[k] ||= { n: 0, v: 0 }); by[k].n++; by[k].v -= t.amount; } }
+      const top = Object.entries(by).sort((a, b) => Math.abs(b[1].v) - Math.abs(a[1].v)).slice(0, 6);
+      box.innerHTML = top.length ? `<div class="menu-gh static">Payments</div>${top.map(([k, x]) => `<button class="menu-item" data-action="menu-pay" data-m="${esc(k)}"><span class="mi-ic" aria-hidden="true">🧾</span><span class="grow"><b>${esc(k)}</b><small>${x.n} payment${x.n === 1 ? '' : 's'} · ${fmt(x.v, { whole: true })}</small></span></button>`).join('')}` : '';
+    }
   },
 };

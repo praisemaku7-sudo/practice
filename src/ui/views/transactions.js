@@ -11,7 +11,8 @@ const PAGE = 300;
 
 export function applyParams(params) {
   filter.cat = params.get('cat') || '';
-  filter.q = '';
+  filter.q = params.get('q') || '';
+  if (filter.q) filter.all = true; // a search from elsewhere looks across every month
 }
 
 export function render() {

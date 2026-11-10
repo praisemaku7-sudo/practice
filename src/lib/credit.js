@@ -12,8 +12,12 @@ export const isCardIssuer = (text) => ISSUERS.test(String(text || ''));
 /** Statement text that reads like a credit card statement. */
 export function looksLikeCreditText(text) {
   const t = String(text);
-  const hits = [/credit limit/i, /minimum (payment|repayment)/i, /available credit/i, /\bAPR\b/, /statement balance/i, /payment due (date|by)/i, /interest rates?/i].filter((re) => re.test(t)).length;
-  return hits >= 2 || (hits >= 1 && ISSUERS.test(t));
+  // Strong signs only a card statement has; small print ("statement balance", "interest rate", APR)
+  // appears on current-account statements too, so it only counts alongside a strong sign.
+  const strong = [/credit limit/i, /minimum (payment|repayment)/i, /available credit/i, /payment due (date|by)/i].filter((re) => re.test(t)).length;
+  const weak = [/\bAPR\b/, /statement balance/i, /interest rates?/i].filter((re) => re.test(t)).length;
+  if (/\b(current account|e-money account|account \(current account\))/i.test(t) && strong < 2) return false;
+  return strong >= 2 || (strong >= 1 && (weak >= 1 || ISSUERS.test(t)));
 }
 
 /** Accounts that look like credit cards but are filed as current/savings. */
