@@ -83,8 +83,9 @@ export function assessApplication(app, ctx) {
   // Lenders often use the lower of the latest year and the 2-year average for self-employed income.
   const gross = sum(A, (a) => (a.seAverage && a.seLatest ? Math.min(a.seAverage, a.seLatest) : a.gross || a.seLatest || 0));
   const lti = app.loan && gross ? Math.round((app.loan / gross) * 100) / 100 : null;
-  const months = Math.round((app.termYears || 25) * 12);
-  const pay = app.loan ? monthlyPayment(app.loan, ctx.rate, months, { interestOnly: !app.repayment }) : null;
+  const term = ctx.termYears || app.termYears || 25;
+  const months = Math.round(term * 12);
+  const pay = ctx.pay ?? (app.loan ? monthlyPayment(app.loan, ctx.rate, months, { interestOnly: !app.repayment }) : null);
   const pay25 = app.loan && months > 300 ? monthlyPayment(app.loan, ctx.rate, 300) : null;
   const interest = pay ? pay * months - app.loan : null;
   const interest25 = pay25 ? pay25 * 300 - app.loan : null;
@@ -102,7 +103,8 @@ export function assessApplication(app, ctx) {
   const add = (ok, title, detail = '') => checks.push({ ok, title, detail });
   if (ltv != null) add(ltv <= 90, `Loan to value ${ltv}%`, `${fmtK(deposit)} deposit${app.incentive ? ` (including a ${fmtK(app.incentive)} builder incentive)` : ''} on ${fmtK(price)}. ${ltv <= 60 ? 'Best rates.' : ltv <= 75 ? 'Good rates: each 5% step down to 60% can lower the rate.' : ltv <= 85 ? 'Fine: rates improve at 75%.' : 'High: fewer deals and higher rates.'}`);
   if (lti != null) add(lti <= 4.5, `Borrowing ${lti}× income`, `${fmtK(app.loan)} on ${fmtK(gross)} gross a year${A.some((a) => a.seAverage) ? ' (self-employed income at the lower of the latest year and the 2-year average)' : ''}. Most lenders cap at 4.5×.`);
-  if (pay != null) add(ctx.takeHome ? pay <= ctx.takeHome * 0.35 : null, `Mortgage about ${fmtK(pay)} a month`, `At ${ctx.rate}% over ${app.termYears} years${rent ? `, against ${fmtK(rent)} rent now: ${pay < rent ? `${fmtK(rent - pay)} a month less` : `${fmtK(pay - rent)} a month more`}` : ''}${ctx.takeHome ? `. ${Math.round((pay / ctx.takeHome) * 100)}% of take-home` : ''}. The rate isn't on the application, so this uses your plan's rate.`);
+  if (ctx.termYears && app.termYears && Math.abs(ctx.termYears - app.termYears) >= 1) add(false, `Term: application ${app.termYears} years, illustration ${ctx.termYears} years`, `The form and the illustration disagree. The lender decides on what's submitted: confirm with your broker which term is going in. The illustration's payment assumes ${ctx.termYears} years.`);
+  if (pay != null) add(ctx.takeHome ? pay <= ctx.takeHome * 0.35 : null, `Mortgage ${ctx.pay ? '' : 'about '}${fmtK(pay)} a month`, `${ctx.pay ? `From your illustration: ${ctx.rate}% over ${term} years` : `At ${ctx.rate}% over ${term} years`}${rent ? `, against ${fmtK(rent)} rent now: ${pay < rent ? `${fmtK(rent - pay)} a month less` : `${fmtK(pay - rent)} a month more`}` : ''}${ctx.takeHome ? `. ${Math.round((pay / ctx.takeHome) * 100)}% of take-home` : ''}.${ctx.pay ? '' : ' The rate isn\'t on the application, so this uses your plan\'s rate; upload the illustration for the real payment.'}`);
   if (debts.length) {
     const gap = ctx.statementDebtMonthly != null ? ctx.statementDebtMonthly - declaredMonthly : 0;
     add(gap <= 5000, `Declared debts ${fmtK(declaredMonthly)} a month`, `${debts.length} item${debts.length > 1 ? 's' : ''}, ${fmtK(declaredBalance)} owed excluding student loans${pensions ? `; pensions ${fmtK(pensions)} a month` : ''}. ${gap > 5000 ? `Your statements show about ${fmtK(ctx.statementDebtMonthly)} a month going to cards and loans: lenders compare the form with your statements and credit file, so tell your broker about anything missing.` : 'Keep every one paid on time and don\'t add new credit until completion.'}`);
@@ -114,7 +116,7 @@ export function assessApplication(app, ctx) {
   if (A.some((a) => a.incomeChange === false)) add(null, 'Income changes', 'The form says no income change is expected. If either income will drop before completion or soon after (maternity, fewer hours, a new job), tell the lender: a change found later can stop the offer.');
   if (ctx.fees != null) add(ctx.fees === 0, ctx.fees ? `${ctx.fees} late or overdraft charges in 3 months` : 'No late or overdraft charges in 3 months', ctx.fees ? 'Lenders read the last 2–3 months of statements for these.' : '');
   if (ctx.gambling) add(false, `${ctx.gambling} gambling payments in 3 months`, 'Lenders often ask about these.');
-  return { checks, deposit, price, ltv, gross, lti, pay, pay25, interest, interest25, rent, declaredMonthly, declaredBalance };
+  return { checks, term, deposit, price, ltv, gross, lti, pay, pay25, interest, interest25, rent, declaredMonthly, declaredBalance };
 }
 
 const sum = (l, f) => (l || []).reduce((a, x) => a + (f(x) || 0), 0);

@@ -123,6 +123,23 @@ export function priceHistory(r) {
   return `<div class="sub ${pc > 0 ? 'warn-text' : 'pos'}">${pc > 0 ? 'Up' : 'Down'} ${Math.abs(pc)}% since ${prettyDate(rows[0].date)} ${rows[0].date.slice(0, 4)} (${fmt(first)} → ${fmt(last)}).</div>`;
 }
 
+/** 8a. The mortgage illustration (ESIS): rate, payment, what happens after the fix, charges. */
+const esisInput = '<input type="file" id="esis-file" accept="application/pdf" data-change="mip-file" hidden>';
+function esisBlock(e) {
+  if (!e) return `<label for="esis-file" class="btn ghost full">Upload your mortgage illustration (ESIS)</label>${esisInput}<p class="sub">The rate, monthly payment and charges come from it, read on your phone.</p>`;
+  const d = (x) => (x ? `${prettyDate(x)} ${x.slice(0, 4)}` : '');
+  const rise = e.payAfter && e.payFixed ? e.payAfter - e.payFixed : null;
+  const book = e.fixedUntil ? addDays(e.fixedUntil, -182) : null;
+  const lastErc = e.ercs.length ? e.ercs[e.ercs.length - 1] : null;
+  const fees = e.fees.reduce((a, f) => a + f.amount, 0);
+  return `<div class="label">Your mortgage illustration${e.lender ? ` · ${esc(e.lender)}` : ''}</div>
+    <div class="stat-grid"><div><span class="label">${e.rate}% fixed${e.fixedUntil ? ` to ${esc(d(e.fixedUntil))}` : ''}</span><b>${fmt(e.payFixed)}/mo</b></div>${e.payAfter ? `<div><span class="label">Then ${e.followRate}% (standard rate)</span><b class="warn-text">${fmt(e.payAfter)}/mo</b></div>` : ''}</div>
+    ${rise ? `<div class="cal-tip"><b>${fmt(rise, { whole: true })} a month more when the fix ends${e.fixedUntil ? ` on ${esc(d(e.fixedUntil))}` : ''}</b><span>Most people move to a new deal instead of paying the standard rate.${book ? ` You can usually choose one up to 6 months ahead: from <b>${esc(d(book))}</b>.` : ''}${lastErc ? ` Early repayment charges (${e.ercs.map((x) => `${x.pct}% to ${esc(d(x.to))}`).join(', ')}) mean leaving before ${esc(d(lastErc.to))} costs up to ${fmt(Math.max(...e.ercs.map((x) => x.amount)), { whole: true })}.` : ''}${e.perPoint ? ` Each 1% rise in the standard rate adds about ${fmt(e.perPoint, { whole: true })} a month.` : ''}</span></div>` : ''}
+    ${e.overpayPct && e.loan ? `<div class="sub">Overpay up to ${e.overpayPct}% a year without a charge (about ${fmt(Math.round((e.loan * e.overpayPct) / 100), { whole: true })} in the first year).</div>` : ''}
+    <div class="sub">${fees ? `Fees ${e.fees.map((f) => `${esc(f.label.toLowerCase())} ${fmt(f.amount, { whole: true })}`).join(', ')}. ` : ''}${e.aprc ? `APRC ${e.aprc}%. ` : ''}${e.total && e.loan ? `Total to repay ${fmt(e.total, { whole: true })} (${(e.total / e.loan).toFixed(2)} for every £1 borrowed).` : ''}</div>
+    <div class="row gap wrap"><label for="esis-file" class="chip">Replace illustration</label>${esisInput}</div>`;
+}
+
 /** 8b. The full mortgage application, read from the form: what the lender will check. */
 const appInput = '<input type="file" id="app-file" accept="application/pdf,image/*" multiple data-change="app-file" hidden>';
 function applicationCard(app, ctx) {
@@ -132,9 +149,10 @@ function applicationCard(app, ctx) {
   const bad = a.checks.filter((c) => c.ok === false).length;
   return `<div class="card"><h3>Mortgage readiness <small class="pill ${bad ? 'warn' : 'ok'}">${done}/${a.checks.length}</small></h3>
     <div class="sub">From your application${app.lender ? ` to <b>${esc(app.lender)}</b>` : ''}${app.submitted ? `, ${prettyDate(app.submitted)} ${app.submitted.slice(0, 4)}` : ''} · ${app.applicants.length} applicant${app.applicants.length > 1 ? 's' : ''}${app.newBuild ? ' · new build' : ''}</div>
-    <div class="stat-grid"><div><span class="label">Borrowing</span><b>${fmt(app.loan, { whole: true })}</b></div><div><span class="label">Price</span><b>${fmt(a.price, { whole: true })}</b></div><div><span class="label">Deposit</span><b>${fmt(a.deposit, { whole: true })}</b></div><div><span class="label">Term</span><b>${app.termYears} years</b></div></div>
+    <div class="stat-grid"><div><span class="label">Borrowing</span><b>${fmt(app.loan, { whole: true })}</b></div><div><span class="label">Price</span><b>${fmt(a.price, { whole: true })}</b></div><div><span class="label">Deposit</span><b>${fmt(a.deposit, { whole: true })}</b></div><div><span class="label">Term</span><b>${a.term} years</b></div></div>
     ${a.checks.map((c) => `<div class="check-line ${c.ok === true ? 'ok' : c.ok === false ? 'bad' : ''}"><b>${c.ok === true ? '✓' : c.ok === false ? '✗' : '!'} ${esc(c.title)}</b>${c.detail ? `<div class="sub">${esc(c.detail)}</div>` : ''}</div>`).join('')}
-    ${a.pay25 && a.interest > a.interest25 ? `<div class="cal-tip"><b>A ${app.termYears}-year term costs about ${fmt(a.interest - a.interest25, { whole: true })} more interest than 25 years</b><span>The long term keeps the payment at ${fmt(a.pay, { whole: true })} instead of ${fmt(a.pay25, { whole: true })}. Most deals allow 10% overpayment a year: paying ${fmt(a.pay25 - a.pay, { whole: true })} a month extra clears it in about 25 years, and you can stop if money gets tight.</span></div>` : ''}
+    ${esisBlock(state.settings.esis)}
+    ${a.pay25 && a.interest > a.interest25 ? `<div class="cal-tip"><b>A ${a.term}-year term costs about ${fmt(a.interest - a.interest25, { whole: true })} more interest than 25 years</b><span>The long term keeps the payment at ${fmt(a.pay, { whole: true })} instead of ${fmt(a.pay25, { whole: true })}. Most deals allow 10% overpayment a year: paying ${fmt(a.pay25 - a.pay, { whole: true })} a month extra clears it in about 25 years, and you can stop if money gets tight.</span></div>` : ''}
     ${app.docs.length ? `<div class="label">Documents the lender wants</div>${app.docs.map((d, i) => `<label class="check-row"><input type="checkbox" data-change="app-doc" data-doc="${esc(d)}" ${docsDone[d] ? 'checked' : ''}><span class="grow">${esc(d)}</span></label>`).join('')}` : ''}
     <div class="row gap wrap"><label for="app-file" class="chip">Replace application</label>${appInput}<button class="chip" data-action="app-clear">Remove</button><button class="chip" data-action="aff-broker">Share summary with broker</button></div>
     <p class="sub">Read from your application: only figures and yes/no answers are kept, never names or addresses. Not regulated advice: your broker has the final word.</p></div>`;
@@ -147,7 +165,8 @@ export function readinessCard() {
     const fees = state.txs.filter((t) => t.date >= since && t.amount < 0 && (t.category === 'fees' || /\b(LATE|RETURNED|UNPAID|OVERDRAFT)\b/i.test(t.description))).length;
     const gambling = state.txs.filter((t) => t.date >= since && /\b(BET365|BETFAIR|PADDY ?POWER|SKY ?BET|WILLIAM HILL|LADBROKES|CORAL|BETFRED|888|POKERSTARS|LOTTERY|GAMBL)\b/i.test(t.description)).length;
     const debt = live().filter((r) => r.category === 'debt' || r.cardRepay).reduce((a, r) => a + r.amount, 0);
-    return applicationCard(state.settings.mortgageApp, { today: state.derived.today, rate: (state.settings.mortgage || {}).rate || 4.5, takeHome: income() || null, statementDebtMonthly: state.txs.length ? debt : null, fees: state.txs.length ? fees : null, gambling });
+    const e = state.settings.esis;
+    return applicationCard(state.settings.mortgageApp, { today: state.derived.today, rate: e?.rate || (state.settings.mortgage || {}).rate || 4.5, pay: e?.payFixed ?? null, termYears: e?.termYears ?? null, takeHome: income() || null, statementDebtMonthly: state.txs.length ? debt : null, fees: state.txs.length ? fees : null, gambling });
   }
   const d = state.derived, s = state.settings, m = s.mortgage || {};
   const inc = income();
@@ -172,6 +191,7 @@ export function readinessCard() {
   return `<div class="card"><h3>Mortgage readiness <small class="pill ${done >= 5 ? 'ok' : 'warn'}">${done}/${checks.length}</small></h3>
     ${checks.map(([ok, t]) => `<div class="check-line ${ok === true ? 'ok' : ok === false ? 'bad' : ''}">${ok === true ? '✓' : ok === false ? '✗' : '–'} ${esc(t)}</div>`).join('')}
     <p class="sub">Lenders usually ask for 3 months of payslips and bank statements, and check your credit file. Fix the ✗ items in the months before you apply.</p>
+    ${esisBlock(state.settings.esis)}
     <label for="app-file" class="btn primary full">Upload your mortgage application</label>${appInput}
     <p class="sub">Fills in the checks above from the form instead of typing. Scanned forms are read with your Claude key (Settings); only figures and yes/no answers are kept.</p>
     <button class="btn ghost full" data-action="aff-broker">Share a summary with a mortgage broker</button></div>`;
