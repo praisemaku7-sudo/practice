@@ -8,11 +8,13 @@ import { merchantSheet } from './overview-extras.js';
 export const PAGES = [
   ['Everyday', [
     ['home', '🏠', 'Overview', 'This month at a glance'],
+    ['spending', '🛍️', 'Spending', 'Where your money goes'],
     ['transactions', '🧾', 'Transactions', 'Search, filter, recategorise'],
     ['bills', '📅', 'Bills & subscriptions', 'Calendar and cancel list'],
     ['due', '⏰', 'Due soon', 'Payments in the next days'],
     ['checkin', '✅', 'Monthly check-in', 'Four-step monthly routine'],
     ['history', '📊', 'Monthly record', 'Month by month'],
+    ['numbers', '🔢', 'Your numbers', 'Every figure as a tile'],
   ]],
   ['Plan', [
     ['track', '📈', 'On track', 'Will we have enough? Your path'],

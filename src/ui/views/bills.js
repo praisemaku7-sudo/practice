@@ -150,12 +150,11 @@ export function render() {
   const hiddenList = all.filter((r) => hidden[r.key]);
 
   return `
-  <h1 class="page-title">Bills calendar</h1>
+  <h1 class="page-title">Bills</h1>
   ${suggestions()}
   ${(() => { const d = all.filter((r) => r.dupIds?.length); return d.length ? `<div class="card banner bad"><b>${d.length} regular payment${d.length > 1 ? 's were' : ' was'} counted twice</b><span class="sub">${d.map((r) => `${esc(r.name)} (${(r.dupIds || []).length} cop${r.dupIds.length > 1 ? 'ies' : 'y'})`).join(', ')}: the same payment saved from two imports or accounts. They're counted once now; tap one to remove the copies.</span><div class="row gap wrap">${d.slice(0, 4).map((r) => `<button class="chip" data-action="bill-open" data-key="${esc(r.key)}">${esc(r.name)} ›</button>`).join('')}</div></div>` : ''; })()}
   <div class="card reg-sum"><div><span class="label">Regular outgoings</span><b>${fmt(out.reduce((a, r) => a + r.amount, 0), { whole: true })}<small>/mo</small></b></div><div><span class="label">A year</span><b>${fmt(out.reduce((a, r) => a + r.amount, 0) * 12, { whole: true })}</b></div><div><span class="label">Payments</span><b>${out.length}</b></div></div>
-  ${changesCard()}
-  <div class="card cal-card">
+  <div class="card cal-card" data-tab="Calendar">
     <div class="cal-nav"><button class="icon-btn small" data-action="cal-month" data-step="-1" aria-label="Previous month">‹</button>
       <div class="grow"><b>${esc(monthLabel(month))}</b>${month !== thisMonth ? ' <button class="chip" data-action="cal-month" data-step="0">Today</button>' : ''}</div>
       <button class="icon-btn small" data-action="cal-month" data-step="1" aria-label="Next month">›</button></div>
@@ -169,8 +168,9 @@ export function render() {
     ${ui.view === 'cal' ? `<div class="cal"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>${cells.join('')}</div>
     <div class="legend"><span><i class="sw due-sw"></i>Due</span><span><i class="sw paid-sw"></i>Paid</span><span><i class="sw late-sw"></i>Not seen</span><span>💷 Pay</span>${fc ? '<span><i class="sw danger-sw"></i>Could bounce</span>' : ''}</div>` : `<div class="cal-list">${list}</div>`}
     <p class="sub">Tap a day or payment for details, reminders and what to do.</p>
+    <div class="row gap cal-actions"><button class="btn ghost grow" data-action="bill-add">＋ Add payment</button><button class="btn primary grow" data-action="due-calendar">📅 All to Calendar</button></div>
   </div>
-  <div class="row gap cal-actions"><button class="btn ghost grow" data-action="bill-add">＋ Add payment</button><button class="btn primary grow" data-action="due-calendar">📅 All to Calendar</button></div>
+  ${changesCard()}
   ${fc ? `<div class="card"><h3>Balance forecast</h3>
     <p class="sub">What's likely to be in your current account${sb.accounts.length > 1 ? 's' : ''} each day until ${prettyDate(until)}: today's balance, minus each regular bill on its day, plus pay when it lands. It warns you before a payment could bounce.</p>
     <div class="stat-grid"><div><span class="label">Starting balance</span><b>${fmt(sb.amount, { whole: true })}</b></div><div><span class="label">Lowest · ${prettyDate(fc.low.date)}</span><b class="${fc.low.balance < 0 ? 'neg' : ''}">${fmt(fc.low.balance, { whole: true })}</b></div></div>

@@ -10,7 +10,8 @@ import { monthSwitcher, catChip, delta, emptyState } from '../common.js';
 import { goalPlan } from '../../lib/goals.js';
 import { dashboard } from '../dashboard.js';
 import { cockpit } from '../cockpit.js';
-import { alertStrip } from '../alerts.js';
+import { buildAlerts } from '../alerts.js';
+import { safeToSpend } from '../overview-extras.js';
 import { balanceForecast, paidThisMonth } from '../../lib/cashflow.js';
 import { monthOutlook, budgetAlerts } from '../../lib/forecast.js';
 
@@ -73,44 +74,24 @@ export function render() {
 
   const movers = cmp.hasPrev ? cmp.rows.filter((r) => Math.abs(r.delta) >= 1000 && !['income', 'transfer', 'savings'].includes(r.category)).slice(0, 4) : [];
 
+  const urgent = buildAlerts().filter((x) => x.tone === 'bad').slice(0, 1);
+  const safe = isCurrent ? safeToSpend() : null;
+  const sumAcc = (f) => state.accounts.filter(f).reduce((x, a) => x + (a.balance || 0), 0);
+  const net = sumAcc((a) => a.type !== 'credit' && a.type !== 'investment') + sumAcc((a) => a.type === 'credit');
+  const gs = (state.settings.goals || []).filter((g) => !g.owner || g.owner === 'all' || state.settings.scope === 'all' || g.owner === state.settings.scope);
+  const go = (href, ic, title, sub) => `<a class="go-row" href="${href}"><span class="go-ic" aria-hidden="true">${ic}</span><span class="go-txt"><b>${title}</b><small>${sub}</small></span><span class="go-chev" aria-hidden="true">›</span></a>`;
   return `
   ${monthSwitcher(month, months)}
-  ${alertStrip()}
+  ${urgent.map((x) => `<button class="urgent" data-action="alert-open" data-id="${x.id}"><b>${esc(x.title)}</b><span>${esc(String(x.detail || '').split('. ')[0].slice(0, 90))} ›</span></button>`).join('')}
   ${cockpit()}
-  ${cmp.hasPrev ? `<div class="card pace-card"><h3>Day by day</h3><div class="pace-wrap tap-chart" data-action="dash-pace" role="button" tabindex="0" aria-label="Spending day by day: tap for the numbers">${paceChart(curDaily, prevDaily, daysSoFar)}
-      <div class="pace-legend"><span><i class="sw cur"></i>${esc(monthLabel(month, { short: true }))}</span><span><i class="sw prev"></i>${esc(monthLabel(addMonths(month, -1), { short: true }))}</span><span class="pace-more">${isCurrent ? `${delta(paceDelta)} vs this point` : ''} ›</span></div></div></div>` : ''}
-  <section class="card dash keep-open">${dashboard({ exclude: isCurrent ? ['spent', 'forecast', 'safe', 'income', 'net', 'bills'] : ['spent', 'income', 'net'] })}</section>
-  <nav class="quick-row" style="margin-top:-2px" aria-label="Shortcuts"><a class="qchip" href="#/insights">✨ AI review</a><a class="qchip" href="#/bills">📅 Calendar</a><a class="qchip" href="#/track">📈 On track</a><a class="qchip" href="#/budget">🎯 Budget</a><a class="qchip" href="#/afford">❓ Afford?</a><a class="qchip" href="#/transactions">🧾 Transactions</a></nav>
-  ${(() => {
-    const gs = (state.settings.goals || []).filter((g) => !g.owner || g.owner === 'all' || state.settings.scope === 'all' || g.owner === state.settings.scope);
-    if (!gs.length) return '';
-    const byId = Object.fromEntries((state.allAccounts || state.accounts).map((a) => [a.id, a]));
-    return `<a class="card goals-mini" href="#/goals"><div class="label">🎯 Goals</div>${gs.slice(0, 3).map((g) => { const p = goalPlan(g, today, byId); return `<div class="goal-line"><span class="ellipsis">${esc(g.icon || '🎯')} ${esc(g.name)}</span><span class="sub">${Math.round(p.progress * 100)}%</span></div>${progressBar(p.progress, { warnAt: 2 })}`; }).join('')}</a>`;
-  })()}
-  ${isCurrent ? cashflowCard() : ''}
-  ${movers.length ? `<div class="card"><h3>What changed vs last month</h3>
-    ${movers.map((r) => `<div class="list-row">${catChip(r.category)}<div class="grow">${esc(catName(r.category))}<div class="sub">${fmt(r.previous, { whole: true })} → ${fmt(r.current, { whole: true })}</div></div>${delta(r.delta)}</div>`).join('')}
-  </div>` : ''}
-  <div class="card">
-    <h3>Where it went</h3>
-    <p class="sub tap-hint">Tap a slice or a category for its trend and transactions.</p>
-    ${cats.length ? `<div class="donut-wrap">${donut(cats.map((c) => ({ key: c.category, value: c.total, color: c.color, label: c.name })), { center: fmt(s.spend, { whole: true }), sub: 'spent' })}</div>
-    ${cats.map((c) => {
-      const line = budget.byCategory[c.category];
-      const row = cmp.rows.find((r) => r.category === c.category);
-      return `<button class="list-row tap" data-action="dash-cat" data-cat="${c.category}">${catChip(c.category)}
-        <div class="grow"><div class="row between"><span>${esc(c.name)}</span><b>${fmt(c.total)}</b></div>
-        ${line?.budget ? progressBar(c.total / line.budget) : ''}
-        <div class="sub row between"><span>${line?.budget ? `${fmt(line.budget, { whole: true })} budget` : 'no budget'}${row?.average ? ` · usually ${fmt(row.average, { whole: true })}` : ''}</span>${cmp.hasPrev && row ? delta(row.delta) : ''}</div></div></button>`;
-    }).join('')}` : '<p class="muted">No spending this month.</p>'}
-  </div>
-  ${trendData.length > 1 ? `<div class="card"><h3>Last ${trendData.length} months</h3>${trendBars(trendData)}<p class="sub tap-hint">Tap a month for its breakdown and transactions.</p>
-    <div class="legend"><span><i class="sw in"></i>Income</span><span><i class="sw out"></i>Spent</span></div>
-    <a class="btn ghost full" href="#/history">Monthly record &amp; trends</a></div>` : ''}
-  <div class="card"><h3>Top merchants</h3>
-    ${s.merchants.slice(0, 8).map((m) => `<button class="list-row tap" data-action="mer-open" data-m="${esc(m.name)}">${catChip(m.category)}<div class="grow">${esc(m.name)}<div class="sub">${m.count} payment${m.count > 1 ? 's' : ''} · tap for history</div></div><b>${fmt(m.total)}</b></button>`).join('')}
-    <button class="btn ghost full" data-action="go" data-to="transactions">All transactions</button>
-  </div>`;
+  <nav class="go-list" aria-label="Go to">
+    ${go('#/spending', '🛍️', 'Spending', `${fmt(s.spend, { whole: true })} in ${esc(monthLabel(month, { short: true }))}${cats[0] ? ` · most on ${esc(cats[0].name.toLowerCase())}` : ''}`)}
+    ${go('#/bills', '📅', 'Bills', safe ? `${fmt(safe.bills, { whole: true })} still to pay before payday` : 'Calendar, subscriptions and cancel list')}
+    ${go('#/track', '🏡', 'The move', 'Can we afford the mortgage?')}
+    ${go('#/accounts', '🏦', 'Accounts', `${fmt(net, { whole: true })} overall, after cards`)}
+    ${gs.length ? go('#/goals', '🐷', 'Goals', `${gs.length} goal${gs.length > 1 ? 's' : ''}`) : ''}
+    ${go('#/numbers', '📊', 'Your numbers', 'Every figure, month by month')}
+  </nav>`;
 }
 
 

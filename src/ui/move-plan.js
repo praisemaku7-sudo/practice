@@ -107,7 +107,7 @@ export function moveCard() {
       ${row('Left each month', cols.map(([, , h]) => `<span class="${tone(left(h))}"><b>${fmt(left(h), { whole: true, sign: true })}</b></span>`), 'total')}
       <div class="mv-row bars"><span></span>${cols.map(([, , h]) => { const v = left(h); return `<span><i class="mv-bar ${tone(v)}" style="width:${Math.max(4, Math.min(100, Math.abs(v / inc) * 300)).toFixed(0)}%"></i></span>`; }).join('')}</div>
     </div>
-    <p class="sub">${ev.budget ? 'Everyday spending comes from your <a href="#/budget">budgets</a> until a full month of statements is in.' : `Everyday spending is what you actually spent in a typical month (${ev.months.map((m) => monthLabel(m, { short: true })).join(', ')}${ev.complete ? '' : ', some statements missing'}), not counting regular payments. Your <a href="#/budget">budget</a> is the target; this is reality.`} Council tax and energy usually change with a move: check the new band and update the bill once you know.</p></div>`;
+    <p class="sub">${ev.budget ? 'Everyday spending from your <a href="#/budget">budgets</a> until a full month is imported.' : `Everyday spending is your typical month (${ev.months.map((m) => monthLabel(m, { short: true }).split(' ')[0]).join(', ')}), not your <a href="#/budget">budget</a>.`}</p></div>`;
 }
 
 /** What moves the number most, ranked by £ a month, each with where to act. */
