@@ -32,6 +32,7 @@ import { extrasActions } from './ui/overview-extras.js';
 import { affordActions, affordChanges } from './ui/afford-extras.js';
 import { billsExtraActions, billsExtraInputs } from './ui/bills-extras.js';
 import { movePlanActions } from './ui/move-plan.js';
+import { cockpitActions } from './ui/cockpit.js';
 import { menuActions, menuInputs, closeMenu, menuIsOpen, setMenuCurrent, applyTheme } from './ui/menu.js';
 import * as sync from './ui/views/sync.js';
 import * as add from './ui/views/add.js';
@@ -144,7 +145,7 @@ const globalActions = {
   },
 };
 
-const allActions = Object.assign({}, globalActions, lockActions, sectionActions, insightActions, menuActions, dashActions, alertActions, extrasActions, affordActions, billsExtraActions, movePlanActions, ...Object.values(VIEWS).map((v) => v.actions || {}));
+const allActions = Object.assign({}, globalActions, lockActions, sectionActions, insightActions, menuActions, dashActions, alertActions, extrasActions, affordActions, billsExtraActions, movePlanActions, cockpitActions, ...Object.values(VIEWS).map((v) => v.actions || {}));
 const allChanges = Object.assign({}, affordChanges, ...Object.values(VIEWS).map((v) => v.changes || {}));
 const allInputs = Object.assign({}, menuInputs, billsExtraInputs, ...Object.values(VIEWS).map((v) => v.inputs || {}));
 

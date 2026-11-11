@@ -98,12 +98,13 @@ function tone(def, v, prev) {
 }
 
 // ---------- Tiles ----------
-export function dashboard() {
+export function dashboard({ exclude = [] } = {}) {
   resetDashboardCache();
   const p = prefs();
   const isCurrent = state.month === monthKey(state.derived.today);
   const ms = window6();
-  const tiles = p.tiles.map((id) => ({ id, ...METRICS[id] })).filter((d) => d.label && (!d.current || isCurrent));
+  // Figures the hero above already shows aren't repeated here.
+  const tiles = p.tiles.filter((id) => !exclude.includes(id)).map((id) => ({ id, ...METRICS[id] })).filter((d) => d.label && (!d.current || isCurrent));
   return `<div class="dash-head"><h3>Dashboard</h3><button class="chip" data-action="dash-edit">✎ Customise</button></div>
   <div class="dash-grid">${tiles.map((d) => {
     const v = d.value(state.month);

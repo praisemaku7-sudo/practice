@@ -9,7 +9,7 @@ import { donut, trendBars, progressBar, paceChart } from '../charts.js';
 import { monthSwitcher, catChip, delta, emptyState } from '../common.js';
 import { goalPlan } from '../../lib/goals.js';
 import { dashboard } from '../dashboard.js';
-import { paydayLine } from '../overview-extras.js';
+import { cockpit } from '../cockpit.js';
 import { alertStrip } from '../alerts.js';
 import { balanceForecast, paidThisMonth } from '../../lib/cashflow.js';
 import { monthOutlook, budgetAlerts } from '../../lib/forecast.js';
@@ -76,21 +76,10 @@ export function render() {
   return `
   ${monthSwitcher(month, months)}
   ${alertStrip()}
-  <div class="card hero feature">
-    <div class="hero-row">
-      <div><button class="explain" data-action="explain" data-what="spent"><div class="label">Spent ⓘ</div><div class="big">${fmt(s.spend, { whole: true })}</div></button>
-        ${cmp.hasPrev ? (isCurrent
-          ? `<div class="sub">${delta(paceDelta)} vs this point in ${esc(monthLabel(addMonths(month, -1), { short: true }))}</div>`
-          : `<div class="sub">${delta(s.spend - cmp.prev.spend)} vs ${esc(monthLabel(addMonths(month, -1), { short: true }))}</div>`) : ''}</div>
-      <button class="icon-btn small share-btn" data-action="ov-share" aria-label="Share this month's summary"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-    </div>
-    ${isCurrent && paydayLine() ? `<div class="payday-line">${esc(paydayLine())}</div>` : ''}
-    ${totalBudget ? `${progressBar(s.spend / totalBudget)}<div class="sub">${fmt(s.spend, { whole: true })} of ${fmt(totalBudget, { whole: true })} monthly budget</div>` : ''}
-    ${cmp.hasPrev ? `<div class="pace-wrap tap-chart" data-action="dash-pace" role="button" tabindex="0" aria-label="Spending day by day: tap for the numbers">${paceChart(curDaily, prevDaily, daysSoFar)}
-      <div class="pace-legend"><span><i class="sw cur"></i>${esc(monthLabel(month, { short: true }))}</span><span><i class="sw prev"></i>${esc(monthLabel(addMonths(month, -1), { short: true }))}</span>
-      <span class="pace-more">Day by day ›</span></div></div>` : ''}
-  </div>
-  <section class="card dash">${dashboard()}</section>
+  ${cockpit()}
+  ${cmp.hasPrev ? `<div class="card pace-card"><h3>Day by day</h3><div class="pace-wrap tap-chart" data-action="dash-pace" role="button" tabindex="0" aria-label="Spending day by day: tap for the numbers">${paceChart(curDaily, prevDaily, daysSoFar)}
+      <div class="pace-legend"><span><i class="sw cur"></i>${esc(monthLabel(month, { short: true }))}</span><span><i class="sw prev"></i>${esc(monthLabel(addMonths(month, -1), { short: true }))}</span><span class="pace-more">${isCurrent ? `${delta(paceDelta)} vs this point` : ''} ›</span></div></div></div>` : ''}
+  <section class="card dash keep-open">${dashboard({ exclude: isCurrent ? ['spent', 'forecast', 'safe', 'income', 'net', 'bills'] : ['spent', 'income', 'net'] })}</section>
   <nav class="quick-row" style="margin-top:-2px" aria-label="Shortcuts"><a class="qchip" href="#/insights">✨ AI review</a><a class="qchip" href="#/bills">📅 Calendar</a><a class="qchip" href="#/track">📈 On track</a><a class="qchip" href="#/budget">🎯 Budget</a><a class="qchip" href="#/afford">❓ Afford?</a><a class="qchip" href="#/transactions">🧾 Transactions</a></nav>
   ${(() => {
     const gs = (state.settings.goals || []).filter((g) => !g.owner || g.owner === 'all' || state.settings.scope === 'all' || g.owner === state.settings.scope);

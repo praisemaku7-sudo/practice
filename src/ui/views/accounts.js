@@ -77,63 +77,118 @@ function cardsTip(list) {
     <div class="row gap wrap"><a class="chip sel" href="#/cards">Payoff plan ›</a><a class="chip" href="#/movebills">Move bills off cards ›</a></div></div>`;
 }
 
+const BANK_HUE = { revolut: 210, hsbc: 0, nationwide: 230, 'virgin money': 330, 'american express': 205, amex: 205, monzo: 15, starling: 270, barclays: 200, lloyds: 140, halifax: 220, natwest: 280, santander: 0, chase: 215, 'first direct': 0, 'capital one': 0, aqua: 190 };
+const hueOf = (bank) => { const k = String(bank || '').toLowerCase(); const hit = Object.keys(BANK_HUE).find((b) => k.includes(b)); if (hit) return BANK_HUE[hit]; let h = 0; for (const c of k) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
+const shortName = (a) => { const last4 = a.ref || a.details?.last4 || (a.name.match(/(\d{4})\s*$/) || [])[1]; const prod = a.name.replace(/[•·]+\s*\d{4}\s*$/, '').replace(new RegExp(`^${String(a.bank || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*`, 'i'), '').replace(/\bBank\b/i, '').trim(); return { title: a.bank || a.name, sub: [prod, last4 ? `••${last4}` : ''].filter(Boolean).join(' ') }; };
+const ageDays = (a) => (a.balanceDate ? Math.round((Date.parse(state.derived.today) - Date.parse(a.balanceDate)) / 86400000) : null);
+const TABS = [['accounts', 'Accounts'], ['cards', 'Cards'], ['spending', 'Spending'], ['one', 'One place'], ['statements', 'Statements']];
+
+function tile(a) {
+  const n = shortName(a), age = ageDays(a), multi = state.settings.people.length > 1;
+  const who = multi ? (ownerOf(a) === 'joint' ? 'Joint' : personName(ownerOf(a)).split(' ')[0]) : '';
+  return `<button class="acc-tile" data-action="edit-account" data-id="${esc(a.id)}" style="--h:${hueOf(a.bank)}">
+    <span class="at-top"><span class="at-logo">${esc((a.bank || a.name).replace(/[^A-Za-z]/g, '').slice(0, 2).toUpperCase())}</span>${a.id === state.settings.mainAccountId ? '<span class="at-main">main</span>' : who ? `<span class="at-who">${esc(who)}</span>` : ''}</span>
+    <span class="at-name">${esc(n.title)}</span><span class="at-sub">${esc(n.sub || SHORT_TYPE[a.type] || '')}</span>
+    <span class="at-bal ${a.balance < 0 ? 'neg' : ''}">${a.balance != null ? fmt(a.balance) : '—'}</span>
+    <span class="at-age ${age != null && age > 31 ? 'old' : ''}">${age == null ? 'no balance yet' : age <= 1 ? 'today' : age > 31 ? `${age} days old · update` : prettyDate(a.balanceDate)}</span></button>`;
+}
+
+function cardVisual(a) {
+  const n = shortName(a), owed = Math.max(0, -(a.balance || 0)), limit = a.limit ?? a.details?.limit ?? null, age = ageDays(a);
+  const use = limit ? owed / limit : null;
+  return `<button class="cc" data-action="card-open" data-id="${esc(a.id)}" style="--h:${hueOf(a.bank)}">
+    <span class="cc-top"><b>${esc(n.title)}</b><span>${esc(n.sub)}</span></span>
+    <span class="cc-owed"><small>Owed</small>${fmt(owed)}</span>
+    ${use != null ? `<span class="cc-bar"><i style="width:${Math.min(100, use * 100).toFixed(0)}%"></i></span><span class="cc-meta">${Math.round(use * 100)}% of ${fmt(limit, { whole: true })} limit${a.apr != null ? ` · ${(a.apr * 100).toFixed(1)}% APR` : ''}</span>` : `<span class="cc-meta">${a.apr != null ? `${(a.apr * 100).toFixed(1)}% APR · ` : ''}Tap to add the limit and APR</span>`}
+    <span class="cc-age ${age > 31 ? 'old' : ''}">${a.balanceDate ? `as of ${prettyDate(a.balanceDate)}` : ''}</span></button>`;
+}
+
+/** Where the spending happens: by account and card, with each one's top categories. */
+function spendingPanel() {
+  const months = ui.span === 3 ? [0, 1, 2].map((i) => addMonthsKey(state.month, -i)) : [state.month];
+  const rows = {};
+  for (const t of state.txs) {
+    if (t.amount >= 0 || !months.includes(t.date.slice(0, 7)) || ['transfer', 'savings', 'income', 'excluded'].includes(t.category) || t.cardRepay) continue;
+    const r = (rows[t.accountId] ||= { total: 0, n: 0, cats: {} });
+    r.total -= t.amount; r.n++; r.cats[t.category] = (r.cats[t.category] || 0) - t.amount;
+  }
+  const list = Object.entries(rows).sort((a, b) => b[1].total - a[1].total);
+  const all = list.reduce((x, [, r]) => x + r.total, 0) || 1;
+  const accs = state.allAccounts || state.accounts;
+  return `<div class="seg two acc-span" role="radiogroup" aria-label="Period"><button role="radio" aria-checked="${ui.span !== 3}" class="${ui.span !== 3 ? 'sel' : ''}" data-action="acc-span" data-v="1">${esc(monthLabel(state.month, { short: true }))}</button><button role="radio" aria-checked="${ui.span === 3}" class="${ui.span === 3 ? 'sel' : ''}" data-action="acc-span" data-v="3">Last 3 months</button></div>
+    ${list.length ? `<div class="sp-stack">${list.map(([id, r]) => `<i style="flex:${r.total};--h:${hueOf(accs.find((a) => a.id === id)?.bank)}" title="${esc(accName(id))}"></i>`).join('')}</div>
+    ${list.map(([id, r]) => { const a = accs.find((x) => x.id === id); const top = Object.entries(r.cats).sort((x, y) => y[1] - x[1]).slice(0, 3); return `<a class="sp-row" href="#/transactions?acc=${encodeURIComponent(id)}" style="--h:${hueOf(a?.bank)}"><span class="at-logo">${esc(String(a?.bank || '?').replace(/[^A-Za-z]/g, '').slice(0, 2).toUpperCase())}</span><span class="grow"><b>${esc(a ? shortName(a).title + ' ' + shortName(a).sub : '?')}</b><span class="sp-cats">${top.map(([c, v]) => `${catChip(c)}<small>${fmt(v, { whole: true })}</small>`).join('')}</span></span><span class="sp-amt"><b>${fmt(r.total, { whole: true })}</b><small>${Math.round((r.total / all) * 100)}% · ${r.n} payments</small></span></a>`; }).join('')}
+    <p class="sub">${list.length > 2 ? `Spending is spread over ${list.length} accounts and cards. One debit card for everyday spending makes budgets easier to keep.` : 'Tap an account for its payments.'}</p>` : '<p class="sub">No spending in this period.</p>'}`;
+}
+const addMonthsKey = (key, n) => { const [y, m] = key.split('-').map(Number); const d = new Date(Date.UTC(y, m - 1 + n, 1)); return d.toISOString().slice(0, 7); };
+
+/** Getting everything into one place: bills per account, and accounts you could close. */
+function onePlacePanel() {
+  const accs = state.accounts;
+  const out = state.derived.recurring.filter((r) => r.active && r.direction === 'out' && (r.category !== 'transfer' || r.cardRepay));
+  const by = {};
+  for (const r of out) (by[r.accountId || ''] ||= []).push(r);
+  // Your chosen main account, else the current account that already pays the most.
+  const main = state.settings.mainAccountId || Object.entries(by).filter(([id]) => accs.find((a) => a.id === id && a.type === 'current')).sort((a, b) => b[1].reduce((x, r) => x + r.amount, 0) - a[1].reduce((x, r) => x + r.amount, 0))[0]?.[0] || accs.find((a) => a.type === 'current')?.id;
+  const off = out.filter((r) => r.accountId !== main);
+  const since = new Date(Date.parse(state.derived.today) - 60 * 86400000).toISOString().slice(0, 10);
+  const quiet = accs.filter((a) => a.id !== main && a.type !== 'credit' && Math.abs(a.balance || 0) < 5000 && !by[a.id] && state.txs.filter((t) => t.accountId === a.id && t.date >= since).length <= 2);
+  const total = out.reduce((x, r) => x + r.amount, 0) || 1;
+  return `<div class="op-hero"><div><span class="label">Main account</span><b>${esc(main ? accName(main) : 'Not chosen')}</b></div><div><span class="label">To move</span><b class="${off.length ? 'warn-text' : 'pos'}">${off.length ? `${off.length} payments` : 'Nothing ✓'}</b></div></div>
+    ${Object.entries(by).sort((a, b) => b[1].length - a[1].length).map(([id, l]) => { const sum = l.reduce((x, r) => x + r.amount, 0); const a = accs.find((x) => x.id === id); return `<div class="op-row ${id === main ? 'main' : ''}" style="--h:${hueOf(a?.bank)}"><span class="at-logo">${esc(String(a?.bank || '?').replace(/[^A-Za-z]/g, '').slice(0, 2).toUpperCase())}</span><span class="grow"><b>${esc(id ? accName(id) : 'Account not known')}</b><small>${l.length} regular payment${l.length > 1 ? 's' : ''}${id === main ? ' · main' : ''}</small><span class="op-bar"><i style="width:${((sum / total) * 100).toFixed(0)}%"></i></span></span><b>${fmt(sum, { whole: true })}<small>/mo</small></b></div>`; }).join('')}
+    ${quiet.length ? `<div class="cal-tip"><b>Could close: ${quiet.map((a) => esc(shortName(a).title + ' ' + shortName(a).sub)).join(', ')}</b><span>Little or no money, no regular payments and hardly used in 2 months. Fewer accounts, fewer balances to watch.</span></div>` : ''}
+    <a class="btn primary full" href="#/movebills">${off.length ? `Move ${off.length} payments to one account` : 'Open Move bills'}</a>
+    <a class="btn ghost full" href="#/setup">Merge or fix accounts</a>`;
+}
+
+/** What needs doing, in one place instead of separate banners. */
+function attention() {
+  const BANK_WORDS = ['Nationwide', 'Revolut', 'Monzo', 'Starling', 'Chase', 'HSBC', 'Barclays', 'Lloyds', 'Halifax', 'NatWest', 'Santander', 'Virgin Money', 'American Express', 'Capital One', 'Aqua', 'Barclaycard'];
+  const muddled = state.accounts.filter((a) => { const named = BANK_WORDS.find((b) => a.name.toLowerCase().includes(b.toLowerCase())); return named && a.bank && canonicalBank(named) !== canonicalBank(a.bank); });
+  const dups = state.derived.duplicates, suspects = state.derived.suspects, unconfirmed = state.accounts.filter((x) => !x.typeLocked);
+  const items = [
+    ...ghostAccounts().map((a) => `<div class="attn bad"><b>Is "${esc(a.name)}" real?</b><span>${fmt(a.balance, { whole: true })} with only a few transactions: often an investment or pension statement read as savings.</span><div class="row gap wrap"><button class="chip sel" data-action="acc-ghost-remove" data-id="${esc(a.id)}">Not real: remove</button><button class="chip" data-action="acc-ghost-count" data-id="${esc(a.id)}">Real, don't count it</button><button class="chip" data-action="acc-ghost-keep" data-id="${esc(a.id)}">Real, keep it</button></div></div>`),
+    dups.length && `<div class="attn"><b>${dups.length} duplicate transaction${dups.length > 1 ? 's' : ''}</b><span>The same payment imported twice.</span><div class="row gap"><button class="chip" data-action="dup-review">Review</button><button class="chip sel" data-action="dup-remove-all">Remove ${dups.length}</button></div></div>`,
+    suspects.length && `<a class="attn" href="#/setup"><b>${suspects.length} account${suspects.length > 1 ? 's look' : ' looks'} like a credit card</b><span>${suspects.map((x) => esc(x.name)).join(', ')}: confirm it ›</span></a>`,
+    muddled.length && `<a class="attn bad" href="#/setup"><b>${muddled.length} account${muddled.length > 1 ? 's look' : ' looks'} muddled</b><span>${muddled.map((a) => esc(a.name)).join(', ')}: name and bank disagree ›</span></a>`,
+    unconfirmed.length && `<a class="attn" href="#/setup"><b>Confirm ${unconfirmed.length} account type${unconfirmed.length > 1 ? 's' : ''}</b><span>Debit, credit card or savings: set once and it stays locked ›</span></a>`,
+  ].filter(Boolean);
+  return items.length ? `<div class="attn-list">${items.join('')}</div>` : '';
+}
+
 export function render() {
   if (!state.accounts.length) return emptyState({ title: 'No accounts yet', body: 'Each statement you import creates or updates an account here.' });
-  const { recurring } = state.derived;
-  const mainId = state.settings.mainAccountId;
-  const counts = {};
-  for (const t of state.txs) counts[t.accountId] = (counts[t.accountId] || 0) + 1;
-  const outRec = recurring.filter((r) => r.direction === 'out' && r.active);
-
-  // Accounts whose name and bank disagree (left over from earlier misfiled imports).
-  const BANK_WORDS = ['Nationwide', 'Revolut', 'Monzo', 'Starling', 'Chase', 'HSBC', 'Barclays', 'Lloyds', 'Halifax', 'NatWest', 'Santander', 'Virgin Money', 'American Express', 'Capital One', 'Aqua', 'Barclaycard'];
-  const muddled = state.accounts.filter((a) => {
-    const named = BANK_WORDS.find((b) => a.name.toLowerCase().includes(b.toLowerCase()));
-    return named && a.bank && canonicalBank(named) !== canonicalBank(a.bank);
-  });
-  const dups = state.derived.duplicates;
-  const suspects = state.derived.suspects;
+  const tab = ui.tab || 'accounts';
+  const sum = (f) => state.accounts.filter(f).reduce((x, a) => x + (a.balance || 0), 0);
+  const cash = sum((a) => !['savings', 'credit', 'investment'].includes(a.type));
+  const saved = sum((a) => a.type === 'savings');
+  const owed = Math.max(0, -sum((a) => a.type === 'credit'));
+  const net = cash + saved - owed;
+  const stale = state.accounts.filter((a) => (ageDays(a) ?? 0) > 31);
+  const current = state.accounts.filter((a) => !['savings', 'credit', 'investment'].includes(a.type)).sort((a, b) => (b.id === state.settings.mainAccountId) - (a.id === state.settings.mainAccountId) || (b.balance || 0) - (a.balance || 0));
+  const savings = state.accounts.filter((a) => a.type === 'savings');
+  const cards = state.accounts.filter((a) => a.type === 'credit');
+  const missing = state.derived.coverage.missing.length;
+  const big = Math.max(cash, 0) + Math.max(saved, 0) + owed || 1;
+  const panel = tab === 'cards' ? (cards.length ? `<div class="cc-list">${cards.map(cardVisual).join('')}</div>${cardsTip(cards)}<a class="btn ghost full" href="#/cards">Payoff plan</a>` : '<p class="sub">No credit cards imported.</p>')
+    : tab === 'spending' ? spendingPanel()
+    : tab === 'one' ? onePlacePanel()
+    : tab === 'statements' ? (renderStatements() || '<p class="sub">Import a statement to see coverage.</p>')
+    : `<div class="acc-grid">${current.map(tile).join('')}</div>${savings.length ? `<div class="label acc-lab">Savings & ISAs · ${fmt(saved, { whole: true })}</div><div class="acc-grid">${savings.map(tile).join('')}</div>${savingsTip(savings)}` : ''}
+      ${(state.excludedAccounts || []).length ? `<div class="label acc-lab">Not counted</div><div class="row gap wrap">${state.excludedAccounts.map((a) => `<button class="chip" data-action="edit-account" data-id="${esc(a.id)}">⏸ ${esc(a.name)}</button>`).join('')}</div>` : ''}`;
   return `
-  <h1 class="page-title">Accounts</h1>
-  ${muddled.length ? `<div class="card banner bad"><b>${muddled.length} account${muddled.length > 1 ? 's look' : ' looks'} muddled</b><span class="sub">${muddled.map((a) => `${esc(a.name)} (bank: ${esc(a.bank)})`).join(', ')}. Usually left over from earlier wrong imports. The cleanest fix: start fresh and re-import (people, income and goals are kept; files already read are free).</span><button class="btn primary full" data-action="st-fresh">Start fresh &amp; re-import</button></div>` : ''}
-  ${state.accounts.some((x) => !x.typeLocked) ? `<a class="card setup-cta" href="#/setup"><div><b>Confirm account types &amp; balances</b><div class="sub">${state.accounts.filter((x) => !x.typeLocked).length} not confirmed yet: set debit, credit card or savings once and it stays locked</div></div><span class="banner-go">›</span></a>` : ''}
-  ${suspects.length ? `<a class="card banner" href="#/setup"><b>${suspects.length} account${suspects.length > 1 ? 's look' : ' looks'} like a credit card</b><span class="sub">${suspects.map((x) => esc(x.name)).join(', ')}: confirm so the app tracks what you owe.</span><span class="banner-go">Fix ›</span></a>` : ''}
-  ${dups.length ? `<div class="card banner"><b>${dups.length} duplicate transaction${dups.length > 1 ? 's' : ''} found</b>
-    <span class="sub">The same payment imported twice (from overlapping statements, or a PDF and CSV of the same month).</span>
-    <div class="row gap"><button class="btn ghost grow" data-action="dup-review">Review</button><button class="btn primary grow" data-action="dup-remove-all">Remove ${dups.length}</button></div></div>` : ''}
-  ${ghostAccounts().map((a) => `<div class="card banner bad"><b>Is "${esc(a.name)}" real?</b><span class="sub">${fmt(a.balance, { whole: true })} with only a few transactions. This often happens when an investment or pension statement (e.g. Quilter) is read as a savings account. If it isn't a real account, remove it: everything it's counted in will be corrected.</span>
-    <div class="row gap wrap"><button class="btn danger grow" data-action="acc-ghost-remove" data-id="${esc(a.id)}">Not real: remove</button><button class="btn ghost grow" data-action="acc-ghost-count" data-id="${esc(a.id)}">Real, but don't count it</button><button class="btn ghost grow" data-action="acc-ghost-keep" data-id="${esc(a.id)}">It's real</button></div></div>`).join('')}
-  ${positionCard()}
-  ${GROUPS.map(([type, title, icon]) => {
-    const list = state.accounts.filter((a) => (type === 'current' ? !['savings', 'credit', 'investment'].includes(a.type) : a.type === type));
-    if (!list.length) return '';
-    const total = list.reduce((x, a) => x + (a.balance || 0), 0);
-    return `<div class="card acc-group"><div class="acc-head"><span class="sec-ic ${type}">${icon}</span><h3>${title}</h3><b class="${type === 'credit' && total < 0 ? 'neg' : ''}">${type === 'credit' ? `${fmt(Math.max(0, -total), { whole: true })} owed` : fmt(total, { whole: true })}</b></div>
-      ${list.map((a) => accountRow(a)).join('')}
-      ${type === 'savings' ? savingsTip(list) : ''}${type === 'credit' ? cardsTip(list) : ''}</div>`;
-  }).join('')}
-  <div class="card">
-    ${(state.excludedAccounts || []).length ? `<h4 class="muted">Not counted</h4>${state.excludedAccounts.map((a) => `<button class="list-row tap muted" data-action="edit-account" data-id="${esc(a.id)}"><span class="bank-badge">⏸</span><div class="grow"><div>${esc(a.name)}</div><div class="sub">${esc([a.bank, TYPE_LABEL[a.type] || a.type].filter(Boolean).join(' · '))} · left out of all totals · tap to change</div></div><div class="bal"><b>${a.balance != null ? fmt(Math.abs(a.balance)) : '—'}</b></div></button>`).join('')}` : ''}
-    <div class="row gap"><button class="btn primary grow" data-action="import">Import</button><button class="btn ghost grow" data-action="go" data-to="transactions">Transactions</button><a class="btn ghost grow" href="#/cards">💳 Cards</a></div>
-    <a class="link small-link" href="#/setup">Edit types, balances or merge accounts ›</a>
-    <a class="link small-link" href="#/sync">🔗 Live bank sync ›</a>
+  <div class="acc-headrow"><h1 class="page-title">Accounts</h1><div class="row gap"><button class="icon-btn small" data-action="import" aria-label="Import statements">⬆</button><a class="icon-btn small" href="#/setup" aria-label="Fix accounts">✎</a></div></div>
+  <div class="card nw keep-open">
+    <span class="label">Overall, after cards</span>
+    <div class="nw-big ${net < 0 ? 'neg' : ''}">${fmt(net, { whole: true })}</div>
+    <div class="nw-bar" role="img" aria-label="Current accounts, savings and cards owed"><i class="c" style="flex:${Math.max(cash, 0)}"></i><i class="s" style="flex:${Math.max(saved, 0)}"></i><i class="o" style="flex:${owed}"></i></div>
+    <div class="nw-legend"><button data-action="acc-tab" data-tab="accounts"><i class="c"></i>Current<b>${fmt(cash, { whole: true })}</b></button><button data-action="acc-tab" data-tab="accounts"><i class="s"></i>Savings<b>${fmt(saved, { whole: true })}</b></button><button data-action="acc-tab" data-tab="cards"><i class="o"></i>Cards owed<b class="${owed ? 'neg' : ''}">${fmt(owed, { whole: true })}</b></button></div>
+    ${stale.length || missing ? `<button class="nw-stale" data-action="acc-tab" data-tab="statements">⚠ ${[stale.length && `${stale.length} balance${stale.length > 1 ? 's' : ''} out of date`, missing && `${missing} statement${missing > 1 ? 's' : ''} missing`].filter(Boolean).join(' · ')} ›</button>` : ''}
   </div>
-
-  ${renderStatements()}
-
-  <div class="card">
-    <h3>Regular payments (${outRec.length}) · ${fmt(outRec.reduce((a, r) => a + r.amount, 0), { whole: true })}/mo</h3>
-    ${outRec.map((r) => `<div class="list-row">${catChip(r.category)}<div class="grow">${esc(r.name)}<div class="sub">${esc(r.type)} · ${esc(accName(r.accountId))} · next ${prettyDate(r.nextDue)}${r.priceChange > 0 ? ` · <span class="neg">up ${fmt(r.priceChange)}</span>` : ''}</div></div><b>${fmt(r.amount)}</b></div>`).join('') || '<p class="muted">Payments that repeat monthly show up here once two months of statements are imported.</p>'}
-    ${outRec.length ? '<a class="btn ghost full" href="#/bills">Calendar &amp; cancel list</a>' : ''}
-  </div>
-
-  <a class="card setup-cta" href="#/movebills"><div><b>🔀 Move bills to one account</b><div class="sub">Step by step: each Direct Debit, standing order and card payment, where it comes from now and how to move it.</div></div><span class="banner-go">›</span></a>
-
-  <div class="card">
-    <h3>Live bank connection</h3>
-    <p class="muted">Not connected yet. UK banks share data through <b>Open Banking</b>. You approve read-only access in each bank's own app, and you never type your bank password into this app. That needs a regulated provider (TrueLayer, GoCardless or Yapily) and a small server to hold its secret key, so it isn't part of this on-device version. Until then, export each month's statement from your bank apps and import it here.</p>
-    <a class="btn ghost full" href="https://github.com/praisemaku7-sudo/practice/blob/main/docs/BANK_LINKING.md" target="_blank" rel="noopener">How live linking would work</a>
-  </div>`;
+  ${attention()}
+  <div class="sec-tabs acc-tabs" role="tablist">${TABS.map(([k, l]) => `<button role="tab" aria-selected="${tab === k}" class="sec-tab ${tab === k ? 'sel' : ''}" data-action="acc-tab" data-tab="${k}">${l}${k === 'statements' && missing ? ` <small class="dot-n">${missing}</small>` : k === 'cards' && cards.length ? ` <small class="muted">${cards.length}</small>` : ''}</button>`).join('')}</div>
+  <div class="card acc-panel keep-open">${panel}</div>
+  <div class="row gap acc-foot"><button class="btn ghost grow" data-action="go" data-to="transactions">Transactions</button><a class="btn ghost grow" href="#/sync">🔗 Live sync</a></div>`;
 }
 
 // First month expected for an account (its first row in the grid).
@@ -261,10 +316,12 @@ function ghostAccounts() {
     && ((counts[a.id] || 0) <= 10 || invest.some((v) => Math.abs(v - Math.abs(a.balance)) <= v * 0.03)));
 }
 
-const ui = { logAll: false };
+const ui = { logAll: false, tab: 'accounts', span: 1 };
 
 export const actions = {
   'acc-log-all': (_, rerender) => { ui.logAll = !ui.logAll; rerender(); },
+  'acc-tab': (el, rerender) => { ui.tab = el.dataset.tab; rerender(); },
+  'acc-span': (el, rerender) => { ui.span = +el.dataset.v; rerender(); },
   'card-open': (el) => { const a = (state.allAccounts || state.accounts).find((x) => x.id === el.dataset.id); if (a) cardSheet(a); },
   'acc-ghost-remove': async (el, rerender) => {
     const a = state.accounts.find((x) => x.id === el.dataset.id);

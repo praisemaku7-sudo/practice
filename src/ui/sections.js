@@ -1,10 +1,7 @@
-// Collapsible sections: any card that starts with a heading can be folded away by tapping the
-// heading. Your choice is remembered per section; very long sections start folded.
-const KEY = 'pl-sections';
-const LONG = 620;
-// Sections already shown open while the app is open: they never fold themselves later (e.g. when
-// results appear after you tap a button inside them). Only your own taps fold them.
-const shownOpen = new Set(); // px: taller than about one and a half screens of content starts folded
+// Sections as tabs: instead of one long page of folding cards, each page's sections become a row of
+// tabs under its summary, and one section shows at a time. The tab you last opened is remembered per
+// page. Cards marked keep-open (summaries, heroes) always show; pages with one section stay as they are.
+const KEY = 'pl-tabs';
 
 function load() {
   try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch { return {}; }
@@ -22,61 +19,74 @@ function headOf(card) {
   return null;
 }
 
-const idFor = (view, head) => `${view}|${head.querySelector('h3')?.textContent || head.textContent}`.replace(/\s+/g, ' ').replace(/\d[\d,.£%]*/g, '#').trim().slice(0, 80);
+const idFor = (view, title) => `${view}|${title}`.replace(/\s+/g, ' ').replace(/\d[\d,.£%]*/g, '#').trim().slice(0, 80);
+/** A short tab label: the heading's own words, without counts, pills or amounts. */
+function labelOf(head, max = 20) {
+  const h3 = head.tagName === 'H3' ? head : head.querySelector('h3');
+  const own = [...h3.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join(' ');
+  const text = (own.trim() || h3.textContent).replace(/^\d+\.\s*/, '').replace(/[·:–-]\s*$/, '').replace(/\s*[·(].*$/, '').replace(/£[\d,.]+.*$/, '').replace(/\s+/g, ' ').trim();
+  if (text.length <= max) return text;
+  // Cut at a word, not mid-word.
+  const cut = text.slice(0, max + 1).replace(/\s+\S*$/, '').replace(/[,:;–-]$/, '');
+  return cut || text.slice(0, max);
+}
+
+// Short tab names, and related sections that share one tab (shown together).
+const TAB_NAMES = {
+  bills: { 'What changed': 'To do', 'What to do': 'To do', 'New regular payments?': 'To do', 'Balance forecast': 'Forecast', 'Subscription audit': 'Subscriptions', 'Paying twice for the same thing?': 'Subscriptions', Subscriptions: 'Subscriptions', Bills: 'All payments', 'Other regular payments': 'All payments', Income: 'All payments', Hidden: 'All payments', 'What each account needs': 'Accounts', 'Who pays what into the joint account': 'Accounts', 'Yearly bills pot': 'Yearly', 'Regular payments over the year': 'Trends' },
+  track: { 'What moves the number most': 'Levers', 'Living on one income': 'One income', 'Stress test': 'Stress test', 'Can our income carry our commitments?': 'Commitments', 'How much rent or mortgage can we carry?': 'Housing', 'Budgets this month': 'Budgets', 'Back-on-track plan': 'Plan', 'Credit health': 'Credit', 'Monthly routine': 'Routine' },
+  budget: { 'Your month on paper': 'Month', 'Payday plan': 'Payday', 'Bills & commitments': 'Bills', 'Fun money': 'Fun', 'Emergency fund': 'Safety net', 'Yearly bills pot': 'Yearly' },
+  audit: { 'Your name on transfers': 'Your name', 'Biggest money in, counted as income': 'Money in', 'Biggest spending': 'Spending', 'Treated as transfers': 'Transfers' },
+  categories: { 'Check categories with Claude': 'Claude check' },
+  insights: { 'Free help and support': 'Free help' },
+  plan: { 'Buying and your deposit': 'Buying', 'Mortgage readiness': 'Readiness', 'Your mortgage': 'Mortgage' },
+  cards: { 'New spending on cards': 'New spending' },
+  settings: { 'Auto-log Apple Pay': 'Apple Pay' },
+  home: { 'What changed vs last month': 'Changes', 'Where it went': 'Categories', 'Top merchants': 'Merchants', 'Balance to payday': 'To payday' },
+};
+// Step-by-step pages read top to bottom, so they keep their layout.
+const NO_TABS = new Set(['movebills', 'setup', 'import', 'add', 'sync', 'checkin']);
 
 /** Run after every render. */
 export function enhanceSections(main, view) {
-  const state = load();
-  const cards = [...main.querySelectorAll(':scope > .card')];
-  cards.forEach((card, i) => {
-    const head = headOf(card);
-    if (!head || card.children.length < 2) return;
-    // A heading that also holds a link or a form control isn't made tappable (it would swallow those taps).
-    if (head.querySelector('input, select, textarea, label, a[href]:not([data-action])')) return;
-    const id = idFor(view, head);
-    card.classList.add('collapsible');
-    head.classList.add('card-head');
-    head.dataset.action = 'sec-toggle';
-    head.dataset.sec = id;
-    head.setAttribute('role', 'button');
-    head.tabIndex = 0;
-    // Remembered choice, else fold sections that are very long (never the first one on the page).
-    const folded = id in state ? state[id] : !card.classList.contains('keep-open') && !shownOpen.has(id) && i > 0 && card.offsetHeight > LONG
-      // Sections you type into (API key, amounts, names) never fold themselves.
-      && !card.querySelector('input:not([type=checkbox]):not([type=radio]):not([type=file]), textarea');
-    if (!folded) shownOpen.add(id);
-    card.classList.toggle('collapsed', folded);
-    head.setAttribute('aria-expanded', String(!folded));
-  });
-  // Expand all / Collapse all, on any page with two or more foldable sections.
-  if (main.querySelectorAll(':scope > .card.collapsible').length >= 2) {
-    const bar = document.createElement('div');
-    bar.className = 'sec-all';
-    bar.innerHTML = '<span>Sections</span><button data-action="sec-all" data-open="1">Expand all</button><button data-action="sec-all" data-open="0">Collapse all</button>';
-    main.querySelector(':scope > .card.collapsible').before(bar);
+  if (NO_TABS.has(view)) return;
+  const cards = [...main.querySelectorAll(':scope > .card')].filter((c) => !c.classList.contains('keep-open') && headOf(c) && c.children.length >= 2);
+  const names = TAB_NAMES[view] || {};
+  const tabs = [];
+  for (const card of cards) {
+    const full = labelOf(headOf(card), 80);
+    const key = Object.keys(names).find((k) => full === k || full.startsWith(k)) ;
+    const label = card.dataset.tab || (key ? names[key] : labelOf(headOf(card)));
+    let t = tabs.find((x) => x.label === label);
+    if (!t) { t = { label, id: idFor(view, label), cards: [] }; tabs.push(t); }
+    t.cards.push(card);
   }
+  if (tabs.length < 2) return;
+  const saved = load()[view];
+  const cur = tabs.find((t) => t.id === saved) || tabs[0];
+  tabs.forEach((t, i) => t.cards.forEach((card) => { card.classList.add('tab-panel'); card.dataset.tp = String(i); card.setAttribute('role', 'tabpanel'); card.hidden = t !== cur; }));
+  const bar = document.createElement('div');
+  bar.className = 'sec-tabs';
+  bar.setAttribute('role', 'tablist');
+  bar.setAttribute('aria-label', 'Sections');
+  bar.innerHTML = tabs.map((t, i) => `<button role="tab" class="sec-tab ${t === cur ? 'sel' : ''}" aria-selected="${t === cur}" data-tp="${i}" data-action="sec-tab" data-view="${view}" data-tab="${t.id.replace(/"/g, '&quot;')}">${t.label.replace(/</g, '&lt;')}${t.cards.length > 1 ? ` <small>${t.cards.length}</small>` : ''}</button>`).join('');
+  cards[0].before(bar);
+  requestAnimationFrame(() => bar.querySelector('.sel')?.scrollIntoView({ inline: 'center', block: 'nearest' }));
 }
 
 export const sectionActions = {
-  'sec-all': (el) => {
-    const open = el.dataset.open === '1';
+  'sec-tab': (el) => {
+    const bar = el.closest('.sec-tabs');
     const map = load();
-    document.querySelectorAll('#main > .card.collapsible').forEach((card) => {
-      card.classList.toggle('collapsed', !open);
-      const head = card.querySelector('.card-head');
-      if (head) { head.setAttribute('aria-expanded', String(open)); map[head.dataset.sec] = !open; if (open) shownOpen.add(head.dataset.sec); }
-    });
+    map[el.dataset.view] = el.dataset.tab;
     save(map);
+    bar.querySelectorAll('.sec-tab').forEach((b) => { const on = b === el; b.classList.toggle('sel', on); b.setAttribute('aria-selected', String(on)); });
+    document.querySelectorAll('#main > .tab-panel').forEach((p) => { p.hidden = p.dataset.tp !== el.dataset.tp; });
+    el.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+    // Bring the section into view if the page was scrolled past the tabs.
+    if (bar.getBoundingClientRect().top < 0) bar.scrollIntoView({ block: 'start', behavior: 'smooth' });
   },
-  'sec-toggle': (el) => {
-    const card = el.closest('.card');
-    if (!card) return;
-    const folded = !card.classList.contains('collapsed');
-    card.classList.toggle('collapsed', folded);
-    el.setAttribute('aria-expanded', String(!folded));
-    const map = load();
-    map[el.dataset.sec] = folded;
-    save(map);
-    if (!folded) card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  },
+  // Kept so older links and tests that used folding still do nothing harmful.
+  'sec-all': () => {},
+  'sec-toggle': () => {},
 };
