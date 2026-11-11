@@ -4,93 +4,40 @@ import { fmt } from '../../lib/money.js';
 import { compareMonths, spendCategoriesOf, summarizeMonth } from '../../lib/analysis.js';
 import { budgetProgress } from '../../lib/budget.js';
 import { catName, catKind } from '../../lib/categories.js';
-import { monthKey, addMonths, addDays, monthLabel, prettyDate, nextDayOfMonth, daysInMonth as daysInMonthOf } from '../../lib/dates.js';
-import { donut, trendBars, progressBar, paceChart } from '../charts.js';
-import { monthSwitcher, catChip, delta, emptyState } from '../common.js';
-import { goalPlan } from '../../lib/goals.js';
-import { dashboard } from '../dashboard.js';
+import { monthKey, monthLabel, prettyDate } from '../../lib/dates.js';
+import { monthSwitcher, emptyState } from '../common.js';
 import { cockpit } from '../cockpit.js';
 import { buildAlerts } from '../alerts.js';
 import { safeToSpend } from '../overview-extras.js';
-import { balanceForecast, paidThisMonth } from '../../lib/cashflow.js';
-import { monthOutlook, budgetAlerts } from '../../lib/forecast.js';
 
-/** Balance from today to just after payday, with each bill and pay as a tappable dot. */
-function cashflowCard() {
-  const d = state.derived;
-  const cur = state.accounts.filter((a) => a.type === 'current' && a.balance != null);
-  if (!cur.length) return '';
-  const flags = state.settings.billFlags || {}, hidden = state.settings.billHidden || {};
-  const live = d.recurring.filter((r) => (r.category !== 'transfer' || r.cardRepay) && !hidden[r.key] && flags[r.key] !== 'cancelled');
-  const start = d.balance ?? cur.reduce((a, x) => a + x.balance, 0);
-  const until = d.payday ? nextDayOfMonth(addDays(d.today, 1), d.payday) : `${monthKey(d.today)}-${String(daysInMonthOf(monthKey(d.today))).padStart(2, '0')}`;
-  const fc = balanceForecast({ start, today: d.today, until, recurring: live, paidKeys: paidThisMonth(live, state.txs, monthKey(d.today), state.settings.billPaid) });
-  if (fc.rows.length < 2) return '';
-  const W = 320, H = 80, vals = fc.rows.map((r) => r.balance), lo = Math.min(0, ...vals), hi = Math.max(0, ...vals), span = hi - lo || 1;
-  const x = (i) => 6 + (i / (fc.rows.length - 1)) * (W - 12), y = (v) => H - 6 - ((v - lo) / span) * (H - 14);
-  const path = fc.rows.map((r, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(r.balance).toFixed(1)}`).join(' ');
-  const events = fc.rows.filter((r) => r.inflow || r.outflow);
-  return `<div class="card cf-card"><div class="row between"><h3>Balance to payday</h3><a class="chip" href="#/bills">Calendar ›</a></div>
-    <div class="cf-stats"><span>Now <b>${fmt(start, { whole: true })}</b></span><span>Lowest <b class="${fc.low.balance < 0 ? 'neg' : ''}">${fmt(fc.low.balance, { whole: true })}</b> <small>${prettyDate(fc.low.date)}</small></span><span>After pay <b>${fmt(fc.end, { whole: true })}</b></span></div>
-    <svg class="fc-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Balance forecast to payday"><line x1="0" x2="${W}" y1="${y(0)}" y2="${y(0)}" class="fc-zero"/><path d="${path}" class="fc-line"/>
-      ${fc.rows.map((r, i) => (r.inflow || r.outflow ? `<circle cx="${x(i)}" cy="${y(r.balance)}" r="4.5" class="${r.balance < 0 ? 'fc-neg' : r.inflow ? 'fc-in' : 'fc-out'}" data-action="cf-day" data-date="${r.date}" role="button" aria-label="${prettyDate(r.date)}"/>` : '')).join('')}</svg>
-    <div class="cf-events">${events.slice(0, 6).map((r) => `<button class="cf-ev ${r.balance < 0 ? 'neg' : ''}" data-action="cf-day" data-date="${r.date}"><b>${prettyDate(r.date)}</b><span class="ellipsis">${esc(r.items.map((i) => i.name).join(', '))}</span><span class="${r.inflow ? 'pos' : ''}">${r.inflow ? '+' + fmt(r.inflow, { whole: true }) : '−' + fmt(r.outflow, { whole: true })}</span></button>`).join('')}</div>
-    <p class="sub">Bills and pay still to come${d.balance == null ? ', from your last imported balance' : ''}. Card spending isn't included.</p></div>`;
-}
 
 export function render() {
   const { derived, month } = state;
   if (!state.txs.length) {
     return emptyState({ title: 'Start with a statement', body: 'Import the PDF or CSV statements from each bank app. Everything stays on this phone.' });
   }
-  const { budget, months, today } = derived;
+  const { months, today } = derived;
   const cmp = compareMonths(state.txs, month);
   const s = cmp.cur;
   const isCurrent = month === monthKey(today);
-  const prog = budgetProgress(state.txs, budget, month);
   const cats = spendCategoriesOf(s);
-  const totalBudget = budget.lines.reduce((a, l) => a + l.budget, 0);
-
-
-
-  // Daily spend this month vs last month, for the pace line.
-  const dailySpend = (key) => {
-    const arr = new Array(daysInMonthOf(key)).fill(0);
-    for (const t of state.txs) {
-      if (monthKey(t.date) !== key || ['income', 'transfer', 'savings'].includes(catKind(t.category))) continue;
-      arr[+t.date.slice(8) - 1] -= t.amount;
-    }
-    return arr;
-  };
-  const curDaily = dailySpend(month), prevDaily = dailySpend(addMonths(month, -1));
-  const daysSoFar = isCurrent ? +today.slice(8) : curDaily.length;
-  const prevSameDay = prevDaily.slice(0, daysSoFar).reduce((a, v) => a + Math.max(0, v), 0);
-  const paceDelta = s.spend - prevSameDay;
-
-  const trendData = months.slice(-6).map((m) => {
-    const x = summarizeMonth(state.txs, m);
-    return { key: m, label: monthLabel(m, { short: true }).split(' ')[0], income: x.income, spend: x.spend, active: m === month };
-  });
-
-  const movers = cmp.hasPrev ? cmp.rows.filter((r) => Math.abs(r.delta) >= 1000 && !['income', 'transfer', 'savings'].includes(r.category)).slice(0, 4) : [];
-
   const urgent = buildAlerts().filter((x) => x.tone === 'bad').slice(0, 1);
   const safe = isCurrent ? safeToSpend() : null;
   const sumAcc = (f) => state.accounts.filter(f).reduce((x, a) => x + (a.balance || 0), 0);
   const net = sumAcc((a) => a.type !== 'credit' && a.type !== 'investment') + sumAcc((a) => a.type === 'credit');
   const gs = (state.settings.goals || []).filter((g) => !g.owner || g.owner === 'all' || state.settings.scope === 'all' || g.owner === state.settings.scope);
-  const go = (href, ic, title, sub) => `<a class="go-row" href="${href}"><span class="go-ic" aria-hidden="true">${ic}</span><span class="go-txt"><b>${title}</b><small>${sub}</small></span><span class="go-chev" aria-hidden="true">›</span></a>`;
+  const go = (href, ic, title, sub) => `<a class="go-row" href="${href}"><span class="go-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ic}</svg></span><span class="go-txt"><b>${title}</b><small>${sub}</small></span><span class="go-chev" aria-hidden="true">›</span></a>`;
   return `
   ${monthSwitcher(month, months)}
   ${urgent.map((x) => `<button class="urgent" data-action="alert-open" data-id="${x.id}"><b>${esc(x.title)}</b><span>${esc(String(x.detail || '').split('. ')[0].slice(0, 90))} ›</span></button>`).join('')}
   ${cockpit()}
   <nav class="go-list" aria-label="Go to">
-    ${go('#/spending', '🛍️', 'Spending', `${fmt(s.spend, { whole: true })} in ${esc(monthLabel(month, { short: true }))}${cats[0] ? ` · most on ${esc(cats[0].name.toLowerCase())}` : ''}`)}
-    ${go('#/bills', '📅', 'Bills', safe ? `${fmt(safe.bills, { whole: true })} still to pay before payday` : 'Calendar, subscriptions and cancel list')}
-    ${go('#/track', '🏡', 'The move', 'Can we afford the mortgage?')}
-    ${go('#/accounts', '🏦', 'Accounts', `${fmt(net, { whole: true })} overall, after cards`)}
-    ${gs.length ? go('#/goals', '🐷', 'Goals', `${gs.length} goal${gs.length > 1 ? 's' : ''}`) : ''}
-    ${go('#/numbers', '📊', 'Your numbers', 'Every figure, month by month')}
+    ${go('#/spending', '<path d="M6 7h12l-1 13H7L6 7z"/><path d="M9 7a3 3 0 0 1 6 0"/>', 'Spending', `${fmt(s.spend, { whole: true })} in ${esc(monthLabel(month, { short: true }))}${cats[0] ? ` · most on ${esc(cats[0].name.toLowerCase())}` : ''}`)}
+    ${go('#/bills', '<rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/>', 'Bills', safe ? `${fmt(safe.bills, { whole: true })} still to pay before payday` : 'Calendar, subscriptions and cancel list')}
+    ${go('#/track', '<path d="M3 11 12 4l9 7"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5h4v5"/>', 'The move', 'Can we afford the mortgage?')}
+    ${go('#/accounts', '<path d="M3 10 12 4l9 6"/><path d="M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20h18"/>', 'Accounts', `${fmt(net, { whole: true })} overall, after cards`)}
+    ${gs.length ? go('#/goals', '<path d="M5 12a7 6 0 0 1 13-3l2-1v4l-1 .5A7 6 0 0 1 12 18H9l-1 2H6l.5-2.6A6 6 0 0 1 5 12z"/><circle cx="15" cy="11" r=".6"/>', 'Goals', `${gs.length} goal${gs.length > 1 ? 's' : ''}`) : ''}
+    ${go('#/numbers', '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>', 'Your numbers', 'Every figure, month by month')}
   </nav>`;
 }
 

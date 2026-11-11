@@ -1,6 +1,6 @@
 import { paydaySplitCard, runwayCard } from '../afford-extras.js';
 import { yearlyPotCard } from '../bills-extras.js';
-import { state, saveSettings, activeTempIncome, personIncome, personName, estimatedIncome } from '../../state.js';
+import { state, saveSettings, activeTempIncome, personIncome, estimatedIncome } from '../../state.js';
 import { esc, openSheet, closeSheet, toast } from '../dom.js';
 import { fmt, parsePrice } from '../../lib/money.js';
 import { budgetProgress } from '../../lib/budget.js';
@@ -8,6 +8,7 @@ import { catName, CAT } from '../../lib/categories.js';
 import { monthKey, monthLabel } from '../../lib/dates.js';
 import { progressBar } from '../charts.js';
 import { catChip, emptyState } from '../common.js';
+import { ord } from '../../lib/util.js';
 
 /** Per-person income: usual (payslip / SA302 / typed) and temporary (maternity etc.). */
 function incomeBreakdown() {
@@ -41,7 +42,6 @@ export function render() {
   const pct = (v) => (inc ? Math.round((v / inc) * 100) : 0);
   const flags = state.settings.billFlags || {}, hidden = state.settings.billHidden || {};
   const sources = (cat) => recurring.filter((r) => r.active && r.direction === 'out' && r.category === cat && !hidden[r.key] && flags[r.key] !== 'cancelled');
-  const ord = (d) => `${d}${d % 10 === 1 && d !== 11 ? 'st' : d % 10 === 2 && d !== 12 ? 'nd' : d % 10 === 3 && d !== 13 ? 'rd' : 'th'}`;
   const step = (label, v, cls, sign = '−') => `<div class="wf-row"><span class="grow">${label}</span><span class="wf-bar"><i class="${cls}" style="width:${Math.min(100, Math.max(0, pct(v)))}%"></i></span><b>${sign}${fmt(v, { whole: true })}</b><small>${pct(v)}%</small></div>`;
   const groups = ['fixed', 'essential', 'personal'].map((kind) => {
     const rows = prog.rows.filter((r) => r.kind === kind && (r.budget > 0 || r.spent > 0)).sort((a, b) => b.budget - a.budget);

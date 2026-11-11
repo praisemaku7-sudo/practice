@@ -4,7 +4,7 @@
 import { state } from '../state.js';
 import { esc, openSheet, closeSheet } from './dom.js';
 import { fmt } from '../lib/money.js';
-import { monthKey, monthLabel, prettyDate, addDays, nextDayOfMonth, daysBetween } from '../lib/dates.js';
+import { monthKey, monthLabel, addDays, nextDayOfMonth, daysBetween } from '../lib/dates.js';
 import { monthOutlook } from '../lib/forecast.js';
 import { summarizeMonth } from '../lib/analysis.js';
 import { balanceForecast, paidThisMonth } from '../lib/cashflow.js';
@@ -23,7 +23,7 @@ function base() {
   let low = null;
   const cur = state.accounts.filter((a) => a.type === 'current' && a.balance != null);
   if (cur.length && d.payday) {
-    const live = d.recurring.filter((r) => (r.category !== 'transfer' || r.cardRepay) && r.direction === 'out');
+    const live = d.billsOut;
     const start = d.balance ?? cur.reduce((a, x) => a + x.balance, 0);
     const fc = balanceForecast({ start, today: d.today, until: addDays(nextDayOfMonth(addDays(d.today, 1), d.payday), -1), recurring: live, paidKeys: paidThisMonth(live, state.txs, monthKey(d.today), state.settings.billPaid) });
     low = fc.low;

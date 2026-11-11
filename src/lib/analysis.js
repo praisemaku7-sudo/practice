@@ -2,6 +2,7 @@ import { CAT, catKind, isSpendCategory } from './categories.js';
 import { merchantKey } from './categorize.js';
 import { isSummaryLine } from './parse/junk.js';
 import { monthKey, addMonths, daysBetween, addDays, todayISO, nextDayOfMonth } from './dates.js';
+import { median } from './util.js';
 
 const OWN_TRANSFER = /\b(TOP[- ]?UP|TOPUP|TOPPED UP|TRANSFER|TFR|INTERNAL|OWN ACCOUNT|TO POT|FROM POT|POT TRANSFER|ROUND[- ]?UPS?|SPARE CHANGE|SAVINGS POT|VAULT|SAVER|MOVED (TO|FROM)|SENT FROM|DEPOSIT FROM|WITHDRAWAL TO|INSTANT ACCESS|EASY ACCESS)\b/;
 const BANKS = ['MONZO', 'STARLING', 'REVOLUT', 'CHASE', 'NATIONWIDE', 'HSBC', 'FIRST DIRECT', 'BARCLAYS', 'LLOYDS', 'HALIFAX', 'NATWEST', 'SANTANDER', 'TSB', 'KROO', 'CHIP', 'PLUM', 'MONEYBOX', 'MARCUS', 'ZOPA', 'WISE', 'VIRGIN MONEY', 'METRO BANK', 'CO-OPERATIVE', 'TIDE', 'AMEX', 'AMERICAN EXPRESS', 'BARCLAYCARD', 'CAPITAL ONE'];
@@ -182,10 +183,6 @@ export function compareMonths(txs, key) {
   return { cur, prev, hasPrev: prev.count > 0, trailingMonths: trailing.length, rows, newMerchants };
 }
 
-const median = (arr) => {
-  const s = [...arr].sort((a, b) => a - b);
-  return s.length ? s[Math.floor(s.length / 2)] : 0;
-};
 
 /**
  * Detect recurring payments (direct debits, standing orders, subscriptions) and recurring income.

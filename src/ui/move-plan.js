@@ -5,7 +5,6 @@ import { state, saveSettings } from '../state.js';
 import { esc, toast } from './dom.js';
 import { fmt } from '../lib/money.js';
 import { catKind, isSpendCategory } from '../lib/categories.js';
-import { householdFor } from '../lib/income.js';
 import { monthKey, monthLabel, prettyDate, addDays, addMonths, daysBetween } from '../lib/dates.js';
 import { schedule } from '../lib/mortgage.js';
 import { live, income, personIncome } from './afford-extras.js';
@@ -24,10 +23,9 @@ export function scenarioBar() {
   const e = earners();
   const opts = [['all', 'Both incomes'], ...people.map((p) => [p.id, `${first(p.name)} only`])];
   const cur = !e ? 'all' : e.length === 1 ? e[0] : 'all';
-  const h = householdFor(state.settings, monthKey(state.derived.today));
-  const both = h.total || people.reduce((a, p) => a + personIncome(p.id, h), 0) || state.derived.budget.income || 0;
+  const both = state.derived.income.total || 0;
   return `<div class="card scen keep-open"><div class="label">Plan on</div><div class="seg ${opts.length === 3 ? 'three' : 'scroll'}" role="radiogroup" aria-label="Whose income to plan on">${opts.map(([v, l]) => `<button role="radio" aria-checked="${cur === v}" class="${cur === v ? 'sel' : ''}" data-action="earners-set" data-v="${esc(v)}">${l}</button>`).join('')}</div>
-    <div class="sub">${cur === 'all' ? `Both take-home incomes: ${fmt(both, { whole: true })} a month.` : `${income() ? `Only ${first(people.find((p) => p.id === cur)?.name)}'s income: <b>${fmt(income(), { whole: true })}</b> a month (both: ${fmt(both, { whole: true })}). Used across On track and Future planning.` : `<span class="warn-text">No income found for ${first(people.find((p) => p.id === cur)?.name)}.</span> Add their pay in <a href="#/income">Income</a>, or mark which accounts are theirs in <a href="#/accounts">Accounts</a>.`}`}</div></div>`;
+    <div class="sub">${cur === 'all' ? 'Both incomes, as on the Income page.' : `${income() ? `Only ${first(people.find((p) => p.id === cur)?.name)}'s income: <b>${fmt(income(), { whole: true })}</b> a month (both: ${fmt(both, { whole: true })}). Used across On track and Future planning.` : `<span class="warn-text">No income found for ${first(people.find((p) => p.id === cur)?.name)}.</span> Add their pay in <a href="#/income">Income</a>, or mark which accounts are theirs in <a href="#/accounts">Accounts</a>.`}`}</div></div>`;
 }
 
 /** Mortgage figures: from the illustration when there is one, else the plan. */

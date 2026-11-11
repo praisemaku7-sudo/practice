@@ -5,7 +5,7 @@ import { db } from '../../lib/db.js';
 import { esc, toast } from '../dom.js';
 import { fmt } from '../../lib/money.js';
 import { catKind, catName } from '../../lib/categories.js';
-import { monthKey, monthLabel, prettyDate, daysBetween } from '../../lib/dates.js';
+import { monthKey, prettyDate, daysBetween } from '../../lib/dates.js';
 import { similarity } from '../../lib/duplicates.js';
 import { monthSwitcher, catChip, checksBox } from '../common.js';
 

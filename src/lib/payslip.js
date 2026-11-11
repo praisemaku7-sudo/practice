@@ -2,7 +2,6 @@
 import { findNamedDates } from './dates.js';
 import { amountFor } from './parse/amounts.js';
 
-const MONEY = /£?\s*(\d{1,3}(?:,\d{3})*\.\d{2}|\d+\.\d{2})/;
 const take = (re, text) => {
   const m = String(text).match(re);
   return m ? Math.round(parseFloat(m[1].replace(/,/g, '')) * 100) : null;

@@ -11,43 +11,8 @@ import { helpFor } from '../../lib/directory.js';
 const SHORT_TYPE = { current: 'Current', savings: 'Savings', credit: 'Card', investment: 'Investment' };
 const TYPE_LABEL = { current: 'Current / debit', savings: 'Savings', credit: 'Credit card', investment: 'Investment / pension (not counted)' };
 
-const ACC_ICONS = {
-  current: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10 12 4l9 6M5 10v8M10 10v8M14 10v8M19 10v8M3 20h18"/></svg>',
-  savings: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 5.6-7 10-7 10z"/></svg>',
-  credit: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5.5" width="18" height="13" rx="2.5"/><path d="M3 10h18M7 15h3"/></svg>',
-  investment: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 17 6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg>',
-};
-const GROUPS = [['current', 'Current accounts', ACC_ICONS.current], ['savings', 'Savings & ISAs', ACC_ICONS.savings], ['credit', 'Credit cards', ACC_ICONS.credit], ['investment', 'Investments', ACC_ICONS.investment]];
 
-function accountRow(a) {
-  const mainId = state.settings.mainAccountId;
-  const counts = state.txs.filter((t) => t.accountId === a.id).length;
-  const old = a.balanceDate ? Math.round((Date.parse(state.derived.today) - Date.parse(a.balanceDate)) / 86400000) : null;
-  const limit = a.limit ?? a.details?.limit ?? null;
-  const lim = a.type === 'credit' && limit && a.balance != null ? Math.max(0, -a.balance) / limit : null;
-  return `<button class="list-row tap acc-row" data-action="${a.type === 'credit' ? 'card-open' : 'edit-account'}" data-id="${esc(a.id)}">
-    <span class="bank-badge" style="${state.settings.people.length > 1 ? `box-shadow: inset 0 -3px 0 ${state.settings.people.find((p) => p.id === ownerOf(a))?.color || 'var(--muted)'}` : ''}">${esc((a.bank || a.name).slice(0, 2).toUpperCase())}</span>
-    <div class="grow"><div class="acc-name">${esc(a.name)} ${a.id === mainId ? '<small class="pill">main</small>' : ''}</div>
-    <div class="sub one-line">${state.settings.people.length > 1 ? `<b>${esc(personName(ownerOf(a)).split(' ')[0])}</b> · ` : ''}${a.typeLocked ? '🔒 ' : ''}${esc(a.bank || '')}${a.apr != null ? ` · ${(a.apr * 100).toFixed(1)}% APR` : ''} · ${counts} tx</div>
-    ${lim != null ? `<div class="cat-bar ${lim > 1 ? 'over' : lim > 0.75 ? 'warn' : ''}"><span style="width:${Math.min(100, lim * 100).toFixed(1)}%"></span></div><div class="sub">${Math.round(lim * 100)}% of ${fmt(limit, { whole: true })} limit</div>` : ''}
-    ${!a.typeLocked && a.type !== 'credit' && /\bCARD\b/i.test(a.name) && !/DEBIT/i.test(a.name) ? '<div class="sub warn-text">Called a card but set as a current account: tap to check the type</div>' : ''}</div>
-    <div class="bal"><b class="${a.type === 'credit' && a.balance < 0 ? 'neg' : a.balance < 0 ? 'neg' : ''}">${a.balance != null ? (a.type === 'credit' ? `${fmt(Math.max(0, -a.balance))}` : fmt(a.balance)) : a.balanceUnverified ? `<span class="muted">${fmt(Math.abs(a.balanceUnverified.amount))}?</span>` : '—'}</b>${a.type === 'credit' && a.balance != null ? '<small class="sub">owed</small>' : ''}${a.balanceDate ? `<small class="sub ${old > 31 ? 'warn-text' : ''}">${a.balanceDate === state.derived.today ? 'today' : `${old > 31 ? '⚠ ' : ''}on ${prettyDate(a.balanceDate)}`}</small>` : ''}</div></button>`;
-}
 
-/** Cash, savings, cards owed and what that adds up to. */
-function positionCard() {
-  const sum = (f) => state.accounts.filter(f).reduce((x, a) => x + (a.balance || 0), 0);
-  const cash = sum((a) => !['savings', 'credit', 'investment'].includes(a.type));
-  const saved = sum((a) => a.type === 'savings');
-  const owed = Math.max(0, -sum((a) => a.type === 'credit'));
-  const stale = state.accounts.filter((a) => a.balanceDate && (Date.parse(state.derived.today) - Date.parse(a.balanceDate)) / 86400000 > 31).length;
-  return `<div class="card pos-card"><div class="pos-grid">
-    <div><span class="label">Current accounts</span><b>${fmt(cash, { whole: true })}</b></div>
-    <div><span class="label">Savings</span><b class="pos">${fmt(saved, { whole: true })}</b></div>
-    <div><span class="label">Cards owed</span><b class="${owed ? 'neg' : ''}">${fmt(owed, { whole: true })}</b></div>
-    <div><span class="label">Overall</span><b class="${cash + saved - owed < 0 ? 'neg' : 'pos'}">${fmt(cash + saved - owed, { whole: true })}</b></div></div>
-    <p class="sub">From each account's latest imported statement${stale ? `. <span class="warn-text">${stale} balance${stale > 1 ? 's are' : ' is'} over a month old</span>: import newer statements for a true picture` : ''}. Investments aren't included.</p></div>`;
-}
 
 /** What your savings actually earn, from the interest they've received. */
 function savingsTip(list) {
@@ -125,7 +90,7 @@ const addMonthsKey = (key, n) => { const [y, m] = key.split('-').map(Number); co
 /** Getting everything into one place: bills per account, and accounts you could close. */
 function onePlacePanel() {
   const accs = state.accounts;
-  const out = state.derived.recurring.filter((r) => r.active && r.direction === 'out' && (r.category !== 'transfer' || r.cardRepay));
+  const out = state.derived.billsOut;
   const by = {};
   for (const r of out) (by[r.accountId || ''] ||= []).push(r);
   // Your chosen main account, else the current account that already pays the most.

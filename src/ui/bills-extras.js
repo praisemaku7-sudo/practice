@@ -7,6 +7,7 @@ import { fmt, parsePrice } from '../lib/money.js';
 import { catName } from '../lib/categories.js';
 import { monthKey, monthLabel, prettyDate, addDays, addMonths, nextDayOfMonth } from '../lib/dates.js';
 import { live, income } from './afford-extras.js';
+import { sum } from '../lib/util.js';
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const allTx = () => state.allTxs || state.txs;
@@ -15,7 +16,6 @@ const outRegular = () => {
   return state.derived.recurring.filter((r) => r.direction === 'out' && (r.category !== 'transfer' || r.cardRepay) && !hidden[r.key]);
 };
 const firstSeen = (r, byId) => (r.txIds || []).map((id) => byId.get(id)?.date).filter(Boolean).sort()[0] || r.lastDate;
-const sum = (l, f = (r) => r.amount) => l.reduce((a, r) => a + f(r), 0);
 
 // ---------- 1. Yearly bills pot ----------
 const YEARLY_HINT = /\b(TV ?LICEN[CS]E|DVLA|VEHICLE TAX|MOT\b|INSURANCE|INSURE|ADMIRAL|AVIVA|DIRECT LINE|LV=|CHURCHILL|HASTINGS|AA\b|RAC\b|GREEN FLAG|BREAKDOWN|ANNUAL|YEARLY|PRIME|COSTCO|NATIONAL TRUST|ENGLISH HERITAGE|DOMAIN|RAILCARD)\b/i;
@@ -64,8 +64,7 @@ export function changesCard() {
   const flags = state.settings.billFlags || {};
   const all = outRegular();
   // New only if that account's statements go back further: otherwise it's just where your records start.
-  const accStart = {};
-  for (const t of allTx()) if (!accStart[t.accountId] || t.date < accStart[t.accountId]) accStart[t.accountId] = t.date;
+  const accStart = state.derived.accountStart;
   const fresh = all.filter((r) => r.active && !r.manual && r.months <= 2 && firstSeen(r, byId) >= addDays(today, -62) && firstSeen(r, byId) > addDays(accStart[r.accountId] || today, 35));
   const stopped = all.filter((r) => !r.active && !r.manual && r.lastDate >= addDays(today, -120));
   const changed = all.filter((r) => r.active && r.priceChange);

@@ -72,6 +72,7 @@ export function render() {
 
   const others = s.otherIncome || [];
   return `<h1 class="page-title">Income</h1>
+  ${s.income != null ? `<div class="urgent soft"><b>Your budget uses ${fmt(s.income, { whole: true })} a month that you typed in Budget</b><span>Not the ${fmt(now.total, { whole: true })} worked out below. Every page uses the typed figure until you clear it.</span><button class="chip sel" data-action="inc-use-calc">Use ${fmt(now.total, { whole: true })} instead</button></div>` : ""}
   <div class="card hero">
     <div class="label">Household take-home · ${esc(monthLabel(month))}</div>
     <div class="big">${fmt(now.total, { whole: true })}<small>/month</small></div>
@@ -182,6 +183,7 @@ function otherSheet(index, preset, rerender) {
 }
 
 export const actions = {
+  'inc-use-calc': async (_, rerender) => { await saveSettings({ income: null }); toast('Using your payslips and statements'); rerender(); },
   'inc-usual': (el, rerender) => personSheet(el.dataset.id, rerender),
   'inc-temp': (el, rerender) => tempSheet(el.dataset.id, rerender),
   'inc-other': (el, rerender) => otherSheet(el.dataset.i != null ? +el.dataset.i : null, el.dataset.preset != null ? PRESETS[+el.dataset.preset] : null, rerender),
