@@ -200,9 +200,20 @@ function applyRecurringEdits(list) {
 /** Regular payments you added by hand (e.g. rent not found in statements yet). */
 function withManualBills(detected, today) {
   const ids = new Set(state.accounts.map((a) => a.id));
-  const names = new Set(detected.map((r) => r.name.toUpperCase()));
-  const manual = (state.settings.manualBills || [])
-    .filter((b) => (!b.accountId || ids.has(b.accountId) || state.settings.scope === 'all') && !names.has(String(b.name).toUpperCase()))
+  // A bill you added that the statements now show (by name, or by its "name on statement") becomes
+  // the detected one, keeping your name and category: never counted twice.
+  const all = state.settings.manualBills || [];
+  const matchOf = (b) => String(b.match || b.name).toUpperCase().trim();
+  const hits = new Map();
+  for (const b of all) {
+    const m = matchOf(b);
+    const r = m.length >= 3 && detected.find((x) => x.direction === 'out' && (x.name.toUpperCase() === m || x.name.toUpperCase().includes(m) || String(x.description || '').toUpperCase().includes(m)));
+    if (r) hits.set(r.key, b);
+  }
+  detected = detected.map((r) => (hits.has(r.key) ? { ...r, name: hits.get(r.key).name, category: hits.get(r.key).category || r.category, fromManual: hits.get(r.key).id } : r));
+  const used = new Set([...hits.values()].map((b) => b.id));
+  const manual = all
+    .filter((b) => (!b.accountId || ids.has(b.accountId) || state.settings.scope === 'all') && !used.has(b.id))
     .map((b) => ({ key: 'manual|' + b.id, id: b.id, name: b.name, description: b.name, category: b.category || 'bills', amount: b.amount, direction: 'out', accountId: b.accountId || null,
       day: b.day, lastDate: null, nextDue: nextDayOfMonth(today, b.day), months: 0, type: b.type || 'Direct Debit', priceChange: 0, active: true, manual: true }));
   return [...detected, ...manual].sort((a, b) => b.amount - a.amount);

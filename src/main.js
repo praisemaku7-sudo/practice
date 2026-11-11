@@ -32,6 +32,7 @@ import { extrasActions } from './ui/overview-extras.js';
 import { affordActions, affordChanges } from './ui/afford-extras.js';
 import { billsExtraActions, billsExtraInputs } from './ui/bills-extras.js';
 import { movePlanActions } from './ui/move-plan.js';
+import { cockpitActions } from './ui/cockpit.js';
 import { menuActions, menuInputs, closeMenu, menuIsOpen, setMenuCurrent, applyTheme } from './ui/menu.js';
 import * as sync from './ui/views/sync.js';
 import * as add from './ui/views/add.js';
@@ -144,7 +145,7 @@ const globalActions = {
   },
 };
 
-const allActions = Object.assign({}, globalActions, lockActions, sectionActions, insightActions, menuActions, dashActions, alertActions, extrasActions, affordActions, billsExtraActions, movePlanActions, ...Object.values(VIEWS).map((v) => v.actions || {}));
+const allActions = Object.assign({}, globalActions, lockActions, sectionActions, insightActions, menuActions, dashActions, alertActions, extrasActions, affordActions, billsExtraActions, movePlanActions, cockpitActions, ...Object.values(VIEWS).map((v) => v.actions || {}));
 const allChanges = Object.assign({}, affordChanges, ...Object.values(VIEWS).map((v) => v.changes || {}));
 const allInputs = Object.assign({}, menuInputs, billsExtraInputs, ...Object.values(VIEWS).map((v) => v.inputs || {}));
 
@@ -332,6 +333,20 @@ document.addEventListener('focusout', () => { if (pendingRender) { pendingRender
     await saveSettings({ transferRulesVersion: 10 });
     if (fx.length || merged) { await load(); setTimeout(() => toast(`Fixed: ${fx.length} foreign-currency lines that were counted as payments removed${merged ? `, ${merged} duplicate account${merged > 1 ? 's' : ''} merged` : ''}. Re-import statements listed on the Import page.`), 1800); }
     await relinkTransfers();
+  }
+  if (state.txs.length && (state.settings.categoryRulesVersion || 0) < 1) {
+    // Better category rules (Nov 2026): re-sort everything you haven't categorised yourself, so
+    // existing rows benefit too (e.g. workplace cafés, venues, "My O2" bills, a pub called Under Water).
+    const all = await db.all('tx');
+    const resorted = [];
+    for (const t of all) {
+      if (t.userCategory || t.pairId || t.autoTransfer || t.cardRepay || ['transfer', 'savings', 'excluded'].includes(t.category)) continue;
+      const c = categorize(t.description, t.amount, state.settings.userRules);
+      if (c !== t.category && c !== 'transfer') { t.category = c; resorted.push(t); }
+    }
+    if (resorted.length) await db.putMany('tx', resorted);
+    await saveSettings({ categoryRulesVersion: 1 });
+    if (resorted.length) await load();
   }
   await route();
   sync.autoSync().then(() => render());

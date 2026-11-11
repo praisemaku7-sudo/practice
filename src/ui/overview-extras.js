@@ -10,6 +10,7 @@ import { catChip } from './common.js';
 import { helpFor } from '../lib/directory.js';
 import { merchantKey } from '../lib/categorize.js';
 import { balanceForecast, paidThisMonth } from '../lib/cashflow.js';
+import { householdFor } from '../lib/income.js';
 
 const NOT_SPEND = ['income', 'transfer', 'savings'];
 const isSpend = (t) => !NOT_SPEND.includes(catKind(t.category));
@@ -21,12 +22,23 @@ export function incomeSources(m = state.month) {
   const { recurring, today } = state.derived;
   const thisMonth = monthKey(today);
   const rows = inMonth(m).filter((t) => t.amount > 0 && catKind(t.category) === 'income');
-  return recurring.filter((r) => r.direction === 'in' && r.months >= 2 && r.amount >= 5000 && (r.active || m < thisMonth)).map((r) => {
+  const byId = Object.fromEntries((state.allAccounts || state.accounts).map((a) => [a.id, a]));
+  const list = recurring.filter((r) => r.direction === 'in' && r.months >= 2 && r.amount >= 5000 && (r.active || m < thisMonth));
+  // Expect the same take-home as Income, Budget and On track: a person's planned pay (payslips),
+  // when that pay arrives as one regular payment.
+  const plan = householdFor(state.settings, m).lines;
+  const expectOf = (r) => {
+    const who = txOwner({ accountId: r.accountId }, byId);
+    const line = plan.find((l) => l.who === who && l.kind !== 'other' && l.monthly > 0);
+    const same = list.filter((x) => txOwner({ accountId: x.accountId }, byId) === who).length === 1;
+    return line && same ? line.monthly : r.amount;
+  };
+  return list.map((r) => {
     const got = rows.filter((t) => (t.merchant || '').toUpperCase() === r.name.toUpperCase() || String(t.description).toUpperCase().includes(r.name.toUpperCase()));
     const received = got.reduce((a, t) => a + t.amount, 0);
     const due = `${m}-${String(Math.min(r.day, 28)).padStart(2, '0')}`;
     const status = received ? 'in' : m < thisMonth ? 'missing' : due < today ? 'late' : 'due';
-    return { r, received, status, due, date: got[0]?.date || null, owner: txOwner({ accountId: r.accountId }, Object.fromEntries((state.allAccounts || state.accounts).map((a) => [a.id, a]))) };
+    return { r, expected: expectOf(r), received, status, due, date: got[0]?.date || null, owner: txOwner({ accountId: r.accountId }, byId) };
   }).sort((a, b) => b.r.amount - a.r.amount);
 }
 
@@ -64,7 +76,7 @@ export function paydayLine() {
   const next = nextDayOfMonth(today, payday);
   const n = daysBetween(today, next);
   const src = incomeSources(monthKey(today));
-  const exp = src.filter((x) => x.status !== 'in').reduce((a, x) => a + x.r.amount, 0);
+  const exp = src.filter((x) => x.status !== 'in').reduce((a, x) => a + x.expected, 0);
   return n === 0 ? '💷 Payday today' : `💷 Payday in ${n} day${n === 1 ? '' : 's'} (${ord(+next.slice(8))})${exp ? ` · ${fmt(exp, { whole: true })} still to come in` : ''}`;
 }
 

@@ -12,12 +12,38 @@ export const dayIn = (month, day) => `${month}-${pad(Math.min(day, daysInMonth(m
  * paidKeys: Set of recurring keys already paid this month (from statements).
  * @returns {Map<number, Array<{r, date, status: 'paid'|'due'|'upcoming'|'late', dir}>>}
  */
+/**
+ * When a regular payment falls in a month, at the amount of each payment. Monthly ones once on their
+ * day; weekly and fortnightly every 7 or 14 days from the last one; quarterly and yearly only in
+ * their months. Each returned r is the payment with that occurrence's amount.
+ */
+export function occurrences(r, month) {
+  const f = r.freq || 'monthly';
+  if (f === 'monthly' || !r.lastDate) return [{ date: dayIn(month, r.day), r }];
+  const each = { ...r, amount: r.perPayment ?? r.amount };
+  if (f === 'quarterly' || f === 'yearly') {
+    const step = f === 'quarterly' ? 3 : 12;
+    const diff = (+month.slice(0, 4) - +r.lastDate.slice(0, 4)) * 12 + (+month.slice(5) - +r.lastDate.slice(5, 7));
+    return ((diff % step) + step) % step === 0 ? [{ date: dayIn(month, r.day), r: each }] : [];
+  }
+  const step = f === 'weekly' ? 7 : 14;
+  const first = `${month}-01`, last = `${month}-${String(new Date(Date.UTC(+month.slice(0, 4), +month.slice(5), 0)).getUTCDate()).padStart(2, '0')}`;
+  const out = [];
+  let k = Math.ceil((new Date(first) - new Date(r.lastDate)) / (step * 864e5));
+  for (;; k++) {
+    const dt = new Date(new Date(`${r.lastDate}T12:00:00Z`).getTime() + k * step * 864e5).toISOString().slice(0, 10);
+    if (dt > last) break;
+    if (dt >= first) out.push({ date: dt, r: each });
+  }
+  return out;
+}
+
 export function monthItems({ month, recurring, today, paidKeys = new Set() }) {
   const byDay = new Map();
   const thisMonth = monthKey(today);
-  for (const r of recurring) {
-    if (!r.active && month >= thisMonth) continue;
-    const date = dayIn(month, r.day);
+  for (const r0 of recurring) {
+    if (!r0.active && month >= thisMonth) continue;
+    for (const { date, r } of occurrences(r0, month)) {
     let status;
     if (month < thisMonth) status = paidKeys.has(r.key) ? 'paid' : 'missed';
     else if (month > thisMonth) status = 'upcoming';
@@ -26,6 +52,7 @@ export function monthItems({ month, recurring, today, paidKeys = new Set() }) {
     const d = +date.slice(8);
     if (!byDay.has(d)) byDay.set(d, []);
     byDay.get(d).push({ r, date, status, dir: r.direction });
+    }
   }
   return byDay;
 }
@@ -43,7 +70,7 @@ export function balanceForecast({ start, today, until, recurring, paidKeys = new
     const dt = new Date(`${today}T12:00:00Z`); dt.setUTCDate(dt.getUTCDate() + i);
     const date = dt.toISOString().slice(0, 10);
     const m = date.slice(0, 7);
-    const items = recurring.filter((r) => r.active && dayIn(m, r.day) === date && !(m === monthKey(today) && paidKeys.has(r.key)));
+    const items = recurring.filter((r) => r.active && !(m === monthKey(today) && paidKeys.has(r.key))).flatMap((r) => occurrences(r, m).filter((o) => o.date === date).map((o) => o.r));
     const inflow = items.filter((r) => r.direction === 'in').reduce((a, r) => a + r.amount, 0);
     const outflow = items.filter((r) => r.direction === 'out').reduce((a, r) => a + r.amount, 0);
     bal += inflow - outflow;

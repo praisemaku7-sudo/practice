@@ -52,8 +52,13 @@ export function buildAlerts() {
   const ci = checkinStatus();
   if (!ci.complete && d.months.includes(ci.month)) out.push({ id: 'checkin', icon: '✅', label: 'Check-in', count: 4 - ci.done, tone: 'info', title: `${monthLabel(ci.month)} check-in: ${ci.done}/4 done`, detail: 'Import, tidy up, review, plan: about 10 minutes.', href: '#/checkin', go: 'Start', sig: ci.done });
   // New regular payments that started in the last two months (new subscriptions, new Direct Debits).
-  const fresh = d.recurring.filter((r) => r.active && r.direction === 'out' && r.months === 2 && !r.manual && r.category !== 'transfer' && r.lastDate >= addDays(today, -45));
-  if (fresh.length) out.push({ id: 'newbills', icon: '🆕', label: 'New bills', count: fresh.length, tone: 'info', title: `${fresh.length} new regular payment${fresh.length > 1 ? 's' : ''}`, detail: `${fresh.map((r) => `${r.name} ${fmt(r.amount)}/month`).join(', ')}. Started recently: check you meant to sign up, and cancel any free trials you don't want.`, href: '#/bills', go: 'See bills', sig: fresh.map((r) => r.key).join(',') });
+  // Only payments that started after that account's statements begin; otherwise it's just where your records start.
+  const accStart = {};
+  for (const t of state.allTxs || state.txs) if (!accStart[t.accountId] || t.date < accStart[t.accountId]) accStart[t.accountId] = t.date;
+  const byTx = new Map((state.allTxs || state.txs).map((t) => [t.id, t.date]));
+  const firstOf = (r) => (r.txIds || []).map((id) => byTx.get(id)).filter(Boolean).sort()[0] || r.lastDate;
+  const fresh = d.recurring.filter((r) => r.active && r.direction === 'out' && r.months === 2 && !r.manual && r.category !== 'transfer' && r.lastDate >= addDays(today, -45) && firstOf(r) > addDays(accStart[r.accountId] || today, 35));
+  if (fresh.length) out.push({ id: 'newbills', icon: '🆕', label: 'New bills', count: fresh.length, tone: 'info', title: `${fresh.length} new regular payment${fresh.length > 1 ? 's' : ''}`, detail: `${fresh.map((r) => `${r.name} ${fmt(r.amount)}/month`).join(', ')}. Started recently: check each is expected, and cancel any free trials you don't want.`, href: '#/bills', go: 'See bills', sig: fresh.map((r) => r.key).join(',') });
   const ending = d.recurring.filter((r) => { const e = (state.settings.recurringEdits || {})[r.key]?.contractEnd; return e && e >= addDays(today, -30) && e <= addDays(today, 45); });
   if (ending.length) out.push({ id: 'contracts', icon: '📃', label: 'Contracts', count: ending.length, tone: 'warn', title: `${ending.length} contract${ending.length > 1 ? 's' : ''} ending soon`, detail: `${ending.map((r) => r.name).join(', ')}: compare deals before the price goes up.`, href: '#/bills', go: 'See bills', sig: ending.map((r) => r.key).join(',') });
   const rises = d.recurring.filter((r) => r.active && r.direction === 'out' && r.priceChange > 0);

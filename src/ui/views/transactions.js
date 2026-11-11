@@ -6,18 +6,19 @@ import { CATEGORIES, catName } from '../../lib/categories.js';
 import { monthKey, prettyDate } from '../../lib/dates.js';
 import { catChip, monthSwitcher } from '../common.js';
 
-const filter = { q: '', cat: '', all: false };
+const filter = { q: '', cat: '', all: false, acc: '' };
 const PAGE = 300;
 
 export function applyParams(params) {
   filter.cat = params.get('cat') || '';
   filter.q = params.get('q') || '';
-  if (filter.q) filter.all = true; // a search from elsewhere looks across every month
+  filter.acc = params.get('acc') || '';
+  if (filter.q || filter.acc) filter.all = true; // a search or account from elsewhere looks across every month
 }
 
 export function render() {
   const q = filter.q.trim().toLowerCase();
-  let list = state.txs.filter((t) => (filter.all || monthKey(t.date) === state.month)
+  let list = state.txs.filter((t) => (!filter.acc || t.accountId === filter.acc) && (filter.all || monthKey(t.date) === state.month)
     && (!filter.cat || t.category === filter.cat)
     && (!q || t.description.toLowerCase().includes(q) || (t.merchant || '').toLowerCase().includes(q)));
   list = list.sort((a, b) => b.date.localeCompare(a.date) || a.amount - b.amount);
@@ -32,6 +33,7 @@ export function render() {
   }).join('');
   return `
   ${filter.all ? '<h1 class="page-title">All transactions</h1>' : monthSwitcher(state.month, state.derived.months)}
+  ${filter.acc ? `<div class="row gap tx-acc"><span class="chip sel">${esc((state.allAccounts || state.accounts).find((a) => a.id === filter.acc)?.name || 'One account')}</span><button class="chip" data-action="tx-acc-clear">✕ All accounts</button></div>` : ''}
   <div class="card filters">
     <input type="search" id="tx-q" placeholder="Search" value="${esc(filter.q)}" data-input="tx-search">
     <div class="row gap">
@@ -80,6 +82,7 @@ export const actions = {
 export const changes = {
   'tx-cat': (el, rerender) => { filter.cat = el.value; rerender(); },
   'tx-all': (el, rerender) => { filter.all = el.checked; rerender(); },
+  'tx-acc-clear': (_, rerender) => { filter.acc = ''; window.history.replaceState(null, '', '#/transactions'); rerender(); },
 };
 
 export const inputs = {

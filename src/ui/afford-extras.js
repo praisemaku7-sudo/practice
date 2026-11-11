@@ -44,7 +44,7 @@ export function commitmentsCard() {
   const pct = (v) => Math.round((v / inc) * 100);
   const tone = pct(total) <= 50 ? 'pos' : pct(total) <= 65 ? 'warn-text' : 'neg';
   const days = 30;
-  return `<div class="card keep-open"><h3>Can our income carry our commitments?</h3>
+  return `<div class="card"><h3>Can our income carry our commitments?</h3>
     <div class="cm-split"><span class="h" style="flex:${housing}"></span><span class="b" style="flex:${bills}"></span><span class="d" style="flex:${debt || 0.0001}"></span><span class="l" style="flex:${Math.max(0, left)}"></span></div>
     <div class="cm-legend"><span><i class="h"></i>Rent/mortgage ${fmt(housing, { whole: true })} · ${pct(housing)}%</span><span><i class="b"></i>Bills ${fmt(bills, { whole: true })} · ${pct(bills)}%</span><span><i class="d"></i>Cards & loans ${fmt(debt, { whole: true })} · ${pct(debt)}%</span><span><i class="l"></i>Left ${fmt(left, { whole: true })}</span></div>
     <p class="sub"><b class="${tone}">Commitments take ${pct(total)}% of take-home (${fmt(inc, { whole: true })})</b>. That leaves <b class="${left < 0 ? 'neg' : ''}">${fmt(left, { whole: true })}</b> a month, about ${fmt(Math.max(0, left) / days, { whole: true })} a day, for food, travel and everything else. ${pct(total) > 65 ? 'Above 65% is very tight: one bill going up or a missed pay day tips the month over.' : pct(total) > 50 ? 'Over half: manageable, but keep a buffer.' : 'Under half: a healthy position.'}</p>

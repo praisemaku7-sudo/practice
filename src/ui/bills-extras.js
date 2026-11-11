@@ -63,14 +63,17 @@ export function changesCard() {
   const byId = new Map(allTx().map((t) => [t.id, t]));
   const flags = state.settings.billFlags || {};
   const all = outRegular();
-  const fresh = all.filter((r) => r.active && !r.manual && r.months <= 2 && firstSeen(r, byId) >= addDays(today, -62));
+  // New only if that account's statements go back further: otherwise it's just where your records start.
+  const accStart = {};
+  for (const t of allTx()) if (!accStart[t.accountId] || t.date < accStart[t.accountId]) accStart[t.accountId] = t.date;
+  const fresh = all.filter((r) => r.active && !r.manual && r.months <= 2 && firstSeen(r, byId) >= addDays(today, -62) && firstSeen(r, byId) > addDays(accStart[r.accountId] || today, 35));
   const stopped = all.filter((r) => !r.active && !r.manual && r.lastDate >= addDays(today, -120));
   const changed = all.filter((r) => r.active && r.priceChange);
   if (!fresh.length && !stopped.length && !changed.length) return '';
   const net = sum(fresh) + sum(changed, (r) => r.priceChange) - sum(stopped);
   const line = (r, right, note) => `<button class="list-row tap" data-action="bill-open" data-key="${esc(r.key)}"><div class="grow"><div class="ellipsis">${esc(r.name)}</div><div class="sub">${note}</div></div><b>${right}</b></button>`;
   return `<div class="card"><h3>What changed <small class="${net > 0 ? 'neg' : 'pos'}">${fmt(net, { whole: true, sign: true })}/mo</small></h3>
-    ${fresh.length ? `<div class="label">New</div>${fresh.map((r) => line(r, `+${fmt(r.amount)}`, `Started ${prettyDate(firstSeen(r, byId))}: meant to sign up? Free trials turn into payments like this.`)).join('')}` : ''}
+    ${fresh.length ? `<div class="label">New</div>${fresh.map((r) => line(r, `+${fmt(r.amount)}`, `Started ${prettyDate(firstSeen(r, byId))}${['subscriptions', 'entertainment', 'fitness'].includes(r.category) ? ': meant to sign up? Free trials turn into payments like this.' : '.'}`)).join('')}` : ''}
     ${changed.length ? `<div class="label">Price changed</div>${changed.map((r) => line(r, `${r.priceChange > 0 ? '+' : ''}${fmt(r.priceChange)}`, `Now ${fmt(r.amount)} a month${r.priceChange > 0 ? ': ask for a better price or switch' : ''}`)).join('')}` : ''}
     ${stopped.length ? `<div class="label">Stopped</div>${stopped.map((r) => line(r, `−${fmt(r.amount)}`, flags[r.key] === 'cancelled' || flags[r.key] === 'cancel' ? '✓ Cancelled: no payment since ' + prettyDate(r.lastDate) : `Last paid ${prettyDate(r.lastDate)}. Didn't cancel it? Check it hasn't failed, or that the statement is imported.`)).join('')}` : ''}
   </div>`;
@@ -198,7 +201,7 @@ function stressOut() {
   const left = inc - commit;
   const pct = inc ? Math.round((commit / inc) * 100) : 100;
   const base = inc0 - housing - other;
-  return `<div class="stat-grid"><div><span class="label">Commitments, of income</span><b class="${pct > 65 ? 'neg' : pct > 50 ? 'warn-text' : 'pos'}">${pct}%</b></div><div><span class="label">Left a month</span><b class="${left < 0 ? 'neg' : ''}">${fmt(left, { whole: true })}</b></div></div>
+  return `<div class="stat-grid"><div><span class="label">Commitments, of income</span><b class="${pct > 65 ? 'neg' : pct > 50 ? 'warn-text' : 'pos'}">${pct}%</b></div><div><span class="label">Left after regular payments</span><b class="${left < 0 ? 'neg' : ''}">${fmt(left, { whole: true })}</b></div></div>
     <p class="sub">${left < 0 ? `<b class="neg">You'd be ${fmt(-left, { whole: true })} short every month.</b> That needs savings to cover it, or a bill cut first.` : `About ${fmt(left / 30, { whole: true })} a day for food, travel and everything else${base > left ? `, down ${fmt(base - left, { whole: true })} a month from today` : ''}.`}</p>`;
 }
 export function stressCard() {

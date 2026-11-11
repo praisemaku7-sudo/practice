@@ -158,7 +158,7 @@ export function render() {
     <span class="sub">If one of them is a real statement, tick <b>Import</b> on its card.</span></div>` : ''}
   ${ready.length || busy ? `<div class="sticky-cta">
     <button class="btn ghost" data-action="import">＋ More</button>
-    <button class="btn primary grow" data-action="imp-commit" ${!ready.length ? 'disabled' : ''}>${ready.length ? `Import ${ready.length} file${ready.length === 1 ? '' : 's'} · ${txCount}${busy ? ` · ${busy} still reading` : ''}` : busy ? `Reading ${busy} file${busy === 1 ? '' : 's'}…` : 'Nothing ticked: tick Import on a file above'}</button>
+    ${!ready.length && items.some((i) => i.payslip && i.status === 'ready') ? `<button class="btn primary grow" data-action="imp-payslips-all">Use ${items.filter((i) => i.payslip && i.status === 'ready').length} payslip${items.filter((i) => i.payslip && i.status === 'ready').length === 1 ? '' : 's'} as income</button>` : `<button class="btn primary grow" data-action="imp-commit" ${!ready.length ? 'disabled' : ''}>${ready.length ? `Import ${ready.length} file${ready.length === 1 ? '' : 's'} · ${txCount}${busy ? ` · ${busy} still reading` : ''}` : busy ? `Reading ${busy} file${busy === 1 ? '' : 's'}…` : 'Nothing ticked: tick Import on a file above'}</button>`}
   </div>` : ''}`;
 }
 
