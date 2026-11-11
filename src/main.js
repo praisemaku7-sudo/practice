@@ -41,19 +41,54 @@ import * as categories from './ui/views/categories.js';
 import * as track from './ui/views/track.js';
 import * as income from './ui/views/income.js';
 import * as movebills from './ui/views/movebills.js';
+import * as spending from './ui/views/spending.js';
+import * as numbers from './ui/views/numbers.js';
 
-const VIEWS = { home, budget, afford, insights, accounts, transactions, settings, history, import: importer, checkin, bills, cards, setup, audit, due, goals, sync, add, plan, categories, track, income, movebills };
+const VIEWS = { home, budget, afford, insights, accounts, transactions, settings, history, import: importer, checkin, bills, cards, setup, audit, due, goals, sync, add, plan, categories, track, income, movebills, spending, numbers };
 // Which tab each sub-page belongs to: highlights that tab, and is where Back goes with no history.
-const PARENT = { transactions: 'home', history: 'home', checkin: 'home', bills: 'home', import: 'home', cards: 'home', audit: 'home', due: 'home', goals: 'home', settings: 'home', add: 'home', setup: 'accounts', sync: 'accounts', plan: 'track', categories: 'insights', budget: 'track', income: 'track', movebills: 'accounts' };
+const PARENT = { transactions: 'home', history: 'home', checkin: 'home', bills: 'home', import: 'home', cards: 'home', audit: 'home', due: 'home', goals: 'home', settings: 'home', add: 'home', setup: 'accounts', sync: 'accounts', plan: 'track', categories: 'insights', budget: 'track', income: 'track', movebills: 'accounts', spending: 'home', numbers: 'home' };
 const ROOTS = new Set(['home', 'track', 'afford', 'insights', 'accounts']);
 // Pages visited inside the app this session, so Back returns to where you were (not out of the app).
 let navDepth = 0, goingBack = false;
-const TITLES = { home: 'Overview', budget: 'Budget', afford: 'Afford?', insights: 'Insights', accounts: 'Accounts', transactions: 'Transactions', settings: 'Settings', history: 'Monthly record', import: 'Import', checkin: 'Monthly check-in', bills: 'Bills & subscriptions', cards: 'Credit cards', setup: 'Fix accounts', audit: 'Check my numbers', due: 'Due soon', goals: 'Savings goals', sync: 'Bank sync', add: 'Quick add', plan: 'Future planning', categories: 'Categories', track: 'On track', income: 'Income', movebills: 'Move bills' };
+const TITLES = { home: 'Overview', budget: 'Budget', afford: 'Afford?', insights: 'Insights', accounts: 'Accounts', transactions: 'Transactions', settings: 'Settings', history: 'Monthly record', import: 'Import', checkin: 'Monthly check-in', bills: 'Bills & subscriptions', cards: 'Credit cards', setup: 'Fix accounts', audit: 'Check my numbers', due: 'Due soon', goals: 'Savings goals', sync: 'Bank sync', add: 'Quick add', plan: 'Future planning', categories: 'Categories', track: 'On track', income: 'Income', movebills: 'Move bills', spending: 'Spending', numbers: 'Your numbers' };
 let current = 'home';
 
 function parseHash() {
   const [path, query] = location.hash.replace(/^#\/?/, '').split('?');
   return { view: VIEWS[path] ? path : 'home', params: new URLSearchParams(query || '') };
+}
+
+// Each page says, in one line under its title, what it's for.
+const PURPOSE = {
+  spending: 'Where your money goes, and how it compares.',
+  bills: 'Every regular payment: when it leaves, what it costs, what to cancel.',
+  due: 'What leaves your accounts in the next few days.',
+  track: 'Whether your income covers everything, now and after the move.',
+  budget: 'What each part of your month is allowed.',
+  income: 'What comes in each month, and when it changes.',
+  plan: 'Your mortgage: the deal, the dates, and being ready.',
+  goals: 'What you are saving for, and when you will get there.',
+  afford: 'Check a purchase before you make it.',
+  insights: 'The changes that would make the most difference.',
+  categories: 'How your spending is sorted, and fixing what isn\'t.',
+  cards: 'What you owe on cards, and the fastest way to clear it.',
+  audit: 'Make sure every figure in the app is right.',
+  accounts: 'Every account and card, and getting them into one place.',
+  transactions: 'Every payment in and out. Search, filter, recategorise.',
+  history: 'Each month side by side.',
+  numbers: 'Every figure as a tile. Tap one for its chart.',
+  movebills: 'Get every bill paid from one account.',
+  settings: 'People, privacy, backups and connections.',
+  import: 'Add statements, payslips and screenshots.',
+  checkin: 'A ten-minute routine once a month.',
+};
+function addPurpose(main, view) {
+  const h1 = main.querySelector('h1.page-title');
+  if (!h1 || !PURPOSE[view] || main.querySelector('.page-purpose')) return;
+  const p = document.createElement('p');
+  p.className = 'page-purpose';
+  p.textContent = PURPOSE[view];
+  (h1.closest('.acc-headrow') || h1).after(p);
 }
 
 let pendingRender = false;
@@ -62,6 +97,7 @@ async function render() {
   if (view.preload) await view.preload();
   const main = $('#main');
   main.innerHTML = view.render();
+  addPurpose(main, current);
   enhanceSections(main, current);
   const sb = $('#scope-btn');
   if (sb) {

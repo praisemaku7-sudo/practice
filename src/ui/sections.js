@@ -50,11 +50,11 @@ const NO_TABS = new Set(['movebills', 'setup', 'import', 'add', 'sync', 'checkin
 /** Run after every render. */
 export function enhanceSections(main, view) {
   if (NO_TABS.has(view)) return;
-  const cards = [...main.querySelectorAll(':scope > .card')].filter((c) => !c.classList.contains('keep-open') && headOf(c) && c.children.length >= 2);
+  const cards = [...main.querySelectorAll(':scope > .card')].filter((c) => !c.classList.contains('keep-open') && (c.dataset.tab || (headOf(c) && c.children.length >= 2)));
   const names = TAB_NAMES[view] || {};
   const tabs = [];
   for (const card of cards) {
-    const full = labelOf(headOf(card), 80);
+    const full = headOf(card) ? labelOf(headOf(card), 80) : '';
     const key = Object.keys(names).find((k) => full === k || full.startsWith(k)) ;
     const label = card.dataset.tab || (key ? names[key] : labelOf(headOf(card)));
     let t = tabs.find((x) => x.label === label);
@@ -64,6 +64,8 @@ export function enhanceSections(main, view) {
   if (tabs.length < 2) return;
   const saved = load()[view];
   const cur = tabs.find((t) => t.id === saved) || tabs[0];
+  // A single section whose heading just repeats the tab name doesn't need the heading.
+  for (const t of tabs) if (t.cards.length === 1) { const h = headOf(t.cards[0]); if (h && h.tagName === 'H3' && labelOf(h, 80).toLowerCase() === t.label.toLowerCase() && !h.querySelector('small, .pill, button, a')) h.classList.add('tab-dup-head'); }
   tabs.forEach((t, i) => t.cards.forEach((card) => { card.classList.add('tab-panel'); card.dataset.tp = String(i); card.setAttribute('role', 'tabpanel'); card.hidden = t !== cur; }));
   const bar = document.createElement('div');
   bar.className = 'sec-tabs';
