@@ -41,6 +41,7 @@ upTrend   = close > ema
 downTrend = close < ema
 longSig   = ta.crossover(z, -lvl) and (not useTrend or upTrend)
 shortSig  = ta.crossunder(z, lvl) and (not useTrend or downTrend)
+exitLong  = ta.crossover(z, 0)   // price has reverted to VWAP
 
 // ── Plots ──
 zCol = z >= lvl ? color.new(color.red, 0) : z <= -lvl ? color.new(color.green, 0) : color.new(color.blue, 0)
@@ -51,6 +52,11 @@ hline(-lvl, "-level", color=color.gray, linestyle=hline.style_dashed)
 plotshape(longSig, "Long signal", shape.triangleup, location.bottom, color.green, size=size.tiny)
 plotshape(shortSig, "Short signal", shape.triangledown, location.top, color.red, size=size.tiny)
 
+plotshape(exitLong, "Exit long", shape.xcross, location.bottom, color.gray, size=size.tiny)
+
 // ── Alerts ──
-alertcondition(longSig, "VWAP Z long", "{{ticker}} {{interval}}: VWAP z crossed back above the lower level")
-alertcondition(shortSig, "VWAP Z short", "{{ticker}} {{interval}}: VWAP z crossed back below the upper level")
+// The JSON messages feed the Trading 212 bridge (see bridge/README.md).
+// Replace CHANGE_ME with your WEBHOOK_SECRET in the TradingView alert dialog, not here.
+alertcondition(longSig, "VWAP Z long", '{"token":"CHANGE_ME","action":"buy","ticker":"{{ticker}}","price":{{close}}}')
+alertcondition(exitLong, "VWAP Z exit long", '{"token":"CHANGE_ME","action":"exit","ticker":"{{ticker}}","price":{{close}}}')
+alertcondition(shortSig, "VWAP Z short (chart only)", "{{ticker}} {{interval}}: VWAP z crossed back below the upper level")

@@ -1,0 +1,22 @@
+name = "tv-t212-bridge"
+main = "worker.js"
+compatibility_date = "2025-06-01"
+
+# Create with: npx wrangler kv namespace create STATE   (then paste the id below)
+[[kv_namespaces]]
+binding = "STATE"
+id = "REPLACE_WITH_KV_ID"
+
+[vars]
+T212_ENV = "demo"            # "demo" or "live"
+I_ACCEPT_LIVE_RISK = "no"    # must be "yes" for live orders
+TRADING_ENABLED = "true"     # kill switch: set to "false" and redeploy to stop all orders
+MAX_ORDER_VALUE = "25"       # cash per buy, in your account currency
+HARD_CAP_VALUE = "100"       # MAX_ORDER_VALUE can never exceed this
+MAX_ORDERS_PER_DAY = "3"
+STOP_PCT = "2"               # stop-loss distance below the alert price, in percent
+TICKER_MAP = '{"NVDA":"NVDA_US_EQ","INTC":"INTC_US_EQ"}'
+# Secrets (never put these in this file):
+#   npx wrangler secret put T212_API_KEY
+#   npx wrangler secret put T212_API_SECRET
+#   npx wrangler secret put WEBHOOK_SECRET
