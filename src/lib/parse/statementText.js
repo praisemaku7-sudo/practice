@@ -139,7 +139,6 @@ const FX_LINE = /\b(revolut rate|ecb rate|exchange rate|conversion rate|rate £1
 const TYPE_START = /^(CR|DR|BP|DD|SO|VIS|\)\)\)|ATM|OBP|TFR|CHQ|FPI|FPO|BGC|DEB|STO|IBP|CPT|DPC|PAY)\s+\S/;
 const PAGE_HEAD = /\b(your statement|account name|sort ?code|sheet number|statement period|page \d+ of \d+)\b|^\d{1,2}(st|nd|rd|th)? [a-z]+( \d{4})? to \d{1,2}(st|nd|rd|th)? [a-z]+ \d{4}\b/i;
 
-const CREDIT_WORDS = /\b(BENEFIT|CREDIT|REFUND|CASHBACK|POINTS TOWARDS|REWARD|REVERSAL|ADJUSTMENT)\b/i;
 const MONEY = '£?\\s*([\\d,]+\\.\\d{2})';
 
 /** Parse a credit-card summary box: previous balance, credits, debits, closing balance (pence). */

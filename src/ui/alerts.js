@@ -9,6 +9,7 @@ import { monthOutlook, budgetAlerts } from '../lib/forecast.js';
 import { summarizeMonth } from '../lib/analysis.js';
 import { balanceForecast, paidThisMonth } from '../lib/cashflow.js';
 import { checkinStatus } from './views/checkin.js';
+import { ord } from '../lib/util.js';
 
 /** Everything that needs your attention, most urgent first. */
 export function buildAlerts() {
@@ -20,7 +21,7 @@ export function buildAlerts() {
   const cur = state.accounts.filter((a) => a.type === 'current' && a.balance != null);
   if (cur.length && d.payday) {
     const flags = state.settings.billFlags || {}, hidden = state.settings.billHidden || {};
-    const live = d.recurring.filter((r) => (r.category !== 'transfer' || r.cardRepay) && !hidden[r.key] && flags[r.key] !== 'cancelled');
+    const live = d.bills;
     const start = d.balance ?? cur.reduce((a, x) => a + x.balance, 0);
     const fc = balanceForecast({ start, today, until: nextDayOfMonth(addDays(today, 1), d.payday), recurring: live, paidKeys: paidThisMonth(live, state.txs, month, state.settings.billPaid) });
     const bad = fc.rows.filter((r) => r.balance < 0 && r.outflow > 0);
@@ -37,7 +38,7 @@ export function buildAlerts() {
     for (const p of d.payMissing) (byMonth[p.month] ||= []).push(p);
     const [m, list] = Object.entries(byMonth).sort()[0];
     const acc = (id) => state.accounts.find((a) => a.id === id)?.name || 'its account';
-    out.push({ id: 'paymissing', icon: '💷', label: 'Pay missing', count: d.payMissing.length, tone: 'bad', title: `Pay not found in ${monthLabel(m)}`, detail: `${list.map((p) => `${p.name} (${fmt(p.amount, { whole: true })}, usually around the ${p.day}${p.day % 10 === 1 && p.day !== 11 ? 'st' : p.day % 10 === 2 && p.day !== 12 ? 'nd' : p.day % 10 === 3 && p.day !== 13 ? 'rd' : 'th'}) isn't in your statements: import ${monthLabel(m)} for ${acc(p.accountId)}`).join('. ')}. Until then that month's income and savings rate are too low, so it's left out of averages.`, href: '#/accounts', go: 'Import statements', sig: d.payMissing.map((p) => p.key + p.month).join(',') });
+    out.push({ id: 'paymissing', icon: '💷', label: 'Pay missing', count: d.payMissing.length, tone: 'bad', title: `Pay not found in ${monthLabel(m)}`, detail: `${list.map((p) => `${p.name} (${fmt(p.amount, { whole: true })}, usually around the ${ord(p.day)}) isn't in your statements: import ${monthLabel(m)} for ${acc(p.accountId)}`).join('. ')}. Until then that month's income and savings rate are too low, so it's left out of averages.`, href: '#/accounts', go: 'Import statements', sig: d.payMissing.map((p) => p.key + p.month).join(',') });
   }
   const mo = monthOutlook({ txs: state.txs, today, budget: d.budget, recurring: d.recurring });
   const al = budgetAlerts({ txs: state.txs, today, budget: d.budget });
@@ -53,8 +54,7 @@ export function buildAlerts() {
   if (!ci.complete && d.months.includes(ci.month)) out.push({ id: 'checkin', icon: '✅', label: 'Check-in', count: 4 - ci.done, tone: 'info', title: `${monthLabel(ci.month)} check-in: ${ci.done}/4 done`, detail: 'Import, tidy up, review, plan: about 10 minutes.', href: '#/checkin', go: 'Start', sig: ci.done });
   // New regular payments that started in the last two months (new subscriptions, new Direct Debits).
   // Only payments that started after that account's statements begin; otherwise it's just where your records start.
-  const accStart = {};
-  for (const t of state.allTxs || state.txs) if (!accStart[t.accountId] || t.date < accStart[t.accountId]) accStart[t.accountId] = t.date;
+  const accStart = d.accountStart;
   const byTx = new Map((state.allTxs || state.txs).map((t) => [t.id, t.date]));
   const firstOf = (r) => (r.txIds || []).map((id) => byTx.get(id)).filter(Boolean).sort()[0] || r.lastDate;
   const fresh = d.recurring.filter((r) => r.active && r.direction === 'out' && r.months === 2 && !r.manual && r.category !== 'transfer' && r.lastDate >= addDays(today, -45) && firstOf(r) > addDays(accStart[r.accountId] || today, 35));
@@ -71,7 +71,7 @@ export function buildAlerts() {
     const cand = d.recurring.filter((r) => r.active && r.direction === 'out' && !r.manual && r.months >= 3 && r.category !== 'transfer' && !hidden[r.key] && !flags[r.key] && r.day <= 28 && r.day + 4 <= +today.slice(8) && r.accountId && (lastByAcc[r.accountId] || '') >= `${month}-${String(Math.min(28, r.day + 3)).padStart(2, '0')}`);
     const paidK = paidThisMonth(cand, state.txs, month, state.settings.billPaid);
     const unseen = cand.filter((r) => !paidK.has(r.key));
-    if (unseen.length) out.push({ id: 'unseen', icon: '❓', label: 'Not paid?', count: unseen.length, tone: 'warn', title: `${unseen.length} bill${unseen.length > 1 ? 's' : ''} didn't go out this month`, detail: `${unseen.map((r) => `${r.name} (${fmt(r.amount)}, usually the ${r.day}${r.day % 10 === 1 && r.day !== 11 ? 'st' : r.day % 10 === 2 && r.day !== 12 ? 'nd' : r.day % 10 === 3 && r.day !== 13 ? 'rd' : 'th'})`).join(', ')}: not in your statements, which run past that date. A failed Direct Debit can become a missed payment on your credit file: check with the company, or mark it paid if you paid another way.`, href: '#/bills', go: 'See bills', sig: unseen.map((r) => r.key).join(',') + month });
+    if (unseen.length) out.push({ id: 'unseen', icon: '❓', label: 'Not paid?', count: unseen.length, tone: 'warn', title: `${unseen.length} bill${unseen.length > 1 ? 's' : ''} didn't go out this month`, detail: `${unseen.map((r) => `${r.name} (${fmt(r.amount)}, usually the ${ord(r.day)})`).join(', ')}: not in your statements, which run past that date. A failed Direct Debit can become a missed payment on your credit file: check with the company, or mark it paid if you paid another way.`, href: '#/bills', go: 'See bills', sig: unseen.map((r) => r.key).join(',') + month });
   }
   const hiddenB = state.settings.hiddenBanners || {};
   return out.filter((a) => hiddenB['alert:' + a.id] !== String(a.sig));
@@ -95,10 +95,6 @@ const ICONS = {
 const icon = (id) => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[id] || ICONS.off}</svg>`;
 
 /** Row of small badges for the Overview. */
-export function alertStrip(list = buildAlerts()) {
-  if (!list.length) return '';
-  return `<div class="alert-strip" role="list">${list.map((a) => `<button class="as-item ${a.tone}" role="listitem" data-action="alert-open" data-id="${a.id}" aria-label="${esc(a.title)}"><span class="as-ic">${icon(a.id)}<b class="as-badge">${a.count > 99 ? '99+' : a.count}</b></span><small>${esc(a.label)}</small></button>`).join('')}</div>`;
-}
 
 /** Update the 🔔 count in the top bar. */
 export function updateBell() {

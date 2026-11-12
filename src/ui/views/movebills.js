@@ -7,8 +7,8 @@ import { fmt } from '../../lib/money.js';
 import { catName } from '../../lib/categories.js';
 import { helpFor } from '../../lib/directory.js';
 import { daysBetween, prettyDate } from '../../lib/dates.js';
+import { ord } from '../../lib/util.js';
 
-const ord = (d) => `${d}${d % 10 === 1 && d !== 11 ? 'st' : d % 10 === 2 && d !== 12 ? 'nd' : d % 10 === 3 && d !== 13 ? 'rd' : 'th'}`;
 // Bank details for the messages: kept on screen only, never saved.
 const mine = { name: '', sort: '', acc: '' };
 const ui = { show: 'todo' };
@@ -59,7 +59,7 @@ export function render() {
   const status = s.billsMoved || {};
   const flags = s.billFlags || {};
   const today = state.derived.today;
-  const all = state.derived.recurring.filter((r) => r.active && r.direction === 'out' && (r.category !== 'transfer' || r.cardRepay) && !(s.billHidden || {})[r.key]);
+  const all = state.derived.billsOut;
   const byId = new Map((state.allTxs || state.txs).map((t) => [t.id, t]));
   // Confirmed: earlier payments came from elsewhere, the latest from the main account.
   const confirmed = all.filter((r) => r.accountId === main && (r.txIds || []).some((id) => { const t = byId.get(id); return t && t.accountId !== main; }));

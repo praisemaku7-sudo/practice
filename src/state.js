@@ -163,21 +163,26 @@ export function estimatedIncome(personId) {
   return Math.round(total / months.length);
 }
 
+/**
+ * The household's monthly take-home: THE income figure every page uses. Each person's payslip,
+ * SA302, typed amount or temporary pay (e.g. maternity); anyone without one is estimated from what
+ * arrived in their own accounts; plus household extras (Child Benefit…).
+ */
+export function takeHome(month = monthKey(todayISO()), scope = 'all') {
+  return householdFor(state.settings, month, { scope, estimate: estimatedIncome });
+}
+
 /** Settings in force for the current view: each person has their own income, goals and budgets. */
 function effectiveSettings() {
   const s = state.settings;
   if (s.scope === 'all') {
-    // Household income = everyone's income together (payslip / SA302 / maternity), once each person has one.
-    // Household extras (Child Benefit…) always add on top.
-    const extra = otherFor(s, monthKey(todayISO()), 'all').reduce((a, x) => a + x.monthly, 0);
-    if (s.income == null && s.people.length > 1) {
-      const incomes = s.people.map((p) => personIncome(p.id));
-      // Anyone without a set income: use the average of what actually arrived in their accounts.
-      if (incomes.some((v) => v != null)) return { ...s, income: s.people.reduce((a, p, i) => a + (incomes[i] ?? estimatedIncome(p.id)), 0) + extra };
+    // An amount typed in Budget overrides everything; otherwise the household take-home.
+    if (s.income != null) {
+      const extra = otherFor(s, monthKey(todayISO()), 'all').reduce((a, x) => a + x.monthly, 0);
+      return extra ? { ...s, income: s.income + extra } : s;
     }
-    if (s.income == null && s.people.length === 1 && personIncome(s.people[0].id) != null) return { ...s, income: personIncome(s.people[0].id) + extra };
-    if (s.income != null && extra) return { ...s, income: s.income + extra };
-    return s;
+    const t = takeHome().total;
+    return t > 0 ? { ...s, income: t } : s;
   }
   const mine = { ...s, income: null, savingsTarget: null, budgets: {}, cardPayoff: null, payday: null, ...(s.scoped?.[s.scope] || {}) };
   const temp = activeTempIncome(s.scope);
@@ -255,7 +260,22 @@ export function recompute() {
   const cards = cardSummary({ accounts: state.accounts, txs: state.txs, allTxs: state.allTxs, today, trackFrom: state.settings.trackFrom });
   const suspects = suspectedCreditCards(state.accounts, state.txs);
   const duplicates = findStoredDuplicates(state.txs);
-  state.derived = { today, coverage, cards, suspects, duplicates, recurring, payday, detectedPayday: detected, budget, balance, staleBalance: currentAccounts.length > 0 && !fresh.length, months: monthsPresent(state.txs), incomplete, payMissing };
+  // One list of current regular payments for every page: active, not a move between your own accounts
+  // (card repayments count), not hidden, not cancelled. Bills page lists hidden/cancelled separately.
+  const hiddenB = state.settings.billHidden || {}, flagsB = state.settings.billFlags || {};
+  const bills = recurring.filter((r) => r.active && (r.category !== 'transfer' || r.cardRepay) && !hiddenB[r.key] && flagsB[r.key] !== 'cancelled');
+  const billsOut = bills.filter((r) => r.direction === 'out');
+  // Where each account's statements start: payments before then aren't "new", just unrecorded.
+  const accountStart = {};
+  for (const t of state.allTxs || state.txs) if (!accountStart[t.accountId] || t.date < accountStart[t.accountId]) accountStart[t.accountId] = t.date;
+  // One income for every page: the lines behind it, and where the total comes from.
+  const th = state.eff.scope === 'all' || !state.eff.scope ? takeHome() : takeHome(undefined, state.eff.scope);
+  const income = {
+    total: budget.income,
+    lines: state.settings.income != null && state.eff.scope === 'all' ? [{ who: 'all', name: 'Household', monthly: state.settings.income, kind: 'typed', label: 'Typed in Budget' }, ...th.lines.filter((l) => l.kind === 'other')] : th.lines,
+    source: state.settings.income != null && state.eff.scope === 'all' ? 'typed' : th.total > 0 ? 'people' : 'statements',
+  };
+  state.derived = { today, coverage, cards, suspects, duplicates, recurring, payday, detectedPayday: detected, budget, income, bills, billsOut, accountStart, balance, staleBalance: currentAccounts.length > 0 && !fresh.length, months: monthsPresent(state.txs), incomplete, payMissing };
   return state.derived;
 }
 

@@ -10,12 +10,11 @@ import { catChip } from './common.js';
 import { helpFor } from '../lib/directory.js';
 import { merchantKey } from '../lib/categorize.js';
 import { balanceForecast, paidThisMonth } from '../lib/cashflow.js';
-import { householdFor } from '../lib/income.js';
+import { ord } from '../lib/util.js';
 
 const NOT_SPEND = ['income', 'transfer', 'savings'];
 const isSpend = (t) => !NOT_SPEND.includes(catKind(t.category));
 const inMonth = (m) => state.txs.filter((t) => t.date.startsWith(m));
-const ord = (d) => `${d}${d % 10 === 1 && d !== 11 ? 'st' : d % 10 === 2 && d !== 12 ? 'nd' : d % 10 === 3 && d !== 13 ? 'rd' : 'th'}`;
 
 /** Each regular income for a month: expected amount, whether it has arrived, and when. */
 export function incomeSources(m = state.month) {
@@ -26,7 +25,7 @@ export function incomeSources(m = state.month) {
   const list = recurring.filter((r) => r.direction === 'in' && r.months >= 2 && r.amount >= 5000 && (r.active || m < thisMonth));
   // Expect the same take-home as Income, Budget and On track: a person's planned pay (payslips),
   // when that pay arrives as one regular payment.
-  const plan = householdFor(state.settings, m).lines;
+  const plan = state.derived.income.lines;
   const expectOf = (r) => {
     const who = txOwner({ accountId: r.accountId }, byId);
     const line = plan.find((l) => l.who === who && l.kind !== 'other' && l.monthly > 0);
@@ -56,7 +55,7 @@ export function safeToSpend() {
   const cur = state.accounts.filter((a) => a.type === 'current' && a.balance != null);
   if (!cur.length || !d.payday) return null;
   const nextPay = nextDayOfMonth(addDays(d.today, 1), d.payday);
-  const live = d.recurring.filter((r) => (r.category !== 'transfer' || r.cardRepay) && r.direction === 'out');
+  const live = d.billsOut;
   const start = d.balance ?? cur.reduce((a, x) => a + x.balance, 0);
   const fc = balanceForecast({ start, today: d.today, until: addDays(nextPay, -1), recurring: live, paidKeys: paidThisMonth(live, state.txs, monthKey(d.today), state.settings.billPaid) });
   const days = Math.max(1, daysBetween(d.today, nextPay));
@@ -69,16 +68,6 @@ export function largestPayments(m = state.month, n = 8) {
   return inMonth(m).filter((t) => isSpend(t) && t.amount < 0).sort((a, b) => a.amount - b.amount).slice(0, n);
 }
 
-/** Payday countdown text for the hero. */
-export function paydayLine() {
-  const { payday, today } = state.derived;
-  if (!payday) return '';
-  const next = nextDayOfMonth(today, payday);
-  const n = daysBetween(today, next);
-  const src = incomeSources(monthKey(today));
-  const exp = src.filter((x) => x.status !== 'in').reduce((a, x) => a + x.expected, 0);
-  return n === 0 ? '💷 Payday today' : `💷 Payday in ${n} day${n === 1 ? '' : 's'} (${ord(+next.slice(8))})${exp ? ` · ${fmt(exp, { whole: true })} still to come in` : ''}`;
-}
 
 // ---------- Sheets ----------
 export function incomeSheetExtra(m) {

@@ -14,7 +14,6 @@ import { checkinStatus, targetMonth } from './checkin.js';
 import { catChip } from '../common.js';
 import { buildPath, chosenSaving } from '../../lib/path.js';
 import { diagnoseSpending } from '../../lib/diagnose.js';
-import { commitmentsCard } from '../afford-extras.js';
 import { housingCard, stressCard } from '../bills-extras.js';
 import { scenarioBar, moveCard, leversCard, oneIncomeCard } from '../move-plan.js';
 import { summarizeMonth } from '../../lib/analysis.js';
@@ -25,7 +24,6 @@ const ui = { showAllSavings: false, showAllPath: false, withActions: false, sel:
 let points = [];
 export async function preload() { reports = await creditReports(); }
 
-const statusWord = { ok: ['On track', 'pos'], tight: ['Tight', 'warn-text'], short: ['Short', 'neg'] };
 const bar = (pct, cls = '') => `<div class="cat-bar ${cls}"><span style="width:${Math.max(0, Math.min(100, pct * 100)).toFixed(1)}%"></span></div>`;
 
 /** Money in vs out, month by month: 6 complete months, this month at today's pace, 6 ahead. */
@@ -89,14 +87,8 @@ function enoughCard({ past, ahead, withPlan, mo, chosen, picked, mort, s }) {
   const recvd = past.filter((p) => !p.incomplete).length ? Math.round(past.filter((p) => !p.incomplete).reduce((a, p) => a + p.income, 0) / past.filter((p) => !p.incomplete).length) : null;
   const checks = income && (ahead.avgSpend > income * 1.3 || (recvd && recvd > income * 1.35)) ? diagnoseSpending({ txs: state.txs, accounts: state.allAccounts || state.accounts, months: past.filter((p) => !p.incomplete).map((p) => p.month), people: s.people, income, receivedIncome: recvd }) : [];
   const nAct = Object.values(chosen).filter(Boolean).length;
-  return `<div class="card keep-open">
-    <h3>Will we have enough?</h3>
-    <div class="enough-sum">
-      <div><span class="label">Typical month in</span><b class="pos">${fmt(income, { whole: true })}</b></div>
-      <div><span class="label">Typical month out</span><b>${fmt(outTyp, { whole: true })}</b></div>
-      <div><span class="label">${spare < 0 ? 'Short' : 'Spare'} each month</span><b class="${spare < 0 ? 'neg' : 'pos'}">${fmt(Math.abs(spare), { whole: true })}</b></div>
-    </div>
-    <p class="sub">"Typical" is your middle month of the last ${ahead.monthsUsed}${ahead.basis === 'median' && Math.abs(ahead.meanSpend - ahead.avgSpend) > ahead.avgSpend * 0.05 ? ` (the average is ${fmt(ahead.meanSpend, { whole: true })}, pushed ${ahead.meanSpend > ahead.avgSpend ? 'up' : 'down'} by one-off months)` : ''}. Income month by month from <a href="#/income">Income</a>${mort ? ', with the mortgage from Future planning' : ''}.</p>
+  return `<div class="card">
+    <h3>Month by month</h3>
     ${checks.length ? `<div class="cal-tip bad"><b>⚠ Does this look right? ${ahead.avgSpend > income * 1.3 ? `Spending is ${Math.round((ahead.avgSpend / income) * 100)}% of income` : 'Income doesn\'t match your payslips'}</b><span>Spending this far above income usually means something's counted that isn't really spending:</span>
       ${checks.slice(0, 3).map((c) => `<div class="diag"><b>${esc(c.title)}</b><span>${esc(c.detail)}</span>${c.action ? `<a class="chip" href="${esc(c.action.href)}">${esc(c.action.label)} ›</a>` : ''}</div>`).join('')}
       ${checks.length > 3 ? `<details><summary class="sub">${checks.length - 3} more checks</summary>${checks.slice(3).map((c) => `<div class="diag"><b>${esc(c.title)}</b><span>${esc(c.detail)}</span></div>`).join('')}</details>` : ''}</div>` : ''}
@@ -120,7 +112,6 @@ export function render() {
   const mort = s.mortgage?.principal || (s.mortgage?.price && s.mortgage?.deposit != null) ? { ...s.mortgage, principal: s.mortgage.principal ?? s.mortgage.price - s.mortgage.deposit } : null;
   const ahead = outlook({ txs: state.txs, today, budget, months: 6, mortgage: mort, housingNow, incomeFor, recurring, incomplete: state.derived.incomplete });
   const past = history({ txs: state.txs, today, n: 6, incomplete: state.derived.incomplete });
-  const [word, wcls] = statusWord[mo.status];
   const mortPay = mort ? (schedule({ ...mort }).rows[0]?.payment || 0) + (mort.extraCosts || 0) : null;
   const path = buildPath({ budget, recurring, settings: s, income: ahead.months[0]?.income ?? budget.income, avgSpend: ahead.avgSpend, mortgagePayment: mortPay });
   const chosen = s.pathChosen || {};
@@ -228,36 +219,11 @@ export function render() {
   ${moveCard()}
   ${leversCard()}
   ${oneIncomeCard()}
-  <div class="card hero">
-    <div class="label">${esc(monthLabel(mo.key))} at today's pace · day ${mo.day} of ${mo.days}</div>
-    <div class="big ${wcls}">${word}</div>
-    <div class="sub">You'll have about <b class="${mo.left < 0 ? 'neg' : 'pos'}">${fmt(mo.left, { whole: true, sign: true })}</b> left at the end of the month.</div>
-    ${bar(mo.spendEnd ? mo.spent / mo.spendEnd : 0)}
-    <div class="stat-grid mi-grid">
-      <div><span class="label">Spent so far</span><b>${fmt(mo.spent, { whole: true })}</b></div>
-      <div><span class="label">Heading for</span><b>${fmt(mo.spendEnd, { whole: true })}</b></div>
-      <div><span class="label">Bills still to come</span><b>${fmt(mo.billsToCome, { whole: true })}</b></div>
-      <div><span class="label">Income</span><b>${fmt(mo.income, { whole: true })}</b></div>
-    </div>
-    ${over.length || heading.length ? `<div class="sub mi-movers"><span class="neg">⚠ ${[over.length && `${over.length} over budget`, heading.length && `${heading.length} heading over`].filter(Boolean).join(' · ')}</span></div>` : ''}
-  </div>
-
   ${stressCard()}
-  ${commitmentsCard()}
   ${housingCard()}
   ${enoughCard({ past, ahead, withPlan, mo, chosen, picked, mort, s })}
 
   ${pathHtml}
-
-  <div class="card">
-    <h3>Budgets this month ${over.length ? `<small class="pill warn">${over.length} over</small>` : ''}</h3>
-    ${alerts.filter((a) => a.budget > 0 || a.spent > 0).slice(0, 14).map((a) => `<div class="alert-row ${a.status}">
-      <div class="row between">${catChip(a.category)}<span class="grow">${esc(catName(a.category))}</span><b class="${a.status === 'over' ? 'neg' : ''}">${fmt(a.spent, { whole: true })} <small class="muted">/ ${fmt(a.budget, { whole: true })}</small></b></div>
-      ${bar(a.budget ? a.spent / a.budget : 1, a.status)}
-      <div class="sub">${a.status === 'over' ? `<span class="neg">Over by ${fmt(a.spent - a.budget, { whole: true })}</span>` : a.status === 'heading' ? `<span class="warn-text">Heading for ${fmt(a.projected, { whole: true })} at this pace</span>${a.perDayLeft ? ` · keep to ${fmt(a.perDayLeft, { whole: true })}/day` : ''}` : catKind(a.category) === 'fixed' ? 'Bill' : a.perDayLeft ? `${fmt(a.perDayLeft, { whole: true })}/day left` : 'On track'}</div>
-    </div>`).join('')}
-    <a class="link small-link" href="#/budget">Change budgets ›</a>
-  </div>
 
   ${planHtml}
   ${creditHtml}

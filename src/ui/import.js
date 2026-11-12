@@ -1,6 +1,6 @@
 // Import engine: reads every selected file at the same time, on-device first,
 // and only calls Claude when the on-device read can't be verified against the balances.
-import { state, recompute, relinkTransfers, ownerOf } from '../state.js';
+import { state, recompute, relinkTransfers } from '../state.js';
 import { db } from '../lib/db.js';
 import { toast } from './dom.js';
 import { parseTextStatement, decodeText } from '../lib/parse/formats.js';

@@ -7,25 +7,21 @@ import { esc, toast, shareFile, openSheet, closeSheet } from './dom.js';
 import { assessApplication } from '../lib/mortgageApp.js';
 import { fmt } from '../lib/money.js';
 import { catKind, catName } from '../lib/categories.js';
-import { householdFor } from '../lib/income.js';
 import { monthKey, monthLabel, prettyDate, daysBetween, nextDayOfMonth, addDays } from '../lib/dates.js';
 
 const SUBS = new Set(['subscriptions', 'entertainment', 'fitness', 'personal_care']);
 const ui = { off: {} }; // the "what if I cancel" simulator: keys switched off (not saved)
-export const live = () => {
-  const flags = state.settings.billFlags || {}, hidden = state.settings.billHidden || {};
-  return state.derived.recurring.filter((r) => r.active && r.direction === 'out' && (r.category !== 'transfer' || r.cardRepay) && !hidden[r.key] && flags[r.key] !== 'cancelled');
-};
+export const live = () => state.derived.billsOut;
 export const income = () => {
-  const h = householdFor(state.settings, monthKey(state.derived.today));
+  const inc = state.derived.income;
   const e = state.settings.earners;
   // Planning on one income: only that person's pay, plus household extras (Child Benefit…).
-  if (e?.length) return e.reduce((a, id) => a + personIncome(id, h), 0) + h.lines.filter((l) => l.kind === 'other').reduce((a, l) => a + l.monthly, 0);
-  return h.total || state.derived.budget.income || 0;
+  if (e?.length) return e.reduce((a, id) => a + personIncome(id), 0) + inc.lines.filter((l) => l.kind === 'other').reduce((a, l) => a + l.monthly, 0);
+  return inc.total || 0;
 };
-/** One person's take-home: from Income, else the regular pay landing in accounts they own. */
-export function personIncome(id, h = householdFor(state.settings, monthKey(state.derived.today))) {
-  const line = h.lines.find((l) => l.who === id && l.kind !== 'other');
+/** One person's take-home: their line in the household income, else regular pay into accounts they own. */
+export function personIncome(id) {
+  const line = state.derived.income.lines.find((l) => l.who === id && l.kind !== 'other');
   if (line?.monthly) return line.monthly;
   const byId = Object.fromEntries((state.allAccounts || state.accounts).map((a) => [a.id, a]));
   return state.derived.recurring.filter((r) => r.active && r.direction === 'in' && r.category === 'income' && ownerOf(byId[r.accountId]) === id).reduce((a, r) => a + r.amount, 0);
@@ -59,7 +55,7 @@ export function fairShareCard() {
   const joint = live().filter((r) => ownerOf(byId[r.accountId]) === 'joint');
   const total = joint.reduce((a, r) => a + r.amount, 0);
   if (!total) return '';
-  const h = householdFor(state.settings, monthKey(state.derived.today));
+  const h = state.derived.income;
   const per = people.map((p) => ({ p, inc: h.lines.filter((l) => l.who === p.id).reduce((a, l) => a + l.monthly, 0) }));
   const sum = per.reduce((a, x) => a + x.inc, 0) || 1;
   return `<div class="card"><h3>Who pays what into the joint account</h3>
@@ -146,7 +142,6 @@ function esisBlock(e) {
   const lastErc = e.ercs.length ? e.ercs[e.ercs.length - 1] : null;
   const fees = e.fees.reduce((a, f) => a + f.amount, 0);
   return `<div class="label">Your mortgage illustration${e.lender ? ` · ${esc(e.lender)}` : ''}</div>
-    <div class="stat-grid"><div><span class="label">${e.rate}% fixed${e.fixedUntil ? ` to ${esc(d(e.fixedUntil))}` : ''}</span><b>${fmt(e.payFixed)}/mo</b></div>${e.payAfter ? `<div><span class="label">Then ${e.followRate}% (standard rate)</span><b class="warn-text">${fmt(e.payAfter)}/mo</b></div>` : ''}</div>
     ${rise ? `<div class="cal-tip"><b>${fmt(rise, { whole: true })} a month more when the fix ends${e.fixedUntil ? ` on ${esc(d(e.fixedUntil))}` : ''}</b><span>Most people move to a new deal instead of paying the standard rate.${book ? ` You can usually choose one up to 6 months ahead: from <b>${esc(d(book))}</b>.` : ''}${lastErc ? ` Early repayment charges (${e.ercs.map((x) => `${x.pct}% to ${esc(d(x.to))}`).join(', ')}) mean leaving before ${esc(d(lastErc.to))} costs up to ${fmt(Math.max(...e.ercs.map((x) => x.amount)), { whole: true })}.` : ''}${e.perPoint ? ` Each 1% rise in the standard rate adds about ${fmt(e.perPoint, { whole: true })} a month.` : ''}</span></div>` : ''}
     ${e.overpayPct && e.loan ? `<div class="sub">Overpay up to ${e.overpayPct}% a year without a charge (about ${fmt(Math.round((e.loan * e.overpayPct) / 100), { whole: true })} in the first year).</div>` : ''}
     <div class="sub">${fees ? `Fees ${e.fees.map((f) => `${esc(f.label.toLowerCase())} ${fmt(f.amount, { whole: true })}`).join(', ')}. ` : ''}${e.aprc ? `APRC ${e.aprc}%. ` : ''}${e.total && e.loan ? `Total to repay ${fmt(e.total, { whole: true })} (${(e.total / e.loan).toFixed(2)} for every £1 borrowed).` : ''}</div>
@@ -243,7 +238,7 @@ function brokerText() {
   const inc = income();
   const items = live();
   const sumC = (f) => items.filter(f).reduce((a, r) => a + r.amount, 0);
-  const h = householdFor(state.settings, monthKey(state.derived.today));
+  const h = state.derived.income;
   const m = state.settings.mortgage || {};
   return [
     `Household finances: ${monthLabel(monthKey(state.derived.today))}`, '',

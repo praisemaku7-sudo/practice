@@ -4,7 +4,7 @@ import { state, saveSettings, accountName, recompute } from '../../state.js';
 import { esc, openSheet, closeSheet, toast, shareFile } from '../dom.js';
 import { fmt, parsePrice } from '../../lib/money.js';
 import { catKind, catName, CAT } from '../../lib/categories.js';
-import { monthKey, monthLabel, daysInMonth, prettyDate, addMonths, nextDayOfMonth, addDays } from '../../lib/dates.js';
+import { monthKey, monthLabel, daysInMonth, prettyDate, addMonths, nextDayOfMonth } from '../../lib/dates.js';
 import { helpFor } from '../../lib/directory.js';
 import { billsCalendar } from '../../lib/ics.js';
 import { monthItems, balanceForecast, paidThisMonth, weekTotals, dayIn } from '../../lib/cashflow.js';
@@ -13,6 +13,7 @@ import { catChip, emptyState } from '../common.js';
 import { addBillsToCalendar } from './due.js';
 import { fairShareCard, subsAuditCard, contractsEnding, priceHistory } from '../afford-extras.js';
 import { changesCard, overlapsCard, fundAccountsCard, billTrendCard, yearlyPotCard, billNoteHtml } from '../bills-extras.js';
+import { ord } from '../../lib/util.js';
 
 const SUBS = new Set(['subscriptions', 'entertainment', 'fitness', 'personal_care']);
 const FLAG_LABEL = { cancel: 'To cancel', cancelled: 'Cancelled' };
@@ -20,7 +21,6 @@ const FILTERS = [['all', 'All'], ['bills', 'Bills'], ['subs', 'Subscriptions'], 
 const ui = { month: null, filter: 'all', view: 'cal', per: 'mo' };
 let ctx = null; // what the last render computed, for the sheets
 
-const ord = (d) => `${d}${d % 10 === 1 && d !== 11 ? 'st' : d % 10 === 2 && d !== 12 ? 'nd' : d % 10 === 3 && d !== 13 ? 'rd' : 'th'}`;
 const short = (p) => (Math.abs(p) >= 100000 ? `£${(p / 100000).toFixed(1).replace('.0', '')}k` : `£${Math.round(p / 100)}`);
 const matches = (r, f) => f === 'all' ? true : f === 'in' ? r.direction === 'in' : r.direction === 'out' && (f === 'subs' ? SUBS.has(r.category) : f === 'debt' ? r.category === 'debt' || r.cardRepay : !SUBS.has(r.category) && r.category !== 'debt' && !r.cardRepay);
 
@@ -151,9 +151,7 @@ export function render() {
 
   return `
   <h1 class="page-title">Bills</h1>
-  ${suggestions()}
   ${(() => { const d = all.filter((r) => r.dupIds?.length); return d.length ? `<div class="card banner bad"><b>${d.length} regular payment${d.length > 1 ? 's were' : ' was'} counted twice</b><span class="sub">${d.map((r) => `${esc(r.name)} (${(r.dupIds || []).length} cop${r.dupIds.length > 1 ? 'ies' : 'y'})`).join(', ')}: the same payment saved from two imports or accounts. They're counted once now; tap one to remove the copies.</span><div class="row gap wrap">${d.slice(0, 4).map((r) => `<button class="chip" data-action="bill-open" data-key="${esc(r.key)}">${esc(r.name)} ›</button>`).join('')}</div></div>` : ''; })()}
-  <div class="card reg-sum"><div><span class="label">Regular outgoings</span><b>${fmt(out.reduce((a, r) => a + r.amount, 0), { whole: true })}<small>/mo</small></b></div><div><span class="label">A year</span><b>${fmt(out.reduce((a, r) => a + r.amount, 0) * 12, { whole: true })}</b></div><div><span class="label">Payments</span><b>${out.length}</b></div></div>
   <div class="card cal-card" data-tab="Calendar">
     <div class="cal-nav"><button class="icon-btn small" data-action="cal-month" data-step="-1" aria-label="Previous month">‹</button>
       <div class="grow"><b>${esc(monthLabel(month))}</b>${month !== thisMonth ? ' <button class="chip" data-action="cal-month" data-step="0">Today</button>' : ''}</div>
@@ -170,6 +168,7 @@ export function render() {
     <p class="sub">Tap a day or payment for details, reminders and what to do.</p>
     <div class="row gap cal-actions"><button class="btn ghost grow" data-action="bill-add">＋ Add payment</button><button class="btn primary grow" data-action="due-calendar">📅 All to Calendar</button></div>
   </div>
+  ${suggestions()}
   ${changesCard()}
   ${fc ? `<div class="card"><h3>Balance forecast</h3>
     <p class="sub">What's likely to be in your current account${sb.accounts.length > 1 ? 's' : ''} each day until ${prettyDate(until)}: today's balance, minus each regular bill on its day, plus pay when it lands. It warns you before a payment could bounce.</p>

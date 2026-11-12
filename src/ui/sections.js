@@ -34,7 +34,7 @@ function labelOf(head, max = 20) {
 // Short tab names, and related sections that share one tab (shown together).
 const TAB_NAMES = {
   bills: { 'What changed': 'To do', 'What to do': 'To do', 'New regular payments?': 'To do', 'Balance forecast': 'Forecast', 'Subscription audit': 'Subscriptions', 'Paying twice for the same thing?': 'Subscriptions', Subscriptions: 'Subscriptions', Bills: 'All payments', 'Other regular payments': 'All payments', Income: 'All payments', Hidden: 'All payments', 'What each account needs': 'Accounts', 'Who pays what into the joint account': 'Accounts', 'Yearly bills pot': 'Yearly', 'Regular payments over the year': 'Trends' },
-  track: { 'What moves the number most': 'Levers', 'Living on one income': 'One income', 'Stress test': 'Stress test', 'Can our income carry our commitments?': 'Commitments', 'How much rent or mortgage can we carry?': 'Housing', 'Budgets this month': 'Budgets', 'Back-on-track plan': 'Plan', 'Credit health': 'Credit', 'Monthly routine': 'Routine' },
+  track: { 'What moves the number most': 'Levers', 'Living on one income': 'One income', 'Stress test': 'Stress test', 'How much rent or mortgage can we carry?': 'Housing', 'Back-on-track plan': 'Plan', 'Month by month': 'Months', 'Credit health': 'Credit', 'Monthly routine': 'Routine' },
   budget: { 'Your month on paper': 'Month', 'Payday plan': 'Payday', 'Bills & commitments': 'Bills', 'Fun money': 'Fun', 'Emergency fund': 'Safety net', 'Yearly bills pot': 'Yearly' },
   audit: { 'Your name on transfers': 'Your name', 'Biggest money in, counted as income': 'Money in', 'Biggest spending': 'Spending', 'Treated as transfers': 'Transfers' },
   categories: { 'Check categories with Claude': 'Claude check' },
@@ -88,7 +88,4 @@ export const sectionActions = {
     // Bring the section into view if the page was scrolled past the tabs.
     if (bar.getBoundingClientRect().top < 0) bar.scrollIntoView({ block: 'start', behavior: 'smooth' });
   },
-  // Kept so older links and tests that used folding still do nothing harmful.
-  'sec-all': () => {},
-  'sec-toggle': () => {},
 };
