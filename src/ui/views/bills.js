@@ -50,8 +50,8 @@ export function render() {
   const live = all.filter((r) => !hidden[r.key] && flags[r.key] !== 'cancelled');
   const shown = live.filter((r) => matches(r, ui.filter));
   const paid = paidThisMonth(live, state.txs, month, s.billPaid);
-  const byDay = monthItems({ month, recurring: shown, today, paidKeys: paid });
-  const allByDay = monthItems({ month, recurring: live, today, paidKeys: paid });
+  const byDay = monthItems({ month, recurring: shown, today, paidKeys: paid, accountEnd: state.derived.accountEnd });
+  const allByDay = monthItems({ month, recurring: live, today, paidKeys: paid, accountEnd: state.derived.accountEnd });
   const out = live.filter((r) => r.direction === 'out' && r.active);
   const monthOut = [...allByDay.values()].flat().filter((x) => x.dir === 'out');
   const totalOut = monthOut.reduce((a, x) => a + x.r.amount, 0);
@@ -83,7 +83,7 @@ export function render() {
     const bal = balOn.get(date);
     const isDanger = bal != null && bal < 0 && outs.length;
     const cls = `cal-cell ${date === today ? 'today' : ''} ${st} ${isDanger ? 'danger' : ''} ${ins.length ? 'payday' : ''}`;
-    const inner = `<i>${d}</i>${sum ? `<small>${short(sum)}</small>` : ''}${ins.length ? '<b class="cal-pay" aria-hidden="true">💷</b>' : ''}${isDanger ? '<b class="cal-warn" aria-hidden="true">!</b>' : ''}`;
+    const inner = `<i>${d}</i>${sum ? `<small>${short(sum)}</small>` : ''}${ins.length ? '<b class="cal-pay" aria-hidden="true"></b>' : ''}${isDanger ? '<b class="cal-warn" aria-hidden="true">!</b>' : ''}`;
     const label = `${d} ${monthLabel(month)}: ${items.map((x) => `${x.r.name} ${fmt(x.r.amount)}`).join(', ')}${isDanger ? '. Balance could go below zero' : ''}`;
     cells.push(items.length || bal != null ? `<button class="${cls}" data-action="cal-day" data-d="${d}" aria-label="${esc(label)}">${inner}</button>` : `<span class="${cls}">${inner}</span>`);
   }
@@ -159,12 +159,12 @@ export function render() {
     <div class="cal-stats">
       <div><span class="label">Going out</span><b>${fmt(totalOut, { whole: true })}</b></div>
       <div><span class="label">${month < thisMonth ? 'Paid' : 'Paid so far'}</span><b class="pos">${fmt(paidOut, { whole: true })}</b></div>
-      <div><span class="label">${month === thisMonth && nextPay ? 'Before payday' : 'Still to come'}</span><b>${fmt(month === thisMonth && beforePay != null ? beforePay : totalOut - paidOut, { whole: true })}</b></div>
+      <div><span class="label">${month === thisMonth && nextPay ? 'To payday' : 'Still to come'}</span><b>${fmt(month === thisMonth && beforePay != null ? beforePay : totalOut - paidOut, { whole: true })}</b></div>
     </div>
     <div class="cal-filters" role="radiogroup" aria-label="Show">${FILTERS.map(([v, l]) => `<button class="chip ${ui.filter === v ? 'sel' : ''}" role="radio" aria-checked="${ui.filter === v}" data-action="cal-filter" data-f="${v}">${l}</button>`).join('')}</div>
     <div class="seg cal-view" role="radiogroup" aria-label="View"><button class="${ui.view === 'cal' ? 'sel' : ''}" data-action="cal-view" data-v="cal">Calendar</button><button class="${ui.view === 'list' ? 'sel' : ''}" data-action="cal-view" data-v="list">List by week</button></div>
     ${ui.view === 'cal' ? `<div class="cal"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>${cells.join('')}</div>
-    <div class="legend"><span><i class="sw due-sw"></i>Due</span><span><i class="sw paid-sw"></i>Paid</span><span><i class="sw late-sw"></i>Not seen</span><span>💷 Pay</span>${fc ? '<span><i class="sw danger-sw"></i>Could bounce</span>' : ''}</div>` : `<div class="cal-list">${list}</div>`}
+    <div class="legend"><span><i class="sw due-sw"></i>Due</span><span><i class="sw paid-sw"></i>Paid</span><span><i class="sw late-sw"></i>Not seen</span><span><i class="sw pay-sw"></i>Payday</span>${fc ? '<span><i class="sw danger-sw"></i>Could bounce</span>' : ''}</div>` : `<div class="cal-list">${list}</div>`}
     <p class="sub">Tap a day or payment for details, reminders and what to do.</p>
     <div class="row gap cal-actions"><button class="btn ghost grow" data-action="bill-add">＋ Add payment</button><button class="btn primary grow" data-action="due-calendar">📅 All to Calendar</button></div>
   </div>
@@ -184,12 +184,12 @@ export function render() {
   ${fairShareCard()}
   ${fundAccountsCard()}
   ${toCancel.length ? `<div class="card tip-box"><b>Cancel list:</b> ${toCancel.map((r) => esc(r.name)).join(', ')} saves <b>${fmt(toCancel.reduce((a, r) => a + r.amount, 0))}/month</b> (${fmt(toCancel.reduce((a, r) => a + r.amount, 0) * 12, { whole: true })}/yr). Tap "To cancel" again once it's done.</div>` : ''}
-  <div class="row gap bill-tools"><div class="seg" role="radiogroup" aria-label="Amounts"><button role="radio" aria-checked="${!yr}" class="${yr ? '' : 'sel'}" data-action="bill-per" data-v="mo">Per month</button><button role="radio" aria-checked="${yr}" class="${yr ? 'sel' : ''}" data-action="bill-per" data-v="yr">Per year</button></div><button class="chip" data-action="bills-csv">⬇ Export list</button></div>
+  <div class="card bill-tools" data-tab="All payments"><div class="seg" role="radiogroup" aria-label="Amounts"><button role="radio" aria-checked="${!yr}" class="${yr ? '' : 'sel'}" data-action="bill-per" data-v="mo">Per month</button><button role="radio" aria-checked="${yr}" class="${yr ? 'sel' : ''}" data-action="bill-per" data-v="yr">Per year</button></div><button class="chip" data-action="bills-csv">Export list</button></div>
   ${section('Bills', bills)}${section('Subscriptions', subs)}${section('Other regular payments', other)}${section('Income', live.filter((r) => r.direction === 'in' && r.active))}
   ${yearlyPotCard()}
   ${billTrendCard()}
   ${hiddenList.length ? `<div class="card"><h3>Hidden <small class="muted">${hiddenList.length}</small></h3>${hiddenList.map((r) => `<div class="list-row"><span class="grow">${esc(r.name)} <small class="muted">${fmt(r.amount)}</small></span><button class="chip" data-action="bill-unhide" data-key="${esc(r.key)}">Show again</button></div>`).join('')}</div>` : ''}
-  <div class="act-links"><a class="act-link" href="#/due">Due soon ›</a><a class="act-link" href="#/movebills">Move bills to one account ›</a><a class="act-link" href="#/track">On track ›</a></div>`;
+`;
 }
 
 /** Payments seen once that are probably regular (Direct Debits, standing orders, subscriptions, loans). */
@@ -275,7 +275,7 @@ function editSheet(key) {
 function billSheet(key) {
   const r = find(key);
   if (!r) return;
-  const status = ctx?.paid.has(key) ? 'paid' : r.nextDue < state.derived.today ? 'late' : 'due';
+  const status = ctx?.paid.has(key) ? 'paid' : r.nextDue < state.derived.today && (state.derived.accountEnd[r.accountId] || '') >= r.nextDue ? 'late' : 'due';
   openSheet(`<h2>${esc(r.name)}</h2>${itemCard(r, status)}<button class="btn ghost full" data-action="close-sheet">Done</button>`, { wide: true });
 }
 

@@ -80,3 +80,11 @@ test('a pub called "Under Water" is not a water bill', async () => {
   assert.notEqual(categorize('WETHERSPOONS TO: MOON UNDER WATER, MANCHESTER'), 'bills');
   assert.equal(categorize('SAMPLE WATER DD'), 'bills');
 });
+
+test('a bill after the latest statement is still due, not "not seen"', async () => {
+  const { monthItems } = await import('../src/lib/cashflow.js');
+  const r = { key: 'k', name: 'SAMPLE', day: 10, amount: 5000, direction: 'out', active: true, accountId: 'a1' };
+  const items = (end) => monthItems({ month: '2026-11', recurring: [r], today: '2026-11-12', accountEnd: { a1: end } }).get(10)[0].status;
+  assert.equal(items('2026-11-08'), 'due');
+  assert.equal(items('2026-11-11'), 'late');
+});

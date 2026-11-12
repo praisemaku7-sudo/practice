@@ -93,7 +93,8 @@ export function billTrendCard() {
   const a = avg(vals.slice(0, 3)), b = avg(vals.slice(-3));
   const diff = b - a, pc = a ? Math.round((diff / a) * 100) : 0;
   return `<div class="card"><h3>Regular payments over the year</h3>
-    <div class="trend-bars" role="img" aria-label="Regular payments per month">${months.map((m, i) => `<span style="height:${Math.max(4, Math.round((vals[i] / hi) * 100))}%" title="${esc(monthLabel(m))}: ${fmt(vals[i], { whole: true })}"><i>${esc(monthLabel(m, { short: true }).slice(0, 3))}</i></span>`).join('')}</div>
+    <div class="trend-bars" role="img" aria-label="Regular payments per month">${months.map((m, i) => `<span style="height:${Math.max(4, Math.round((vals[i] / hi) * 100))}%" title="${esc(monthLabel(m))}: ${fmt(vals[i], { whole: true })}"></span>`).join('')}</div>
+    <div class="trend-labels">${months.map((m) => `<span>${esc(monthLabel(m, { short: true }).slice(0, 3))}</span>`).join('')}</div>
     <p class="sub">${Math.abs(pc) < 3 ? `Steady at about ${fmt(b, { whole: true })} a month: no creep.` : `<b class="${diff > 0 ? 'neg' : 'pos'}">${diff > 0 ? 'Up' : 'Down'} ${fmt(Math.abs(diff), { whole: true })} a month (${Math.abs(pc)}%)</b> from ${fmt(a, { whole: true })} to ${fmt(b, { whole: true })}${diff > 0 ? `: ${fmt(diff * 12, { whole: true })} more a year. New subscriptions and price rises add up quietly; "What changed" shows which.` : '.'}`}</p></div>`;
 }
 
