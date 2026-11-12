@@ -51,9 +51,10 @@ export function progressBar(pct, { warnAt = 0.85 } = {}) {
 /** Tiny line chart for a series of values (pence). Last point highlighted. */
 export function sparkline(values, { w = 96, h = 28, color = 'var(--accent)' } = {}) {
   if (!values.length) return '';
-  const max = Math.max(1, ...values);
+  // Scaled between the lowest and highest value, so negative months (shortfalls) draw too.
+  const lo = Math.min(0, ...values), hi = Math.max(1, ...values), span = hi - lo || 1;
   const step = values.length > 1 ? (w - 4) / (values.length - 1) : 0;
-  const pts = values.map((v, i) => [2 + i * step, h - 3 - (v / max) * (h - 6)]);
+  const pts = values.map((v, i) => [2 + i * step, h - 3 - ((v - lo) / span) * (h - 6)]);
   const d = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
   const [lx, ly] = pts[pts.length - 1];
   return `<svg class="spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true">

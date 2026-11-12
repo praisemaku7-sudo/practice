@@ -43,19 +43,20 @@ import * as income from './ui/views/income.js';
 import * as movebills from './ui/views/movebills.js';
 import * as spending from './ui/views/spending.js';
 import * as numbers from './ui/views/numbers.js';
+import * as dash from './ui/views/dash.js';
 
-const VIEWS = { home, budget, afford, insights, accounts, transactions, settings, history, import: importer, checkin, bills, cards, setup, audit, due, goals, sync, add, plan, categories, track, income, movebills, spending, numbers };
+const VIEWS = { home, budget, afford, insights, accounts, transactions, settings, history, import: importer, checkin, bills, cards, setup, audit, due, goals, sync, add, plan, categories, track, income, movebills, spending, numbers, dash };
 // Which tab each sub-page belongs to: highlights that tab, and is where Back goes with no history.
-const PARENT = { transactions: 'home', history: 'home', checkin: 'home', bills: 'home', import: 'home', cards: 'home', audit: 'home', due: 'home', goals: 'home', settings: 'home', add: 'home', setup: 'accounts', sync: 'accounts', plan: 'track', categories: 'insights', budget: 'track', income: 'track', movebills: 'accounts', spending: 'home', numbers: 'home' };
-const ROOTS = new Set(['home', 'track', 'afford', 'insights', 'accounts']);
+const PARENT = { transactions: 'home', history: 'home', checkin: 'home', bills: 'home', import: 'home', cards: 'home', audit: 'home', due: 'home', goals: 'home', settings: 'home', add: 'home', setup: 'accounts', sync: 'accounts', plan: 'track', categories: 'insights', budget: 'track', income: 'track', movebills: 'accounts', spending: 'dash', numbers: 'dash' };
+const ROOTS = new Set(['dash', 'home', 'track', 'afford', 'accounts']);
 // Pages visited inside the app this session, so Back returns to where you were (not out of the app).
 let navDepth = 0, goingBack = false;
-const TITLES = { home: 'Overview', budget: 'Budget', afford: 'Afford?', insights: 'Insights', accounts: 'Accounts', transactions: 'Transactions', settings: 'Settings', history: 'Monthly record', import: 'Import', checkin: 'Monthly check-in', bills: 'Bills & subscriptions', cards: 'Credit cards', setup: 'Fix accounts', audit: 'Check my numbers', due: 'Due soon', goals: 'Savings goals', sync: 'Bank sync', add: 'Quick add', plan: 'Future planning', categories: 'Categories', track: 'On track', income: 'Income', movebills: 'Move bills', spending: 'Spending', numbers: 'Your numbers' };
+const TITLES = { home: 'Month', budget: 'Budget', afford: 'Afford?', insights: 'Insights', accounts: 'Accounts', transactions: 'Transactions', settings: 'Settings', history: 'Monthly record', import: 'Import', checkin: 'Monthly check-in', bills: 'Bills & subscriptions', cards: 'Credit cards', setup: 'Fix accounts', audit: 'Check my numbers', due: 'Due soon', goals: 'Savings goals', sync: 'Bank sync', add: 'Quick add', plan: 'Future planning', categories: 'Categories', track: 'On track', income: 'Income', movebills: 'Move bills', spending: 'Spending', numbers: 'Your numbers', dash: 'Home' };
 let current = 'home';
 
 function parseHash() {
   const [path, query] = location.hash.replace(/^#\/?/, '').split('?');
-  return { view: VIEWS[path] ? path : 'home', params: new URLSearchParams(query || '') };
+  return { view: VIEWS[path] ? path : 'dash', params: new URLSearchParams(query || '') };
 }
 
 // Each page says, in one line under its title, what it's for.

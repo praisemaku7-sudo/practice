@@ -31,7 +31,7 @@ export function buildAlerts() {
   {
     const past = (d.months || []).filter((m) => m < month && !d.incomplete?.has(m)).slice(-6).map((m) => summarizeMonth(state.txs, m).spend).sort((a, b) => a - b);
     const typical = past.length ? past[Math.floor(past.length / 2)] : 0;
-    if (d.budget.income && past.length >= 2 && typical > d.budget.income * 1.4) out.push({ id: 'numbers', icon: '🔍', label: 'Check numbers', count: 1, tone: 'bad', title: 'Spending looks too high to be right', detail: `A typical month shows ${fmt(typical, { whole: true })} spent against ${fmt(d.budget.income, { whole: true })} income. Usually card repayments or moves between your accounts counted as spending. On track lists what to fix.`, href: '#/track', go: 'See what to fix', sig: Math.round(typical / 10000) });
+    if (d.budget.income && past.length >= 2 && typical > d.budget.income * 1.4) out.push({ id: 'numbers', icon: '🔍', label: 'Check numbers', count: 1, tone: 'bad', title: `Typical month: ${fmt(typical, { whole: true })} out, ${fmt(d.budget.income, { whole: true })} in`, detail: `${fmt(typical - d.budget.income, { whole: true })} more goes out than comes in. If that isn't right, either someone's income isn't set (add it on the Income page, e.g. maternity pay) or money moving between your accounts is counted as spending (Check my numbers lists it). If it is right, On track shows what to change.`, href: '#/audit', go: 'Check my numbers', sig: Math.round(typical / 10000) });
   }
   if (d.payMissing?.length) {
     const byMonth = {};

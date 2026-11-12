@@ -38,16 +38,19 @@ export function occurrences(r, month) {
   return out;
 }
 
-export function monthItems({ month, recurring, today, paidKeys = new Set() }) {
+export function monthItems({ month, recurring, today, paidKeys = new Set(), accountEnd = null }) {
+  // Not seen = due on a day the account's statements already cover, with no payment. Later than the
+  // latest statement it's still waiting for one, so it stays 'due'.
+  const covered = (r, date) => !accountEnd || !r.accountId || (accountEnd[r.accountId] || '') >= date;
   const byDay = new Map();
   const thisMonth = monthKey(today);
   for (const r0 of recurring) {
     if (!r0.active && month >= thisMonth) continue;
     for (const { date, r } of occurrences(r0, month)) {
     let status;
-    if (month < thisMonth) status = paidKeys.has(r.key) ? 'paid' : 'missed';
+    if (month < thisMonth) status = paidKeys.has(r.key) ? 'paid' : covered(r, date) ? 'missed' : 'due';
     else if (month > thisMonth) status = 'upcoming';
-    else status = paidKeys.has(r.key) ? 'paid' : date < today ? 'late' : 'due';
+    else status = paidKeys.has(r.key) ? 'paid' : date < today && covered(r, date) ? 'late' : 'due';
     if (month < thisMonth && status === 'missed' && r.direction === 'in') continue;
     const d = +date.slice(8);
     if (!byDay.has(d)) byDay.set(d, []);

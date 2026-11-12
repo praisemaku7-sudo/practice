@@ -266,8 +266,13 @@ export function recompute() {
   const bills = recurring.filter((r) => r.active && (r.category !== 'transfer' || r.cardRepay) && !hiddenB[r.key] && flagsB[r.key] !== 'cancelled');
   const billsOut = bills.filter((r) => r.direction === 'out');
   // Where each account's statements start: payments before then aren't "new", just unrecorded.
-  const accountStart = {};
-  for (const t of state.allTxs || state.txs) if (!accountStart[t.accountId] || t.date < accountStart[t.accountId]) accountStart[t.accountId] = t.date;
+  // …and how far they reach: a bill due after that can't have been seen yet.
+  const accountStart = {}, accountEnd = {};
+  for (const t of state.allTxs || state.txs) {
+    if (!accountStart[t.accountId] || t.date < accountStart[t.accountId]) accountStart[t.accountId] = t.date;
+    if (!accountEnd[t.accountId] || t.date > accountEnd[t.accountId]) accountEnd[t.accountId] = t.date;
+  }
+  for (const a of state.allAccounts || state.accounts) if (a.balanceDate && (!accountEnd[a.id] || a.balanceDate > accountEnd[a.id])) accountEnd[a.id] = a.balanceDate;
   // One income for every page: the lines behind it, and where the total comes from.
   const th = state.eff.scope === 'all' || !state.eff.scope ? takeHome() : takeHome(undefined, state.eff.scope);
   const income = {
@@ -275,7 +280,7 @@ export function recompute() {
     lines: state.settings.income != null && state.eff.scope === 'all' ? [{ who: 'all', name: 'Household', monthly: state.settings.income, kind: 'typed', label: 'Typed in Budget' }, ...th.lines.filter((l) => l.kind === 'other')] : th.lines,
     source: state.settings.income != null && state.eff.scope === 'all' ? 'typed' : th.total > 0 ? 'people' : 'statements',
   };
-  state.derived = { today, coverage, cards, suspects, duplicates, recurring, payday, detectedPayday: detected, budget, income, bills, billsOut, accountStart, balance, staleBalance: currentAccounts.length > 0 && !fresh.length, months: monthsPresent(state.txs), incomplete, payMissing };
+  state.derived = { today, coverage, cards, suspects, duplicates, recurring, payday, detectedPayday: detected, budget, income, bills, billsOut, accountStart, accountEnd, balance, staleBalance: currentAccounts.length > 0 && !fresh.length, months: monthsPresent(state.txs), incomplete, payMissing };
   return state.derived;
 }
 
