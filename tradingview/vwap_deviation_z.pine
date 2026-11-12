@@ -1,0 +1,56 @@
+//@version=5
+indicator("VWAP Deviation Z", shorttitle="VWAP Z", overlay=false, precision=2)
+
+// ── Inputs ──
+anchor   = input.string("Week", "VWAP anchor", options=["Session", "Week", "Month"])
+warm     = input.int(3, "Warm-up bars after each reset", minval=1)
+lvl      = input.float(2.0, "Signal level (± z)", minval=0.5, step=0.25)
+useTrend = input.bool(true, "Only signal in the direction of the trend")
+emaLen   = input.int(200, "Trend EMA length", minval=10)
+
+// ── Anchored VWAP and volume-weighted standard deviation ──
+reset = switch anchor
+    "Session" => timeframe.change("D")
+    "Week"    => timeframe.change("W")
+    =>           timeframe.change("M")
+
+var float sPV  = 0.0
+var float sV   = 0.0
+var float sP2V = 0.0
+var int   n    = 0
+if reset
+    sPV  := 0.0
+    sV   := 0.0
+    sP2V := 0.0
+    n    := 0
+
+tp  = hlc3
+vol = nz(volume)
+sPV  += tp * vol
+sV   += vol
+sP2V += tp * tp * vol
+n    += 1
+
+vw = sV > 0 ? sPV / sV : na
+sd = sV > 0 ? math.sqrt(math.max(sP2V / sV - vw * vw, 0.0)) : na
+z  = n > warm and sd > 0 ? (close - vw) / sd : na
+
+// ── Signals: z returns inside the band, optionally only with the trend ──
+ema       = ta.ema(close, emaLen)
+upTrend   = close > ema
+downTrend = close < ema
+longSig   = ta.crossover(z, -lvl) and (not useTrend or upTrend)
+shortSig  = ta.crossunder(z, lvl) and (not useTrend or downTrend)
+
+// ── Plots ──
+zCol = z >= lvl ? color.new(color.red, 0) : z <= -lvl ? color.new(color.green, 0) : color.new(color.blue, 0)
+plot(z, "z", color=zCol, linewidth=2, style=plot.style_linebr)
+hline(0, "Zero", color=color.gray, linestyle=hline.style_solid)
+hline(lvl, "+level", color=color.gray, linestyle=hline.style_dashed)
+hline(-lvl, "-level", color=color.gray, linestyle=hline.style_dashed)
+plotshape(longSig, "Long signal", shape.triangleup, location.bottom, color.green, size=size.tiny)
+plotshape(shortSig, "Short signal", shape.triangledown, location.top, color.red, size=size.tiny)
+
+// ── Alerts ──
+alertcondition(longSig, "VWAP Z long", "{{ticker}} {{interval}}: VWAP z crossed back above the lower level")
+alertcondition(shortSig, "VWAP Z short", "{{ticker}} {{interval}}: VWAP z crossed back below the upper level")
